@@ -64,10 +64,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.PodcastEntity
+import com.lycoslane.purepodcast.ui.common.PodcastImage
 import com.lycoslane.purepodcast.ui.common.formatDuration
 import com.lycoslane.purepodcast.ui.common.formatPubDate
 import com.lycoslane.purepodcast.ui.common.htmlToPlainText
@@ -142,14 +142,13 @@ fun PodcastDetailScreen(
             item(key = "header") {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage(
-                            model = podcast.artworkUrl,
+                        PodcastImage(
+                            url = podcast.artworkUrl,
                             contentDescription = podcast.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .size(88.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
                         )
                         Spacer(Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {

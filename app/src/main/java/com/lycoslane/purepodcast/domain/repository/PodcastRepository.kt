@@ -116,7 +116,11 @@ class PodcastRepository(
 
     suspend fun enqueueDownload(episodeId: Long) {
         dao.updateDownloadState(episodeId, DownloadState.QUEUED, 0, null)
-        EpisodeDownloadWorker.enqueue(context, episodeId)
+        EpisodeDownloadWorker.enqueue(
+            context = context,
+            episodeId = episodeId,
+            wifiOnly = preferences.settings.value.wifiOnlyDownloads
+        )
     }
 
     suspend fun deleteDownload(episodeId: Long) = withContext(Dispatchers.IO) {
@@ -167,6 +171,12 @@ class PodcastRepository(
     suspend fun addToQueue(episodeId: Long) {
         val nextOrder = dao.getMaxQueueOrder() + 1
         dao.insertQueueItem(QueueItemEntity(episodeId = episodeId, sortOrder = nextOrder))
+        if (preferences.settings.value.downloadWhenQueued) {
+            val ep = dao.getEpisode(episodeId)
+            if (ep != null && ep.downloadState == DownloadState.NONE) {
+                enqueueDownload(episodeId)
+            }
+        }
     }
 
     suspend fun removeFromQueue(episodeId: Long) {

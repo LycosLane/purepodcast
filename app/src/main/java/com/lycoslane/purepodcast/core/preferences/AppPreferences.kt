@@ -10,6 +10,8 @@ data class AppSettings(
     val refreshIntervalHours: Int = 6, // 0 = manual only
     val wifiOnlyDownloads: Boolean = true,
     val autoDownloadNewByDefault: Boolean = false,
+    val downloadWhenQueued: Boolean = false,
+    val addToQueueWhenDownloaded: Boolean = false,
     val smartRewindSeconds: Int = 10 // 0 = off
 )
 
@@ -24,6 +26,8 @@ class AppPreferences(context: Context) {
         refreshIntervalHours = prefs.getInt(KEY_REFRESH_INTERVAL_HOURS, 6),
         wifiOnlyDownloads = prefs.getBoolean(KEY_WIFI_ONLY, true),
         autoDownloadNewByDefault = prefs.getBoolean(KEY_AUTO_DOWNLOAD_DEFAULT, false),
+        downloadWhenQueued = prefs.getBoolean(KEY_DOWNLOAD_WHEN_QUEUED, false),
+        addToQueueWhenDownloaded = prefs.getBoolean(KEY_QUEUE_WHEN_DOWNLOADED, false),
         smartRewindSeconds = prefs.getInt(KEY_SMART_REWIND_SECONDS, 10)
     )
 
@@ -42,6 +46,16 @@ class AppPreferences(context: Context) {
         _settings.update { it.copy(autoDownloadNewByDefault = enabled) }
     }
 
+    fun setDownloadWhenQueued(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_DOWNLOAD_WHEN_QUEUED, enabled).apply()
+        _settings.update { it.copy(downloadWhenQueued = enabled) }
+    }
+
+    fun setAddToQueueWhenDownloaded(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_QUEUE_WHEN_DOWNLOADED, enabled).apply()
+        _settings.update { it.copy(addToQueueWhenDownloaded = enabled) }
+    }
+
     fun setSmartRewindSeconds(seconds: Int) {
         prefs.edit().putInt(KEY_SMART_REWIND_SECONDS, seconds).apply()
         _settings.update { it.copy(smartRewindSeconds = seconds) }
@@ -51,6 +65,8 @@ class AppPreferences(context: Context) {
         private const val KEY_REFRESH_INTERVAL_HOURS = "refresh_interval_hours"
         private const val KEY_WIFI_ONLY = "wifi_only_downloads"
         private const val KEY_AUTO_DOWNLOAD_DEFAULT = "auto_download_new_default"
+        private const val KEY_DOWNLOAD_WHEN_QUEUED = "download_when_queued"
+        private const val KEY_QUEUE_WHEN_DOWNLOADED = "queue_when_downloaded"
         private const val KEY_SMART_REWIND_SECONDS = "smart_rewind_seconds"
     }
 }

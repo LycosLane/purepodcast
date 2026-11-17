@@ -47,8 +47,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.lycoslane.purepodcast.core.audio.PlayerUiState
+import com.lycoslane.purepodcast.ui.common.PodcastImage
 import com.lycoslane.purepodcast.ui.common.formatDuration
 import com.lycoslane.purepodcast.ui.common.htmlToPlainText
 
@@ -85,8 +85,8 @@ fun MiniPlayer(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AsyncImage(
-                    model = ep.artworkUrl.ifEmpty { pod.artworkUrl },
+                PodcastImage(
+                    url = ep.artworkUrl.ifEmpty { pod.artworkUrl },
                     contentDescription = ep.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -153,8 +153,8 @@ fun FullPlayerSheet(
                 .padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            AsyncImage(
-                model = ep.artworkUrl.ifEmpty { pod.artworkUrl },
+            PodcastImage(
+                url = ep.artworkUrl.ifEmpty { pod.artworkUrl },
                 contentDescription = ep.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

@@ -3,7 +3,7 @@ package com.lycoslane.purepodcast.ui.home
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,14 +58,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.database.PodcastWithStats
 import com.lycoslane.purepodcast.core.preferences.AppSettings
+import com.lycoslane.purepodcast.ui.common.PodcastImage
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -80,6 +81,8 @@ fun HomeScreen(
     onChangeRefreshInterval: (Int) -> Unit,
     onToggleWifiOnly: (Boolean) -> Unit,
     onToggleAutoDownloadDefault: (Boolean) -> Unit,
+    onToggleDownloadWhenQueued: (Boolean) -> Unit,
+    onToggleAddToQueueWhenDownloaded: (Boolean) -> Unit,
     onChangeSmartRewind: (Int) -> Unit,
     onExportBackupUri: (Uri) -> Unit,
     onImportBackupUri: (Uri) -> Unit
@@ -101,7 +104,19 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name), fontWeight = FontWeight.SemiBold) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(R.mipmap.ic_launcher_foreground),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(stringResource(R.string.app_name), fontWeight = FontWeight.SemiBold)
+                    }
+                },
                 actions = {
                     if (isRefreshing) {
                         CircularProgressIndicator(
@@ -195,98 +210,70 @@ fun HomeScreen(
             ) {
                 Text(
                     text = stringResource(R.string.settings_title),
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(16.dp))
 
+                // --- Section 1: Downloads ---
                 Text(
-                    text = stringResource(R.string.settings_refresh_interval),
-                    style = MaterialTheme.typography.labelLarge
+                    text = stringResource(R.string.settings_section_downloads),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(Modifier.height(8.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf(0, 1, 3, 6, 12, 24).forEach { hours ->
-                        val label = if (hours == 0) {
-                            stringResource(R.string.interval_off)
-                        } else {
-                            stringResource(R.string.interval_hours, hours)
-                        }
-                        FilterChip(
-                            selected = settings.refreshIntervalHours == hours,
-                            onClick = { onChangeRefreshInterval(hours) },
-                            label = { Text(label) }
-                        )
-                    }
-                }
+
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_wifi_only),
+                    subtitle = stringResource(R.string.settings_wifi_only_sub),
+                    checked = settings.wifiOnlyDownloads,
+                    onCheckedChange = onToggleWifiOnly
+                )
+                Spacer(Modifier.height(10.dp))
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_auto_download_default),
+                    subtitle = stringResource(R.string.settings_auto_download_default_sub),
+                    checked = settings.autoDownloadNewByDefault,
+                    onCheckedChange = onToggleAutoDownloadDefault
+                )
+                Spacer(Modifier.height(10.dp))
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_download_when_queued),
+                    subtitle = stringResource(R.string.settings_download_when_queued_sub),
+                    checked = settings.downloadWhenQueued,
+                    onCheckedChange = onToggleDownloadWhenQueued
+                )
 
                 Spacer(Modifier.height(14.dp))
                 HorizontalDivider()
                 Spacer(Modifier.height(14.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.settings_wifi_only),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = stringResource(R.string.settings_wifi_only_sub),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = settings.wifiOnlyDownloads,
-                        onCheckedChange = onToggleWifiOnly
-                    )
-                }
+                // --- Section 2: Playback & Queue ---
+                Text(
+                    text = stringResource(R.string.settings_section_playback),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(8.dp))
 
-                Spacer(Modifier.height(14.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.settings_auto_download_default),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = stringResource(R.string.settings_auto_download_default_sub),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = settings.autoDownloadNewByDefault,
-                        onCheckedChange = onToggleAutoDownloadDefault
-                    )
-                }
-
-                Spacer(Modifier.height(14.dp))
-                HorizontalDivider()
-                Spacer(Modifier.height(14.dp))
-
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_queue_when_downloaded),
+                    subtitle = stringResource(R.string.settings_queue_when_downloaded_sub),
+                    checked = settings.addToQueueWhenDownloaded,
+                    onCheckedChange = onToggleAddToQueueWhenDownloaded
+                )
+                Spacer(Modifier.height(12.dp))
                 Text(
                     text = stringResource(R.string.settings_smart_rewind),
-                    style = MaterialTheme.typography.labelLarge
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
                 )
                 Text(
                     text = stringResource(R.string.settings_smart_rewind_sub),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -309,9 +296,42 @@ fun HomeScreen(
                 HorizontalDivider()
                 Spacer(Modifier.height(14.dp))
 
+                // --- Section 3: Updates & Backup ---
+                Text(
+                    text = stringResource(R.string.settings_section_updates),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.settings_refresh_interval),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(Modifier.height(6.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(0, 1, 3, 6, 12, 24).forEach { hours ->
+                        val label = if (hours == 0) {
+                            stringResource(R.string.interval_off)
+                        } else {
+                            stringResource(R.string.interval_hours, hours)
+                        }
+                        FilterChip(
+                            selected = settings.refreshIntervalHours == hours,
+                            onClick = { onChangeRefreshInterval(hours) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
                 Text(
                     text = stringResource(R.string.settings_backup_title),
-                    style = MaterialTheme.typography.labelLarge
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
                 )
                 Text(
                     text = stringResource(R.string.settings_backup_sub),
@@ -355,6 +375,37 @@ fun HomeScreen(
 }
 
 @Composable
+private fun SettingSwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+@Composable
 private fun PodcastThumbnailCard(
     item: PodcastWithStats,
     onClick: () -> Unit
@@ -370,10 +421,9 @@ private fun PodcastThumbnailCard(
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
-            AsyncImage(
-                model = item.podcast.artworkUrl,
+            PodcastImage(
+                url = item.podcast.artworkUrl,
                 contentDescription = item.podcast.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

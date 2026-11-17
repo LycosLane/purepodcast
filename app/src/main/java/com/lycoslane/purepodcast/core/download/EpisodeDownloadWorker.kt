@@ -89,6 +89,17 @@ class EpisodeDownloadWorker(
                 progress = 100,
                 localPath = targetFile.absolutePath
             )
+            if (com.lycoslane.purepodcast.core.preferences.AppPreferences(applicationContext)
+                    .settings.value.addToQueueWhenDownloaded
+            ) {
+                val nextOrder = dao.getMaxQueueOrder() + 1
+                dao.insertQueueItem(
+                    com.lycoslane.purepodcast.core.database.QueueItemEntity(
+                        episodeId = episodeId,
+                        sortOrder = nextOrder
+                    )
+                )
+            }
             Result.success()
         } catch (_: Exception) {
             tempFile.delete()

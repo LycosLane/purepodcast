@@ -60,6 +60,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     val currentRoute = navBackStackEntry?.destination?.route
 
     Scaffold(
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         bottomBar = {
             Column {
                 MiniPlayer(
@@ -139,6 +140,12 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     },
                     onToggleAutoDownloadDefault = { enabled ->
                         app.preferences.setAutoDownloadNewByDefault(enabled)
+                    },
+                    onToggleDownloadWhenQueued = { enabled ->
+                        app.preferences.setDownloadWhenQueued(enabled)
+                    },
+                    onToggleAddToQueueWhenDownloaded = { enabled ->
+                        app.preferences.setAddToQueueWhenDownloaded(enabled)
                     },
                     onChangeSmartRewind = { secs ->
                         app.preferences.setSmartRewindSeconds(secs)
