@@ -71,6 +71,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     }
 
     val podcasts by mainViewModel.podcasts.collectAsStateWithLifecycle()
+    val allEpisodes by mainViewModel.allEpisodes.collectAsStateWithLifecycle()
     val queue by mainViewModel.queue.collectAsStateWithLifecycle()
     val settings by mainViewModel.settings.collectAsStateWithLifecycle()
     val isRefreshing by mainViewModel.isRefreshing.collectAsStateWithLifecycle()
@@ -173,6 +174,8 @@ fun PurePodcastApp(app: PurePodcastApplication) {
             composable("home") {
                 HomeScreen(
                     podcasts = podcasts,
+                    allEpisodes = allEpisodes,
+                    activeEpisodeId = activeEpisodeId,
                     isRefreshing = isRefreshing,
                     settings = settings,
                     backupStatus = backupStatus,
@@ -181,6 +184,47 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         navController.navigate("detail/$podcastId")
                     },
                     onAddClick = { navigateTopLevel("search") },
+                    onToggleFavorite = mainViewModel::toggleFavorite,
+                    onPlayEpisode = { ep, pod -> app.playerController.playEpisode(ep, pod) },
+                    onPauseMainPlayer = { app.playerController.pauseIfPlaying() },
+                    onAddToQueueFront = { ep ->
+                        mainViewModel.addToQueueFront(ep.id) {
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                snackbarHostState.showSnackbar(context.getString(R.string.snackbar_added_to_queue_front))
+                            }
+                        }
+                    },
+                    onAddToQueueEnd = { ep ->
+                        mainViewModel.addToQueueEnd(ep.id) {
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                snackbarHostState.showSnackbar(context.getString(R.string.snackbar_added_to_queue))
+                            }
+                        }
+                    },
+                    onDownloadEpisode = { ep -> mainViewModel.downloadEpisode(ep.id) },
+                    onDeleteDownload = { ep -> mainViewModel.deleteDownload(ep.id) },
+                    onTogglePlayed = mainViewModel::togglePlayed,
+                    onToggleHidden = { ep ->
+                        val nextHidden = !ep.isHidden
+                        mainViewModel.setHidden(ep.id, nextHidden) {
+                            if (nextHidden) {
+                                scope.launch {
+                                    snackbarHostState.currentSnackbarData?.dismiss()
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = context.getString(R.string.snackbar_episode_hidden),
+                                        actionLabel = context.getString(R.string.action_undo),
+                                        duration = SnackbarDuration.Short
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        mainViewModel.unhideEpisode(ep.id)
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    onTextScaleChange = mainViewModel::setTextScale,
                     onChangeRefreshInterval = mainViewModel::setRefreshInterval,
                     onToggleWifiOnly = mainViewModel::setWifiOnly,
                     onToggleAutoDownloadDefault = mainViewModel::setAutoDownloadDefault,
@@ -275,6 +319,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         }
                     },
                     onTogglePlayed = { ep -> detailViewModel.togglePlayed(ep) },
+                    onToggleFavorite = mainViewModel::toggleFavorite,
                     onToggleHidden = { ep ->
                         val nextHidden = !ep.isHidden
                         detailViewModel.setHidden(ep.id, nextHidden) {
@@ -313,6 +358,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onOpenNowPlaying = { showFullPlayer = true },
                     onOpenPodcast = { podcastId -> navController.navigate("detail/$podcastId") },
                     onPlay = { ep, pod -> app.playerController.playEpisode(ep, pod) },
+                    onDownload = mainViewModel::downloadEpisode,
                     onRemove = mainViewModel::removeFromQueue,
                     onClear = mainViewModel::clearQueue
                 )

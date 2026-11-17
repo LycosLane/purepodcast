@@ -53,6 +53,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.OpenInNew
@@ -151,12 +152,20 @@ fun SearchScreen(
 
     LaunchedEffect(focusSearchTrigger) {
         if (focusSearchTrigger > 0) {
-            showSearchControls = true
-            textFieldValue = textFieldValue.copy(text = query, selection = TextRange(query.length))
-            delay(50L)
-            runCatching { focusRequester.requestFocus() }
-            keyboardController?.show()
+            if (previewIndex != null) {
+                previewIndex = null
+            } else {
+                showSearchControls = true
+                textFieldValue = textFieldValue.copy(text = query, selection = TextRange(query.length))
+                delay(50L)
+                runCatching { focusRequester.requestFocus() }
+                keyboardController?.show()
+            }
         }
+    }
+
+    androidx.activity.compose.BackHandler(enabled = previewIndex != null) {
+        previewIndex = null
     }
 
     LaunchedEffect(listState) {
@@ -361,19 +370,15 @@ fun SearchScreen(
             var readerData by remember { mutableStateOf<Triple<String, String, String>?>(null) }
             var selectedPreviewEpisode by remember { mutableStateOf<Pair<ParsedPodcastFeed, ParsedEpisode>?>(null) }
 
-            Dialog(
-                onDismissRequest = { previewIndex = null },
-                properties = DialogProperties(usePlatformDefaultWidth = false)
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
             ) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .systemBarsPadding()
-                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -661,7 +666,6 @@ fun SearchScreen(
                         }
                     }
                 }
-            }
 
             selectedPreviewEpisode?.let { (epFeed, ep) ->
                 ModalBottomSheet(onDismissRequest = { selectedPreviewEpisode = null }) {

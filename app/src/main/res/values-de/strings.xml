@@ -219,4 +219,15 @@
     <string name="notif_transcode_progress">Komprimiere Episode %1$d von %2$d…</string>
     <string name="notif_transcode_done">Komprimierung fertig: %1$d Episoden umgewandelt</string>
     <string name="notif_transcode_nothing">Alle Downloads sind bereits komprimiert</string>
+
+    <!-- v1.0.4: Episoden-Übersicht & Favoriten -->
+    <string name="action_toggle_episodes_view">Podcasts / Episoden umschalten</string>
+    <string name="action_favorite">Favorit</string>
+    <string name="filter_episodes_all">Neueste</string>
+    <string name="filter_episodes_recent_14d">Letzte 14 Tage</string>
+    <string name="filter_episodes_in_progress">Angespielt</string>
+    <string name="filter_episodes_downloaded">Heruntergeladen</string>
+    <string name="filter_episodes_favorites">Favoriten</string>
+    <string name="episodes_empty_filter">Keine Episoden für diesen Filter.</string>
+    <string name="episode_remaining">Noch %1$s</string>
 </resources>

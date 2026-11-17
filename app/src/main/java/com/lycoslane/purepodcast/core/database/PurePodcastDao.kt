@@ -134,6 +134,20 @@ interface PurePodcastDao {
     @Query("UPDATE episodes SET isHidden = :isHidden WHERE id = :episodeId")
     suspend fun setHidden(episodeId: Long, isHidden: Boolean)
 
+    @Query("UPDATE episodes SET isFavorite = :isFavorite WHERE id = :episodeId")
+    suspend fun setFavorite(episodeId: Long, isFavorite: Boolean)
+
+    @Transaction
+    @Query(
+        """
+        SELECT e.* FROM episodes e
+        INNER JOIN podcasts p ON e.podcastId = p.id
+        WHERE (p.isSubscribed = 1 OR p.isLocal = 1) AND e.isHidden = 0
+        ORDER BY e.pubDateMs DESC
+        """
+    )
+    fun observeAllEpisodesWithPodcast(): Flow<List<EpisodeWithPodcast>>
+
     @Query(
         """
         UPDATE episodes

@@ -55,5 +55,6 @@ data class EpisodeEntity(
     val fileSizeBytes: Long = 0L,
     val skipAutoDownload: Boolean = false,
     val chaptersJson: String = "",
-    val isTranscoded: Boolean = false
+    val isTranscoded: Boolean = false,
+    val isFavorite: Boolean = false
 )

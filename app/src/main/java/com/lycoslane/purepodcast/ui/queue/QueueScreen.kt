@@ -24,9 +24,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -53,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lycoslane.purepodcast.R
+import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
 import com.lycoslane.purepodcast.core.database.PodcastEntity
@@ -69,6 +75,7 @@ fun QueueScreen(
     onOpenNowPlaying: () -> Unit,
     onOpenPodcast: (Long) -> Unit = {},
     onPlay: (EpisodeEntity, PodcastEntity) -> Unit,
+    onDownload: (Long) -> Unit = {},
     onRemove: (Long) -> Unit,
     onClear: () -> Unit
 ) {
@@ -215,6 +222,74 @@ fun QueueScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                        }
+                        if (!item.podcast.isLocal) {
+                            when (item.episode.downloadState) {
+                                DownloadState.DOWNLOADING -> {
+                                    Box(
+                                        modifier = Modifier.size(36.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            progress = { item.episode.downloadProgress / 100f },
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
+                                }
+                                DownloadState.QUEUED -> {
+                                    Box(
+                                        modifier = Modifier.size(36.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
+                                }
+                                DownloadState.DOWNLOADED -> {
+                                    Box(
+                                        modifier = Modifier.size(36.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (item.episode.markedForDeletionAtMs > 0L) {
+                                            Icon(
+                                                Icons.Default.RestoreFromTrash,
+                                                contentDescription = stringResource(R.string.action_restore_trash),
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        } else {
+                                            Icon(
+                                                Icons.Default.DownloadDone,
+                                                contentDescription = stringResource(R.string.cd_downloaded),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                DownloadState.FAILED -> {
+                                    IconButton(onClick = { onDownload(item.episode.id) }) {
+                                        Icon(
+                                            Icons.Default.ErrorOutline,
+                                            contentDescription = stringResource(R.string.cd_download_failed),
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                DownloadState.NONE -> {
+                                    IconButton(onClick = { onDownload(item.episode.id) }) {
+                                        Icon(
+                                            Icons.Default.Download,
+                                            contentDescription = stringResource(R.string.cd_download),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                         IconButton(onClick = { onRemove(item.episode.id) }) {
                             Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_remove))

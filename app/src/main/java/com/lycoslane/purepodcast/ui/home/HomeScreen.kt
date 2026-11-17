@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,22 +27,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
@@ -70,6 +78,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -84,22 +93,49 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lycoslane.purepodcast.R
+import com.lycoslane.purepodcast.core.database.DownloadState
+import com.lycoslane.purepodcast.core.database.EpisodeEntity
+import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
+import com.lycoslane.purepodcast.core.database.PodcastEntity
 import com.lycoslane.purepodcast.core.database.PodcastWithStats
 import com.lycoslane.purepodcast.core.local.LocalPodcastScanner
 import com.lycoslane.purepodcast.core.preferences.AppSettings
 import com.lycoslane.purepodcast.ui.common.PodcastImage
+import com.lycoslane.purepodcast.ui.common.formatDuration
+import com.lycoslane.purepodcast.ui.common.formatPubDate
+import com.lycoslane.purepodcast.ui.detail.EpisodePreviewSheet
 import kotlin.math.roundToInt
+
+private enum class HomeEpisodeFilter {
+    ALL,
+    RECENT_14D,
+    IN_PROGRESS,
+    DOWNLOADED,
+    FAVORITES
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
     podcasts: List<PodcastWithStats>,
+    allEpisodes: List<EpisodeWithPodcast> = emptyList(),
+    activeEpisodeId: Long? = null,
     isRefreshing: Boolean,
     settings: AppSettings,
     backupStatus: String?,
     onRefreshAll: () -> Unit,
     onPodcastClick: (Long) -> Unit,
     onAddClick: () -> Unit,
+    onToggleFavorite: (EpisodeEntity) -> Unit = {},
+    onPlayEpisode: (EpisodeEntity, PodcastEntity) -> Unit = { _, _ -> },
+    onPauseMainPlayer: () -> Unit = {},
+    onAddToQueueFront: (EpisodeEntity) -> Unit = {},
+    onAddToQueueEnd: (EpisodeEntity) -> Unit = {},
+    onDownloadEpisode: (EpisodeEntity) -> Unit = {},
+    onDeleteDownload: (EpisodeEntity) -> Unit = {},
+    onTogglePlayed: (EpisodeEntity) -> Unit = {},
+    onToggleHidden: (EpisodeEntity) -> Unit = {},
+    onTextScaleChange: (Float) -> Unit = {},
     onChangeRefreshInterval: (Int) -> Unit,
     onToggleWifiOnly: (Boolean) -> Unit,
     onToggleAutoDownloadDefault: (Boolean) -> Unit,
@@ -125,6 +161,9 @@ fun HomeScreen(
     val context = LocalContext.current
     var showSettings by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showLocalGuideDialog by remember { mutableStateOf(false) }
+    var showEpisodesView by rememberSaveable { mutableStateOf(false) }
+    var activeEpisodeFilter by rememberSaveable { mutableStateOf(HomeEpisodeFilter.ALL) }
+    var previewEpisodeId by remember { mutableStateOf<Long?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -176,6 +215,14 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    if (podcasts.isNotEmpty()) {
+                        IconButton(onClick = { showEpisodesView = !showEpisodesView }) {
+                            Icon(
+                                imageVector = if (showEpisodesView) Icons.Default.GridView else Icons.AutoMirrored.Filled.FormatListBulleted,
+                                contentDescription = stringResource(R.string.action_toggle_episodes_view)
+                            )
+                        }
+                    }
                     if (isRefreshing) {
                         CircularProgressIndicator(
                             modifier = Modifier
@@ -272,20 +319,108 @@ fun HomeScreen(
                             )
                         }
                     }
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 112.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentPadding = PaddingValues(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        items(visiblePodcasts, key = { it.podcast.id }) { item ->
-                            PodcastThumbnailCard(
-                                item = item,
-                                onClick = { onPodcastClick(item.podcast.id) }
+                    if (showEpisodesView) {
+                        val visiblePodcastIds = remember(visiblePodcasts) {
+                            visiblePodcasts.map { it.podcast.id }.toSet()
+                        }
+                        val filteredEpisodes = remember(allEpisodes, visiblePodcastIds, activeEpisodeFilter) {
+                            val cutoff14d = System.currentTimeMillis() - 14L * 86_400_000L
+                            allEpisodes.filter { item ->
+                                if (item.podcast.id !in visiblePodcastIds) return@filter false
+                                val ep = item.episode
+                                when (activeEpisodeFilter) {
+                                    HomeEpisodeFilter.ALL -> true
+                                    HomeEpisodeFilter.RECENT_14D -> ep.pubDateMs >= cutoff14d
+                                    HomeEpisodeFilter.IN_PROGRESS -> ep.positionMs > 0L && !ep.isPlayed
+                                    HomeEpisodeFilter.DOWNLOADED -> ep.downloadState == DownloadState.DOWNLOADED && ep.markedForDeletionAtMs == 0L
+                                    HomeEpisodeFilter.FAVORITES -> ep.isFavorite
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = activeEpisodeFilter == HomeEpisodeFilter.ALL,
+                                onClick = { activeEpisodeFilter = HomeEpisodeFilter.ALL },
+                                label = { Text(stringResource(R.string.filter_episodes_all)) }
                             )
+                            FilterChip(
+                                selected = activeEpisodeFilter == HomeEpisodeFilter.RECENT_14D,
+                                onClick = { activeEpisodeFilter = HomeEpisodeFilter.RECENT_14D },
+                                label = { Text(stringResource(R.string.filter_episodes_recent_14d)) }
+                            )
+                            FilterChip(
+                                selected = activeEpisodeFilter == HomeEpisodeFilter.IN_PROGRESS,
+                                onClick = { activeEpisodeFilter = HomeEpisodeFilter.IN_PROGRESS },
+                                label = { Text(stringResource(R.string.filter_episodes_in_progress)) }
+                            )
+                            FilterChip(
+                                selected = activeEpisodeFilter == HomeEpisodeFilter.DOWNLOADED,
+                                onClick = { activeEpisodeFilter = HomeEpisodeFilter.DOWNLOADED },
+                                label = { Text(stringResource(R.string.filter_episodes_downloaded)) }
+                            )
+                            FilterChip(
+                                selected = activeEpisodeFilter == HomeEpisodeFilter.FAVORITES,
+                                onClick = { activeEpisodeFilter = HomeEpisodeFilter.FAVORITES },
+                                label = { Text(stringResource(R.string.filter_episodes_favorites)) }
+                            )
+                        }
+
+                        if (filteredEpisodes.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.episodes_empty_filter),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                            ) {
+                                items(filteredEpisodes, key = { it.episode.id }) { item ->
+                                    HomeEpisodeRow(
+                                        item = item,
+                                        isActive = item.episode.id == activeEpisodeId,
+                                        onClick = { previewEpisodeId = item.episode.id },
+                                        onToggleFavorite = { onToggleFavorite(item.episode) },
+                                        onDownload = { onDownloadEpisode(item.episode) }
+                                    )
+                                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                                }
+                            }
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 112.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentPadding = PaddingValues(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            items(visiblePodcasts, key = { it.podcast.id }) { item ->
+                                PodcastThumbnailCard(
+                                    item = item,
+                                    onClick = { onPodcastClick(item.podcast.id) }
+                                )
+                            }
                         }
                     }
                 }
@@ -758,6 +893,49 @@ fun HomeScreen(
             }
         )
     }
+
+    val previewItem = remember(previewEpisodeId, allEpisodes) {
+        previewEpisodeId?.let { id -> allEpisodes.firstOrNull { it.episode.id == id } }
+    }
+    if (previewItem != null) {
+        val canDelete = remember(previewItem.podcast.isLocal, settings.localFolderUri) {
+            !previewItem.podcast.isLocal || LocalPodcastScanner.hasWritePermission(context, settings.localFolderUri)
+        }
+        EpisodePreviewSheet(
+            episode = previewItem.episode,
+            podcast = previewItem.podcast,
+            textScale = settings.textScale,
+            canDeleteDownload = canDelete,
+            onTextScaleChange = onTextScaleChange,
+            onPauseMainPlayer = onPauseMainPlayer,
+            onPlayInMainPlayer = {
+                onPlayEpisode(previewItem.episode, previewItem.podcast)
+                previewEpisodeId = null
+            },
+            onAddToQueueFront = {
+                onAddToQueueFront(previewItem.episode)
+                previewEpisodeId = null
+            },
+            onAddToQueueEnd = {
+                onAddToQueueEnd(previewItem.episode)
+                previewEpisodeId = null
+            },
+            onDownloadClick = {
+                if (previewItem.episode.downloadState == DownloadState.DOWNLOADED) {
+                    onDeleteDownload(previewItem.episode)
+                } else {
+                    onDownloadEpisode(previewItem.episode)
+                }
+            },
+            onToggleHidden = {
+                onToggleHidden(previewItem.episode)
+                previewEpisodeId = null
+            },
+            onTogglePlayed = { onTogglePlayed(previewItem.episode) },
+            onToggleFavorite = { onToggleFavorite(previewItem.episode) },
+            onDismiss = { previewEpisodeId = null }
+        )
+    }
 }
 
 @Composable
@@ -843,5 +1021,128 @@ private fun PodcastThumbnailCard(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+private fun HomeEpisodeRow(
+    item: EpisodeWithPodcast,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onDownload: () -> Unit
+) {
+    val ep = item.episode
+    val pod = item.podcast
+    val artworkUrl = ep.artworkUrl.ifEmpty { pod.artworkUrl }
+    val pubDateText = remember(ep.pubDateMs) { formatPubDate(ep.pubDateMs) }
+    val durationText = remember(ep.durationMs) { formatDuration(ep.durationMs) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        PodcastImage(
+            url = artworkUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .alpha(if (ep.isPlayed) 0.55f else 1f)
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = ep.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(2.dp))
+            val meta = listOfNotNull(
+                pod.title.takeIf { it.isNotBlank() },
+                pubDateText.takeIf { it.isNotBlank() },
+                durationText.takeIf { it.isNotBlank() }
+            ).joinToString(" • ")
+            Text(
+                text = meta,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (ep.positionMs > 0L && !ep.isPlayed && ep.durationMs > 0L) {
+                Text(
+                    text = stringResource(
+                        R.string.episode_remaining,
+                        formatDuration((ep.durationMs - ep.positionMs).coerceAtLeast(0L))
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        IconButton(onClick = onToggleFavorite) {
+            Icon(
+                imageVector = if (ep.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                contentDescription = stringResource(R.string.action_favorite),
+                tint = if (ep.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        when (ep.downloadState) {
+            DownloadState.DOWNLOADING -> {
+                Box(
+                    modifier = Modifier.size(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        progress = { ep.downloadProgress / 100f },
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
+            }
+            DownloadState.QUEUED -> {
+                Box(
+                    modifier = Modifier.size(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
+            }
+            DownloadState.DOWNLOADED -> {
+                Box(
+                    modifier = Modifier.size(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DownloadDone,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            else -> {
+                if (!pod.isLocal) {
+                    IconButton(onClick = onDownload) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = stringResource(R.string.cd_download),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
     }
 }

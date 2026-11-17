@@ -219,4 +219,15 @@
     <string name="notif_transcode_progress">Compressing episode %1$d of %2$d…</string>
     <string name="notif_transcode_done">Compression complete: %1$d episodes converted</string>
     <string name="notif_transcode_nothing">All downloads are already compressed</string>
+
+    <!-- v1.0.4: Unified Episodes View & Favorites -->
+    <string name="action_toggle_episodes_view">Switch Podcasts / Episodes view</string>
+    <string name="action_favorite">Favorite</string>
+    <string name="filter_episodes_all">Newest</string>
+    <string name="filter_episodes_recent_14d">Last 14 days</string>
+    <string name="filter_episodes_in_progress">In progress</string>
+    <string name="filter_episodes_downloaded">Downloaded</string>
+    <string name="filter_episodes_favorites">Favorites</string>
+    <string name="episodes_empty_filter">No episodes match this filter.</string>
+    <string name="episode_remaining">%1$s left</string>
 </resources>

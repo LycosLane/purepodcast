@@ -131,6 +131,7 @@ fun PodcastDetailScreen(
     onAddToQueueFront: (EpisodeEntity) -> Unit,
     onTogglePlayed: (EpisodeEntity) -> Unit,
     onToggleHidden: (EpisodeEntity) -> Unit,
+    onToggleFavorite: (EpisodeEntity) -> Unit = {},
     onDownloadNewerFrom: (EpisodeEntity) -> Unit,
     onCleanupOlderThan: (EpisodeEntity) -> Unit
 ) {
@@ -655,6 +656,7 @@ fun PodcastDetailScreen(
                 },
                 onToggleHidden = { onToggleHidden(previewEp) },
                 onTogglePlayed = { onTogglePlayed(previewEp) },
+                onToggleFavorite = { onToggleFavorite(previewEp) },
                 onDismiss = { selectedEpisodeForPreviewId = null }
             )
         }

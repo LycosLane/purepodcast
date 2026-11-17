@@ -41,6 +41,10 @@ class PodcastRepository(
 
     fun observeQueue(): Flow<List<EpisodeWithPodcast>> = dao.observeQueueEpisodes()
 
+    fun observeAllEpisodes(): Flow<List<EpisodeWithPodcast>> = dao.observeAllEpisodesWithPodcast()
+
+    suspend fun setFavorite(episodeId: Long, isFavorite: Boolean) = dao.setFavorite(episodeId, isFavorite)
+
     suspend fun searchPodcasts(query: String): List<PodcastSearchResult> =
         ItunesSearchClient.search(query)
 

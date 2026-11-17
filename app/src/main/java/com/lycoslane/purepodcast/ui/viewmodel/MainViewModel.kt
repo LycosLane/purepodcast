@@ -33,6 +33,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val queue: StateFlow<List<EpisodeWithPodcast>> = app.repository.observeQueue()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
 
+    val allEpisodes: StateFlow<List<EpisodeWithPodcast>> = app.repository.observeAllEpisodes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+
     val settings: StateFlow<AppSettings> = app.preferences.settings
 
     private val _isRefreshing = MutableStateFlow(false)
@@ -136,6 +139,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun unhideEpisode(episodeId: Long) {
         viewModelScope.launch {
             app.repository.toggleHidden(episodeId, false, app.playerController.state.value.currentEpisode?.id)
+        }
+    }
+
+    fun toggleFavorite(ep: com.lycoslane.purepodcast.core.database.EpisodeEntity) {
+        viewModelScope.launch { app.repository.setFavorite(ep.id, !ep.isFavorite) }
+    }
+
+    fun downloadEpisode(episodeId: Long) {
+        viewModelScope.launch { app.repository.enqueueDownload(episodeId) }
+    }
+
+    fun deleteDownload(episodeId: Long) {
+        viewModelScope.launch {
+            app.repository.deleteDownload(episodeId, app.playerController.state.value.currentEpisode?.id)
+        }
+    }
+
+    fun togglePlayed(ep: com.lycoslane.purepodcast.core.database.EpisodeEntity) {
+        viewModelScope.launch {
+            app.repository.togglePlayed(ep.id, !ep.isPlayed, app.playerController.state.value.currentEpisode?.id)
+        }
+    }
+
+    fun toggleHidden(ep: com.lycoslane.purepodcast.core.database.EpisodeEntity) {
+        viewModelScope.launch {
+            app.repository.toggleHidden(ep.id, !ep.isHidden, app.playerController.state.value.currentEpisode?.id)
+        }
+    }
+
+    fun addToQueueEnd(episodeId: Long, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            app.repository.addToQueue(episodeId)
+            onDone()
+        }
+    }
+
+    fun addToQueueFront(episodeId: Long, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            app.repository.addToQueueFront(episodeId)
+            onDone()
         }
     }
 
