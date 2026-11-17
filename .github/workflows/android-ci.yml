@@ -8,11 +8,13 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -66,8 +68,14 @@ jobs:
             app/build/outputs/apk/release/PurePodcast-*.apk
             app/build/outputs/apk/debug/PurePodcast-*.apk
 
+      - name: Remove signing material
+        if: always()
+        run: rm -f app/release-keystore.jks key.properties
+
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != ''
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         uses: softprops/action-gh-release@v2
         with:
           prerelease: true

@@ -12,7 +12,7 @@ import java.net.URL
 
 object NetworkSecurity {
 
-    private const val USER_AGENT = "PurePodcast/0.1 (Android)"
+    private const val USER_AGENT = "PurePodcast/1.0 (Android)"
     private const val MAX_REDIRECTS = 5
 
     fun isValidHttpUrl(rawUrl: String): Boolean {
@@ -23,22 +23,44 @@ object NetworkSecurity {
         if (scheme != "https" && scheme != "http") return false
         val host = uri.host?.lowercase()?.trim() ?: return false
         if (host.isEmpty()) return false
-        if (host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0") {
-            return false
+        val bare = host.removePrefix("[").removeSuffix("]")
+        if (bare == "localhost" || bare.endsWith(".localhost") || bare.endsWith(".local") ||
+            bare.endsWith(".internal")
+        ) return false
+        // Literal IPs (v4 or v6) are checked directly; names are checked on connect via DNS.
+        val isLiteral = bare.contains(':') || bare.all { it.isDigit() || it == '.' }
+        if (isLiteral) {
+            val addr = runCatching { InetAddress.getByName(bare) }.getOrNull() ?: return false
+            if (!isPublicAddress(addr)) return false
         }
-        if (host.startsWith("169.254.") || host.startsWith("10.") || host.startsWith("192.168.")) {
-            return false
+        return true
+    }
+
+    /** True only for globally routable addresses (no loopback, private, CGNAT, link-local, ULA, multicast). */
+    fun isPublicAddress(addr: InetAddress): Boolean {
+        if (addr.isAnyLocalAddress || addr.isLoopbackAddress || addr.isLinkLocalAddress ||
+            addr.isSiteLocalAddress || addr.isMulticastAddress
+        ) return false
+        val b = addr.address
+        if (b.size == 4) {
+            val b0 = b[0].toInt() and 0xFF
+            val b1 = b[1].toInt() and 0xFF
+            if (b0 == 100 && b1 in 64..127) return false // CGNAT
+            if (b0 == 0) return false
+        } else if (b.size == 16) {
+            if ((b[0].toInt() and 0xFE) == 0xFC) return false // fc00::/7 unique local
         }
-        // Reject raw IPv4 loopback/link-local/private if literal
-        val ipCheck = runCatching {
-            if (host.all { it.isDigit() || it == '.' }) {
-                val addr = InetAddress.getByName(host)
-                addr.isLoopbackAddress || addr.isLinkLocalAddress || addr.isSiteLocalAddress
-            } else {
-                false
-            }
-        }.getOrDefault(false)
-        return !ipCheck
+        return true
+    }
+
+    private fun requirePublicHost(rawUrl: String) {
+        val host = runCatching { URI(rawUrl).host }.getOrNull()?.removePrefix("[")?.removeSuffix("]")
+            ?: throw IOException("Invalid URL host")
+        val addrs = runCatching { InetAddress.getAllByName(host) }.getOrNull()
+            ?: throw IOException("Host could not be resolved")
+        if (addrs.isEmpty() || addrs.any { !isPublicAddress(it) }) {
+            throw IOException("Blocked non-public address")
+        }
     }
 
     fun openValidatedConnection(
@@ -52,6 +74,7 @@ object NetworkSecurity {
             if (!isValidHttpUrl(currentUrl)) {
                 throw IOException("Invalid or disallowed URL")
             }
+            requirePublicHost(currentUrl)
             val conn = (URL(currentUrl).openConnection() as? HttpURLConnection)
                 ?: throw IOException("Unsupported protocol")
             conn.instanceFollowRedirects = false

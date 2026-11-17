@@ -23,7 +23,8 @@ class FeedRefreshWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val app = applicationContext as PurePodcastApplication
         val dao = PurePodcastDatabase.getInstance(applicationContext).dao()
-        val podcasts = dao.getAllPodcasts()
+        runCatching { app.repository.syncLocalFolder() }
+        val podcasts = dao.getAllPodcasts().filter { !it.isLocal && it.isSubscribed }
 
         var anySucceeded = podcasts.isEmpty()
         for (podcast in podcasts) {
