@@ -115,7 +115,7 @@ class EpisodeDownloadWorker(
             )
             val app = applicationContext as PurePodcastApplication
             val settings = app.preferences.settings.value
-            if (settings.addToQueueWhenDownloaded && !latest.isHidden) {
+            if (settings.addToQueueWhenDownloaded && !latest.isHidden && dao.queueCount(episodeId) == 0) {
                 dao.enqueueToQueue(episodeId)
             }
             if (settings.transcodeAutoEnabled && settings.transcodeBitrateKbps > 0) {
@@ -126,22 +126,34 @@ class EpisodeDownloadWorker(
                 )
             }
             runCatching {
-                app.repository.cleanupPlayedDownloads(app.playerController.state.value.currentEpisode?.id)
+                // Don't trim to max-downloads here: it could immediately remove a manually
+                // downloaded older episode. Trimming happens on feed refresh / app start.
+                app.repository.cleanupPlayedDownloads(
+                    app.playerController.state.value.currentEpisode?.id,
+                    trimToMax = false
+                )
             }
             Result.success()
         } catch (e: CancellationException) {
             tempFile.delete()
             withContext(NonCancellable) {
                 val current = dao.getEpisode(episodeId)
-                if (current != null && current.downloadState == DownloadState.DOWNLOADING) {
+                if (current != null &&
+                    (current.downloadState == DownloadState.DOWNLOADING || current.downloadState == DownloadState.QUEUED)
+                ) {
                     dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
                 }
             }
             throw e
         } catch (_: Exception) {
             tempFile.delete()
-            dao.updateDownloadState(episodeId, DownloadState.FAILED, 0, null)
-            if (runAttemptCount >= 3) Result.failure() else Result.retry()
+            if (isStopped) {
+                dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+                Result.failure()
+            } else {
+                dao.updateDownloadState(episodeId, DownloadState.FAILED, 0, null)
+                if (runAttemptCount >= 3) Result.failure() else Result.retry()
+            }
         } finally {
             conn?.disconnect()
         }

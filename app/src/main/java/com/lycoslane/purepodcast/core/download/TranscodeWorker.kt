@@ -45,7 +45,6 @@ class TranscodeWorker(
         }
 
         val isBatch = singleEpisodeId <= 0L
-        val activeId = app.playerController.state.value.currentEpisode?.id
         var processed = 0
         var converted = 0
 
@@ -68,7 +67,7 @@ class TranscodeWorker(
                     progress = processed to targets.size
                 )
             }
-            if (ep.id == activeId) continue
+            if (ep.id == app.playerController.state.value.currentEpisode?.id) continue
             val path = ep.localFilePath ?: continue
 
             val sourceFile = File(path)
@@ -86,6 +85,17 @@ class TranscodeWorker(
             )
 
             if (ok && tempFile.exists() && tempFile.length() > 0L) {
+                // Re-validate: user may have started playback, trashed or removed the episode meanwhile.
+                val fresh = dao.getEpisode(ep.id)
+                val playingNow = app.playerController.state.value.currentEpisode?.id == ep.id
+                if (playingNow || fresh == null ||
+                    fresh.downloadState != DownloadState.DOWNLOADED ||
+                    fresh.markedForDeletionAtMs > 0L ||
+                    fresh.localFilePath != path
+                ) {
+                    tempFile.delete()
+                    continue
+                }
                 if (tempFile.length() < sourceFile.length()) {
                     if (targetM4a.exists()) targetM4a.delete()
                     val moved = tempFile.renameTo(targetM4a) || run {
@@ -94,10 +104,10 @@ class TranscodeWorker(
                         true
                     }
                     if (moved) {
+                        dao.markEpisodeTranscoded(ep.id, targetM4a.absolutePath, targetM4a.length())
                         if (sourceFile.absolutePath != targetM4a.absolutePath) {
                             sourceFile.delete()
                         }
-                        dao.markEpisodeTranscoded(ep.id, targetM4a.absolutePath, targetM4a.length())
                         converted++
                     }
                 } else {

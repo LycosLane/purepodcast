@@ -546,7 +546,9 @@ fun PodcastDetailScreen(
                             selectedEpisodeForMenuId = null
                         })
                     )
-                } else {
+                } else if (podcast?.isLocal != true ||
+                    (ep.downloadState == DownloadState.DOWNLOADED && canDeleteLocal)
+                ) {
                     ListItem(
                         headlineContent = {
                             Text(

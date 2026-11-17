@@ -133,6 +133,7 @@ fun HomeScreen(
     onAddToQueueEnd: (EpisodeEntity) -> Unit = {},
     onDownloadEpisode: (EpisodeEntity) -> Unit = {},
     onDeleteDownload: (EpisodeEntity) -> Unit = {},
+    onRestoreFromTrash: (EpisodeEntity) -> Unit = {},
     onTogglePlayed: (EpisodeEntity) -> Unit = {},
     onToggleHidden: (EpisodeEntity) -> Unit = {},
     onTextScaleChange: (Float) -> Unit = {},
@@ -921,10 +922,11 @@ fun HomeScreen(
                 previewEpisodeId = null
             },
             onDownloadClick = {
-                if (previewItem.episode.downloadState == DownloadState.DOWNLOADED) {
-                    onDeleteDownload(previewItem.episode)
-                } else {
-                    onDownloadEpisode(previewItem.episode)
+                val ep = previewItem.episode
+                when {
+                    ep.markedForDeletionAtMs > 0L -> onRestoreFromTrash(ep)
+                    ep.downloadState == DownloadState.DOWNLOADED -> onDeleteDownload(ep)
+                    else -> onDownloadEpisode(ep)
                 }
             },
             onToggleHidden = {

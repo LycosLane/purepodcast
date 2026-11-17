@@ -302,6 +302,9 @@ interface PurePodcastDao {
     @Query("DELETE FROM queue_items WHERE episodeId = :episodeId")
     suspend fun removeFromQueue(episodeId: Long)
 
+    @Query("SELECT COUNT(*) FROM queue_items WHERE episodeId = :episodeId")
+    suspend fun queueCount(episodeId: Long): Int
+
     @Query("DELETE FROM queue_items")
     suspend fun clearQueue()
 

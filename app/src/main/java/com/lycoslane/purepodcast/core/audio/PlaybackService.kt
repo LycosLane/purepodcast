@@ -125,11 +125,28 @@ class PlaybackService : MediaSessionService() {
                 }
             }
 
+            private fun isLocalItem(mediaItem: MediaItem?): Boolean {
+                val scheme = mediaItem?.localConfiguration?.uri?.scheme
+                return scheme == "file" || scheme == "content"
+            }
+
             override fun setMediaItem(mediaItem: MediaItem, startPositionMs: Long) {
                 lastPausedElapsedMs = 0L
-                val isLocal = mediaItem.localConfiguration?.uri?.scheme == "file"
-                player.setWakeMode(if (isLocal) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
+                player.setWakeMode(if (isLocalItem(mediaItem)) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
                 super.setMediaItem(mediaItem, startPositionMs)
+            }
+
+            override fun setMediaItems(mediaItems: MutableList<MediaItem>, startIndex: Int, startPositionMs: Long) {
+                lastPausedElapsedMs = 0L
+                val first = mediaItems.getOrNull(startIndex.coerceAtLeast(0))
+                player.setWakeMode(if (isLocalItem(first)) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
+                super.setMediaItems(mediaItems, startIndex, startPositionMs)
+            }
+
+            override fun setMediaItems(mediaItems: MutableList<MediaItem>, resetPosition: Boolean) {
+                lastPausedElapsedMs = 0L
+                player.setWakeMode(if (isLocalItem(mediaItems.firstOrNull())) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
+                super.setMediaItems(mediaItems, resetPosition)
             }
 
             override fun stop() {
@@ -412,8 +429,12 @@ class PlaybackService : MediaSessionService() {
 
             val localUri = withContext(Dispatchers.IO) {
                 ep.localFilePath?.let { path ->
-                    val f = File(path)
-                    if (f.exists()) Uri.fromFile(f) else null
+                    if (path.startsWith("content://")) {
+                        Uri.parse(path)
+                    } else {
+                        val f = File(path)
+                        if (f.exists()) Uri.fromFile(f) else null
+                    }
                 }
             }
             val mediaUri = localUri ?: run {
@@ -442,7 +463,7 @@ class PlaybackService : MediaSessionService() {
             val startPos = if (ep.positionMs > 0L) (ep.positionMs - rewindMs).coerceAtLeast(0L) else 0L
 
             lastPausedElapsedMs = 0L
-            player.setWakeMode(if (mediaUri.scheme == "file") C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
+            player.setWakeMode(if (mediaUri.scheme == "file" || mediaUri.scheme == "content") C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
             player.setMediaItem(mediaItem, startPos)
             player.playbackParameters = PlaybackParameters(speed)
             updateSilenceProcessors(pod.skipSilence, pod.silenceIntensity.coerceIn(0, 2))

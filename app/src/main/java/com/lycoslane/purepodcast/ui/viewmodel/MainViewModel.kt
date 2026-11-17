@@ -156,6 +156,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun restoreFromTrash(episodeId: Long) {
+        viewModelScope.launch { app.repository.restoreFromTrash(episodeId) }
+    }
+
     fun togglePlayed(ep: com.lycoslane.purepodcast.core.database.EpisodeEntity) {
         viewModelScope.launch {
             app.repository.togglePlayed(ep.id, !ep.isPlayed, app.playerController.state.value.currentEpisode?.id)

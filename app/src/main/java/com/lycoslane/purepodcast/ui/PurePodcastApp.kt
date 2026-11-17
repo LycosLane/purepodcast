@@ -205,6 +205,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     },
                     onDownloadEpisode = { ep -> mainViewModel.downloadEpisode(ep.id) },
                     onDeleteDownload = { ep -> mainViewModel.deleteDownload(ep.id) },
+                    onRestoreFromTrash = { ep -> mainViewModel.restoreFromTrash(ep.id) },
                     onTogglePlayed = mainViewModel::togglePlayed,
                     onToggleHidden = { ep ->
                         val nextHidden = !ep.isHidden

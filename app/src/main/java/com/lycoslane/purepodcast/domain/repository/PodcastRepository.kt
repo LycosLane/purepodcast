@@ -234,8 +234,10 @@ class PodcastRepository(
     }
 
     suspend fun enqueueDownload(episodeId: Long) {
-        dao.setSkipAutoDownload(episodeId, false)
-        dao.updateDownloadState(episodeId, DownloadState.QUEUED, 0, null)
+        cleanupMutex.withLock {
+            dao.setSkipAutoDownload(episodeId, false)
+            dao.updateDownloadState(episodeId, DownloadState.QUEUED, 0, null)
+        }
         EpisodeDownloadWorker.enqueue(
             context = context,
             episodeId = episodeId,
@@ -251,15 +253,15 @@ class PodcastRepository(
     ) = withContext(Dispatchers.IO) {
         cleanupMutex.withLock {
             if (activeEpisodeId != null && episodeId == activeEpisodeId) return@withContext
-            EpisodeDownloadWorker.cancel(context, episodeId)
             val episode = dao.getEpisode(episodeId) ?: return@withContext
+            // Local files can only be removed with write permission; otherwise leave untouched.
+            if (!canModifyLocalFile(episode)) return@withContext
+            EpisodeDownloadWorker.cancel(context, episodeId)
             val deleteNow = immediate ||
                 preferences.settings.value.trashRetentionHours == 0 ||
                 episode.downloadState != DownloadState.DOWNLOADED
             if (deleteNow) {
-                episode.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
-                dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
-                dao.setSkipAutoDownload(episodeId, true)
+                purgeEpisodeFile(episode)
             } else {
                 dao.markForDeletion(episodeId, System.currentTimeMillis())
             }
@@ -270,9 +272,7 @@ class PodcastRepository(
         cleanupMutex.withLock {
             dao.getTrashedDownloadsForPodcast(podcastId).forEach { ep ->
                 if (activeEpisodeId == null || ep.id != activeEpisodeId) {
-                    ep.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
-                    dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
-                    dao.setSkipAutoDownload(ep.id, true)
+                    purgeEpisodeFile(ep)
                 }
             }
         }
@@ -298,12 +298,13 @@ class PodcastRepository(
                 if (ep != null && ep.downloadState == DownloadState.DOWNLOADED &&
                     (activeEpisodeId == null || ep.id != activeEpisodeId)
                 ) {
-                    if (preferences.settings.value.trashRetentionHours == 0) {
-                        ep.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
-                        dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
-                        dao.setSkipAutoDownload(episodeId, true)
-                    } else {
-                        dao.markForDeletion(episodeId, System.currentTimeMillis())
+                    // Hiding never removes user-owned local files.
+                    if (!isLocalPath(ep.localFilePath)) {
+                        if (preferences.settings.value.trashRetentionHours == 0) {
+                            purgeEpisodeFile(ep)
+                        } else {
+                            dao.markForDeletion(episodeId, System.currentTimeMillis())
+                        }
                     }
                 } else if (ep != null && (ep.downloadState == DownloadState.QUEUED || ep.downloadState == DownloadState.DOWNLOADING)) {
                     dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
@@ -347,13 +348,13 @@ class PodcastRepository(
             val olderDownloaded = dao.getDownloadedOlderThan(podcastId, beforePubDateMs)
             olderDownloaded.forEach { ep ->
                 if (activeEpisodeId == null || ep.id != activeEpisodeId) {
+                    // Local user-owned files are never bulk-removed.
+                    if (isLocalPath(ep.localFilePath)) return@forEach
                     EpisodeDownloadWorker.cancel(context, ep.id)
                     if (ep.downloadState == DownloadState.DOWNLOADED && !immediate) {
                         dao.markForDeletion(ep.id, now)
                     } else {
-                        ep.localFilePath?.let { safeDeleteEpisodeFile(it) }
-                        dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
-                        dao.setSkipAutoDownload(ep.id, true)
+                        purgeEpisodeFile(ep)
                     }
                 }
             }
@@ -369,20 +370,24 @@ class PodcastRepository(
         val playedAt = if (isPlayed) System.currentTimeMillis() else 0L
         dao.setPlayed(episodeId, isPlayed, playedAt)
         if (isPlayed && preferences.settings.value.autoRemovePlayedDays == 0) {
-            deleteDownload(episodeId, activeEpisodeId, immediate = false)
+            val ep = dao.getEpisode(episodeId)
+            if (ep != null && !isLocalPath(ep.localFilePath)) {
+                deleteDownload(episodeId, activeEpisodeId, immediate = false)
+            }
         }
     }
 
-    suspend fun cleanupPlayedDownloads(activeEpisodeId: Long? = null) = withContext(Dispatchers.IO) {
+    suspend fun cleanupPlayedDownloads(
+        activeEpisodeId: Long? = null,
+        trimToMax: Boolean = true
+    ) = withContext(Dispatchers.IO) {
         cleanupMutex.withLock {
             val now = System.currentTimeMillis()
             val retentionHours = preferences.settings.value.trashRetentionHours
             val trashCutoffMs = now - retentionHours * 3_600_000L
             dao.getTrashedDownloadsOlderThan(trashCutoffMs).forEach { ep ->
                 if (activeEpisodeId == null || ep.id != activeEpisodeId) {
-                    ep.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
-                    dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
-                    dao.setSkipAutoDownload(ep.id, true)
+                    purgeEpisodeFile(ep)
                 }
             }
 
@@ -394,12 +399,11 @@ class PodcastRepository(
                     val cutoffMs = now - days * 86_400_000L
                     dao.getPlayedDownloadsOlderThan(cutoffMs)
                 }
-                targets.forEach { ep ->
+                // Never auto-remove user-owned local files.
+                targets.filter { !isLocalPath(it.localFilePath) }.forEach { ep ->
                     if (activeEpisodeId == null || ep.id != activeEpisodeId) {
                         if (retentionHours == 0) {
-                            ep.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
-                            dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
-                            dao.setSkipAutoDownload(ep.id, true)
+                            purgeEpisodeFile(ep)
                         } else {
                             dao.markForDeletion(ep.id, now)
                         }
@@ -408,16 +412,14 @@ class PodcastRepository(
             }
 
             val maxDownloads = preferences.settings.value.maxDownloadsPerPodcast
-            if (maxDownloads > 0) {
+            if (trimToMax && maxDownloads > 0) {
                 dao.getAllPodcasts().filter { !it.isLocal }.forEach { pod ->
                     val activeList = dao.getActiveDownloadsForPodcastNotInQueue(pod.id)
                     if (activeList.size > maxDownloads) {
                         activeList.drop(maxDownloads).forEach { ep ->
                             if (activeEpisodeId == null || ep.id != activeEpisodeId) {
                                 if (retentionHours == 0) {
-                                    ep.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
-                                    dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
-                                    dao.setSkipAutoDownload(ep.id, true)
+                                    purgeEpisodeFile(ep)
                                 } else {
                                     dao.markForDeletion(ep.id, now)
                                 }
@@ -429,21 +431,49 @@ class PodcastRepository(
         }
     }
 
-    private fun safeDeleteEpisodeFile(path: String) {
-        runCatching {
+    private fun isLocalPath(path: String?): Boolean = path?.startsWith("content://") == true
+
+    /**
+     * Returns true if the file is gone (or was never ours) so DB state may be reset.
+     * Returns false if a user-owned local file could not be deleted (no write permission
+     * or provider error); callers must then leave the episode untouched.
+     */
+    private fun safeDeleteEpisodeFile(path: String): Boolean {
+        return runCatching {
             if (path.startsWith("content://")) {
                 val treeUri = preferences.settings.value.localFolderUri
                 if (com.lycoslane.purepodcast.core.local.LocalPodcastScanner.hasWritePermission(context, treeUri)) {
                     com.lycoslane.purepodcast.core.local.LocalPodcastScanner.deleteLocalDocument(context, path)
+                } else {
+                    false
                 }
-                return
+            } else {
+                val episodesRoot = File(context.filesDir, "episodes").canonicalFile
+                val target = File(path).canonicalFile
+                if (target.path.startsWith(episodesRoot.path + File.separator)) {
+                    target.delete() || !target.exists()
+                } else {
+                    true
+                }
             }
-            val episodesRoot = File(context.filesDir, "episodes").canonicalFile
-            val target = File(path).canonicalFile
-            if (target.path.startsWith(episodesRoot.path + File.separator)) {
-                target.delete()
-            }
-        }
+        }.getOrDefault(false)
+    }
+
+    /** Deletes the file and resets download state. Returns false (no changes) if deletion failed. */
+    private suspend fun purgeEpisodeFile(ep: EpisodeEntity): Boolean {
+        val path = ep.localFilePath
+        if (path != null && !safeDeleteEpisodeFile(path)) return false
+        dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+        dao.setSkipAutoDownload(ep.id, true)
+        return true
+    }
+
+    private fun canModifyLocalFile(ep: EpisodeEntity): Boolean {
+        if (!isLocalPath(ep.localFilePath)) return true
+        return com.lycoslane.purepodcast.core.local.LocalPodcastScanner.hasWritePermission(
+            context,
+            preferences.settings.value.localFolderUri
+        )
     }
 
     suspend fun toggleSortAscending(podcastId: Long, ascending: Boolean) {
