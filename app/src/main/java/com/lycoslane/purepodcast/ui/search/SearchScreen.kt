@@ -79,7 +79,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lycoslane.purepodcast.R
-import com.lycoslane.purepodcast.core.network.ParsedFeed
+import com.lycoslane.purepodcast.core.network.ParsedPodcastFeed
 import com.lycoslane.purepodcast.core.network.PodcastSearchResult
 import com.lycoslane.purepodcast.ui.common.PodcastImage
 import com.lycoslane.purepodcast.ui.common.htmlToPlainText
@@ -93,7 +93,7 @@ fun SearchScreen(
     isSearching: Boolean,
     statusMessage: String?,
     onSearch: (String) -> Unit,
-    onLoadFeedPreview: suspend (String) -> ParsedFeed?,
+    onLoadFeedPreview: suspend (String) -> ParsedPodcastFeed?,
     onSubscribeFeedUrl: (String) -> Unit,
     onUnsubscribeById: (Long, String) -> Unit,
     onImportOpmlUri: (Uri) -> Unit
@@ -103,7 +103,7 @@ fun SearchScreen(
     var rssInput by remember { mutableStateOf("") }
     var pendingUnsubscribe by remember { mutableStateOf<Pair<Long, String>?>(null) }
     var previewIndex by remember { mutableStateOf<Int?>(null) }
-    val previewCache = remember { mutableStateMapOf<String, ParsedFeed>() }
+    val previewCache = remember { mutableStateMapOf<String, ParsedPodcastFeed>() }
 
     val listState = rememberLazyListState()
     var showSearchControls by remember { mutableStateOf(true) }
