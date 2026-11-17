@@ -2,6 +2,7 @@ package com.lycoslane.purepodcast.ui.detail
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -241,7 +242,7 @@ fun PodcastDetailScreen(
                 ListItem(
                     headlineContent = { Text("Abspielen") },
                     leadingContent = { Icon(Icons.Default.PlayArrow, null) },
-                    modifier = Modifier.combinedClickable(onClick = {
+                    modifier = Modifier.clickable(onClick = {
                         onPlayEpisode(ep)
                         selectedEpisodeForMenu = null
                     })
@@ -249,7 +250,7 @@ fun PodcastDetailScreen(
                 ListItem(
                     headlineContent = { Text("Show Notes lesen") },
                     leadingContent = { Icon(Icons.Default.Description, null) },
-                    modifier = Modifier.combinedClickable(onClick = {
+                    modifier = Modifier.clickable(onClick = {
                         selectedEpisodeForNotes = ep
                         selectedEpisodeForMenu = null
                     })
@@ -257,7 +258,7 @@ fun PodcastDetailScreen(
                 ListItem(
                     headlineContent = { Text("In Warteschlange") },
                     leadingContent = { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null) },
-                    modifier = Modifier.combinedClickable(onClick = {
+                    modifier = Modifier.clickable(onClick = {
                         onAddToQueue(ep)
                         selectedEpisodeForMenu = null
                     })
@@ -276,7 +277,7 @@ fun PodcastDetailScreen(
                             null
                         )
                     },
-                    modifier = Modifier.combinedClickable(onClick = {
+                    modifier = Modifier.clickable(onClick = {
                         if (ep.downloadState == DownloadState.DOWNLOADED) onDeleteDownload(ep)
                         else onDownloadEpisode(ep)
                         selectedEpisodeForMenu = null
@@ -287,7 +288,7 @@ fun PodcastDetailScreen(
                         Text(if (ep.isPlayed) "Als ungehört markieren" else "Als gehört markieren")
                     },
                     leadingContent = { Icon(Icons.Default.CheckCircle, null) },
-                    modifier = Modifier.combinedClickable(onClick = {
+                    modifier = Modifier.clickable(onClick = {
                         onTogglePlayed(ep)
                         selectedEpisodeForMenu = null
                     })
@@ -297,7 +298,7 @@ fun PodcastDetailScreen(
                     headlineContent = { Text("Ab hier alle neueren automatisch laden") },
                     supportingContent = { Text("Lädt diese + alle neueren Episoden herunter") },
                     leadingContent = { Icon(Icons.Default.AutoAwesome, null) },
-                    modifier = Modifier.combinedClickable(onClick = {
+                    modifier = Modifier.clickable(onClick = {
                         onDownloadNewerFrom(ep)
                         selectedEpisodeForMenu = null
                     })
@@ -306,7 +307,7 @@ fun PodcastDetailScreen(
                     headlineContent = { Text("Alle älteren löschen & als gehört markieren") },
                     supportingContent = { Text("Gibt Speicherplatz frei und räumt die Liste auf") },
                     leadingContent = { Icon(Icons.Default.CleaningServices, null) },
-                    modifier = Modifier.combinedClickable(onClick = {
+                    modifier = Modifier.clickable(onClick = {
                         onCleanupOlderThan(ep)
                         selectedEpisodeForMenu = null
                     })
