@@ -11,6 +11,8 @@ import com.lycoslane.purepodcast.core.download.EpisodeDownloadWorker
 import com.lycoslane.purepodcast.core.network.ItunesSearchClient
 import com.lycoslane.purepodcast.core.network.NetworkSecurity
 import com.lycoslane.purepodcast.core.network.OpmlParser
+import com.lycoslane.purepodcast.core.network.ParsedEpisode
+import com.lycoslane.purepodcast.core.network.ParsedPodcastFeed
 import com.lycoslane.purepodcast.core.network.PodcastSearchResult
 import com.lycoslane.purepodcast.core.network.RssFeedParser
 import com.lycoslane.purepodcast.core.preferences.AppPreferences
@@ -139,7 +141,7 @@ class PodcastRepository(
         if (resolvedEpisode != null) {
             when (addToQueueFront) {
                 true -> addToQueueFront(resolvedEpisode.id)
-                false -> addToQueueEnd(resolvedEpisode.id)
+                false -> addToQueue(resolvedEpisode.id)
                 null -> Unit
             }
             if (download) {
