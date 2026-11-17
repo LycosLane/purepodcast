@@ -551,10 +551,11 @@ fun PodcastDetailScreen(
     // Episode Preview Sheet (single tap)
     selectedEpisodeForPreviewId?.let { previewId ->
         val previewEp = episodes.find { it.id == previewId }
-        if (previewEp != null) {
+        val pod = podcast
+        if (previewEp != null && pod != null) {
             EpisodePreviewSheet(
                 episode = previewEp,
-                podcast = podcast,
+                podcast = pod,
                 textScale = textScale,
                 onTextScaleChange = onTextScaleChange,
                 onPauseMainPlayer = onPauseMainPlayer,
@@ -618,22 +619,29 @@ fun PodcastDetailScreen(
     }
 
     if (showCoverLightbox) {
-        CoverLightboxDialog(
-            imageUrl = podcast.artworkUrl,
-            title = podcast.title,
-            onDismiss = { showCoverLightbox = false }
-        )
+        podcast?.let { pod ->
+            CoverLightboxDialog(
+                imageUrl = pod.artworkUrl,
+                title = pod.title,
+                onDismiss = { showCoverLightbox = false }
+            )
+        }
     }
 
-    if (showDescriptionReader && plainDescription.isNotBlank()) {
-        TextReaderDialog(
-            title = podcast.title,
-            subtitle = podcast.author.takeIf { it.isNotBlank() },
-            text = plainDescription,
-            textScale = textScale,
-            onTextScaleChange = onTextScaleChange,
-            onDismiss = { showDescriptionReader = false }
-        )
+    if (showDescriptionReader) {
+        podcast?.let { pod ->
+            val readerText = remember(pod.description) { htmlToPlainText(pod.description) }
+            if (readerText.isNotBlank()) {
+                TextReaderDialog(
+                    title = pod.title,
+                    subtitle = pod.author.takeIf { it.isNotBlank() },
+                    text = readerText,
+                    textScale = textScale,
+                    onTextScaleChange = onTextScaleChange,
+                    onDismiss = { showDescriptionReader = false }
+                )
+            }
+        }
     }
 
     if (showEmptyTrashDialog) {
@@ -685,10 +693,11 @@ fun PodcastDetailScreen(
     }
 
     if (showUnsubscribeDialog) {
-        AlertDialog(
-            onDismissRequest = { showUnsubscribeDialog = false },
-            title = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_unsubscribe_title)) },
-            text = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_unsubscribe_body, podcast.title)) },
+        podcast?.let { pod ->
+            AlertDialog(
+                onDismissRequest = { showUnsubscribeDialog = false },
+                title = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_unsubscribe_title)) },
+                text = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_unsubscribe_body, pod.title)) },
             confirmButton = {
                 TextButton(onClick = {
                     showUnsubscribeDialog = false
@@ -706,6 +715,7 @@ fun PodcastDetailScreen(
                 }
             }
         )
+        }
     }
 
     deleteActiveTarget?.let { target ->
