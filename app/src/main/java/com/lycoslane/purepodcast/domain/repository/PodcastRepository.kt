@@ -100,8 +100,20 @@ class PodcastRepository(
         imported
     }
 
+    suspend fun syncLocalFolder(): Int {
+        return com.lycoslane.purepodcast.core.local.LocalPodcastScanner.syncLocalFolder(
+            context = context,
+            dao = dao,
+            treeUriString = preferences.settings.value.localFolderUri
+        )
+    }
+
     suspend fun refreshPodcast(podcastId: Long) {
         val podcast = dao.getPodcast(podcastId) ?: return
+        if (podcast.isLocal) {
+            syncLocalFolder()
+            return
+        }
         val parsed = RssFeedParser.fetchAndParse(podcast.feedUrl)
         insertParsedEpisodes(podcastId, parsed.episodes)
         dao.updatePodcastMetadata(
@@ -127,7 +139,13 @@ class PodcastRepository(
     }
 
     suspend fun refreshAllPodcasts() {
-        dao.getAllPodcasts().forEach { podcast ->
+        try {
+            syncLocalFolder()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
+        dao.getAllPodcasts().filter { !it.isLocal }.forEach { podcast ->
             try {
                 refreshPodcast(podcast.id)
             } catch (e: kotlinx.coroutines.CancellationException) {
