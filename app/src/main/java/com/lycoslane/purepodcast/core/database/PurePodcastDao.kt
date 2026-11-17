@@ -34,6 +34,7 @@ interface PurePodcastDao {
                (SELECT COUNT(*) FROM episodes e WHERE e.podcastId = p.id AND e.isPlayed = 0 AND e.isHidden = 0) AS unplayedCount,
                (SELECT COUNT(*) FROM episodes e WHERE e.podcastId = p.id AND e.downloadState = 'DOWNLOADED' AND e.markedForDeletionAtMs = 0) AS downloadedCount
         FROM podcasts p
+        WHERE p.isSubscribed = 1 OR p.isLocal = 1
         ORDER BY p.title COLLATE NOCASE ASC
         """
     )
@@ -91,6 +92,9 @@ interface PurePodcastDao {
     @Query("UPDATE podcasts SET silenceIntensity = :intensity WHERE id = :podcastId")
     suspend fun setSilenceIntensity(podcastId: Long, intensity: Int)
 
+    @Query("UPDATE podcasts SET isSubscribed = :isSubscribed WHERE id = :podcastId")
+    suspend fun setPodcastSubscribed(podcastId: Long, isSubscribed: Boolean)
+
     // --- Episodes ---
 
     @Query("SELECT * FROM episodes WHERE podcastId = :podcastId ORDER BY pubDateMs DESC")
@@ -107,6 +111,9 @@ interface PurePodcastDao {
 
     @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND guid = :guid LIMIT 1")
     suspend fun getEpisodeByGuid(podcastId: Long, guid: String): EpisodeEntity?
+
+    @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND audioUrl = :audioUrl LIMIT 1")
+    suspend fun getEpisodeByAudioUrl(podcastId: Long, audioUrl: String): EpisodeEntity?
 
     @Query("SELECT * FROM episodes WHERE id = :episodeId")
     suspend fun getEpisode(episodeId: Long): EpisodeEntity?

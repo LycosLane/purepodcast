@@ -209,4 +209,7 @@
     <string name="action_disconnect_folder">Disconnect</string>
     <string name="local_guide_title">Local Podcast Folder</string>
     <string name="local_guide_body">Select a parent folder on your device. Each subfolder becomes a local podcast:\n\n• ParentFolder/PodcastName/episode.mp3\n• Supported formats: MP3, M4A, AAC, OGG, OPUS, FLAC, WAV\n• Cover art: place cover.jpg, folder.jpg, or artwork.jpg inside the subfolder (or use embedded audio artwork)\n• Grant write access when prompted if you want to delete files directly from PurePodcast; otherwise the folder stays read-only.</string>
+    <string name="search_episodes_header">Episodes (%1$d)</string>
+    <string name="action_open_podcast">Podcast</string>
+    <string name="snackbar_download_started">Download started</string>
 </resources>

@@ -47,6 +47,12 @@ class PodcastRepository(
         require(NetworkSecurity.isValidHttpUrl(trimmed)) { "Invalid feed URL" }
         val existing = dao.getPodcastByFeedUrl(trimmed)
         if (existing != null) {
+            if (!existing.isSubscribed) {
+                dao.setPodcastSubscribed(existing.id, true)
+                if (preferences.settings.value.autoDownloadNewByDefault && existing.autoDownloadFromPubDateMs == 0L) {
+                    dao.setAutoDownloadFromDate(existing.id, System.currentTimeMillis())
+                }
+            }
             refreshPodcast(existing.id)
             return existing.id
         }
@@ -54,6 +60,12 @@ class PodcastRepository(
         val parsed = RssFeedParser.fetchAndParse(trimmed)
         val existingParsed = dao.getPodcastByFeedUrl(parsed.feedUrl)
         if (existingParsed != null) {
+            if (!existingParsed.isSubscribed) {
+                dao.setPodcastSubscribed(existingParsed.id, true)
+                if (preferences.settings.value.autoDownloadNewByDefault && existingParsed.autoDownloadFromPubDateMs == 0L) {
+                    dao.setAutoDownloadFromDate(existingParsed.id, System.currentTimeMillis())
+                }
+            }
             refreshPodcast(existingParsed.id)
             return existingParsed.id
         }
@@ -71,7 +83,8 @@ class PodcastRepository(
                 description = parsed.description,
                 artworkUrl = parsed.artworkUrl,
                 autoDownloadFromPubDateMs = autoFrom,
-                lastRefreshedMs = System.currentTimeMillis()
+                lastRefreshedMs = System.currentTimeMillis(),
+                isSubscribed = true
             )
         )
         val resolvedId = if (podcastId > 0) {
@@ -83,6 +96,57 @@ class PodcastRepository(
         }
         insertParsedEpisodes(resolvedId, parsed.episodes)
         return resolvedId
+    }
+
+    suspend fun subscribePodcast(podcastId: Long) {
+        val pod = dao.getPodcast(podcastId) ?: return
+        dao.setPodcastSubscribed(podcastId, true)
+        if (preferences.settings.value.autoDownloadNewByDefault && pod.autoDownloadFromPubDateMs == 0L) {
+            dao.setAutoDownloadFromDate(podcastId, System.currentTimeMillis())
+        }
+    }
+
+    suspend fun ensurePodcastFromPreviewAndAct(
+        feed: ParsedPodcastFeed,
+        episode: ParsedEpisode?,
+        addToQueueFront: Boolean? = null,
+        download: Boolean = false
+    ): Pair<Long, Long?> {
+        val existing = dao.getPodcastByFeedUrl(feed.feedUrl)
+        val podcastId = if (existing != null) {
+            existing.id
+        } else {
+            val inserted = dao.insertPodcast(
+                PodcastEntity(
+                    feedUrl = feed.feedUrl,
+                    title = feed.title,
+                    author = feed.author,
+                    description = feed.description,
+                    artworkUrl = feed.artworkUrl,
+                    autoDownloadFromPubDateMs = 0L,
+                    lastRefreshedMs = System.currentTimeMillis(),
+                    isSubscribed = false
+                )
+            )
+            if (inserted > 0) inserted else dao.getPodcastByFeedUrl(feed.feedUrl)?.id ?: error("Failed to insert podcast")
+        }
+        insertParsedEpisodes(podcastId, feed.episodes)
+
+        val resolvedEpisode = episode?.let { ep ->
+            val guidKey = ep.guid.ifBlank { ep.audioUrl }
+            dao.getEpisodeByGuid(podcastId, guidKey) ?: dao.getEpisodeByAudioUrl(podcastId, ep.audioUrl)
+        }
+        if (resolvedEpisode != null) {
+            when (addToQueueFront) {
+                true -> addToQueueFront(resolvedEpisode.id)
+                false -> addToQueueEnd(resolvedEpisode.id)
+                null -> Unit
+            }
+            if (download) {
+                enqueueDownload(resolvedEpisode.id)
+            }
+        }
+        return podcastId to resolvedEpisode?.id
     }
 
     suspend fun importOpml(input: InputStream): Int = withContext(Dispatchers.IO) {
@@ -145,7 +209,7 @@ class PodcastRepository(
             throw e
         } catch (_: Exception) {
         }
-        dao.getAllPodcasts().filter { !it.isLocal }.forEach { podcast ->
+        dao.getAllPodcasts().filter { !it.isLocal && it.isSubscribed }.forEach { podcast ->
             try {
                 refreshPodcast(podcast.id)
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -440,7 +504,7 @@ class PodcastRepository(
                 }
             )
             val podcastsArr = org.json.JSONArray()
-            dao.getAllPodcasts().filter { !it.isLocal }.forEach { pod ->
+            dao.getAllPodcasts().filter { !it.isLocal && it.isSubscribed }.forEach { pod ->
                 val epArr = org.json.JSONArray()
                 dao.getEpisodesWithProgress(pod.id).forEach { ep ->
                     epArr.put(

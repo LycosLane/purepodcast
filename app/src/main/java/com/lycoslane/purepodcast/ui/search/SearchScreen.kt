@@ -52,6 +52,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -72,6 +79,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -85,15 +93,19 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.lycoslane.purepodcast.R
+import com.lycoslane.purepodcast.core.network.ParsedEpisode
 import com.lycoslane.purepodcast.core.network.ParsedPodcastFeed
 import com.lycoslane.purepodcast.core.network.PodcastSearchResult
 import com.lycoslane.purepodcast.ui.common.CoverLightboxDialog
 import com.lycoslane.purepodcast.ui.common.PinchZoomText
 import com.lycoslane.purepodcast.ui.common.PodcastImage
 import com.lycoslane.purepodcast.ui.common.TextReaderDialog
+import com.lycoslane.purepodcast.ui.common.formatDuration
+import com.lycoslane.purepodcast.ui.common.formatPubDate
 import com.lycoslane.purepodcast.ui.common.htmlToPlainText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -115,6 +127,9 @@ fun SearchScreen(
     onLoadFeedPreview: suspend (String) -> ParsedPodcastFeed?,
     onSubscribeFeedUrl: (String) -> Unit,
     onUnsubscribeById: (Long, String) -> Unit,
+    onAddPreviewEpisodeToQueue: (ParsedPodcastFeed, ParsedEpisode, Boolean) -> Unit,
+    onDownloadPreviewEpisode: (ParsedPodcastFeed, ParsedEpisode) -> Unit,
+    onOpenPreviewPodcast: (ParsedPodcastFeed) -> Unit,
     onImportOpmlUri: (Uri) -> Unit
 ) {
     var showRssDialog by rememberSaveable { mutableStateOf(false) }
@@ -344,6 +359,7 @@ fun SearchScreen(
             val pagerState = rememberPagerState(initialPage = safeStart) { results.size }
             var lightboxArtwork by remember { mutableStateOf<Pair<String, String>?>(null) }
             var readerData by remember { mutableStateOf<Triple<String, String, String>?>(null) }
+            var selectedPreviewEpisode by remember { mutableStateOf<Pair<ParsedPodcastFeed, ParsedEpisode>?>(null) }
 
             Dialog(
                 onDismissRequest = { previewIndex = null },
@@ -415,124 +431,176 @@ fun SearchScreen(
                                 }
                             }
 
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            val rawDesc = feed?.description ?: ""
+                            val desc by produceState(initialValue = "", key1 = rawDesc) {
+                                value = if (rawDesc.isBlank()) "" else {
+                                    withContext(Dispatchers.Default) { htmlToPlainText(rawDesc) }
+                                }
+                            }
+                            val episodes = feed?.episodes.orEmpty()
+
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp)
                             ) {
-                                PodcastImage(
-                                    url = item.artworkUrl,
-                                    contentDescription = stringResource(R.string.cd_podcast_cover),
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(196.dp)
-                                        .clip(RoundedCornerShape(18.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        .clickable { lightboxArtwork = item.artworkUrl to item.title }
-                                )
-                                Spacer(Modifier.height(14.dp))
-                                Text(
-                                    text = item.title,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                if (item.author.isNotBlank()) {
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        text = item.author,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                if (item.primaryGenre.isNotBlank()) {
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        text = item.primaryGenre,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-
-                                Spacer(Modifier.height(16.dp))
-                                HorizontalDivider()
-                                Spacer(Modifier.height(14.dp))
-
-                                if (isLoadingPreview && feed == null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 32.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                                    }
-                                } else if (previewFailed && feed == null) {
+                                item(key = "header_${item.feedUrl}") {
                                     Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 24.dp),
+                                        modifier = Modifier.fillMaxWidth(),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Text(
-                                            text = stringResource(R.string.search_preview_failed),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            textAlign = TextAlign.Center
+                                        PodcastImage(
+                                            url = item.artworkUrl,
+                                            contentDescription = stringResource(R.string.cd_podcast_cover),
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(196.dp)
+                                                .clip(RoundedCornerShape(18.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                                .clickable { lightboxArtwork = item.artworkUrl to item.title }
                                         )
-                                        TextButton(onClick = { retryToken++ }) {
-                                            Text(stringResource(R.string.action_retry))
-                                        }
-                                    }
-                                } else {
-                                    val rawDesc = feed?.description ?: ""
-                                    val desc by produceState(initialValue = "", key1 = rawDesc) {
-                                        value = if (rawDesc.isBlank()) "" else {
-                                            withContext(Dispatchers.Default) { htmlToPlainText(rawDesc) }
-                                        }
-                                    }
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        if (desc.isNotBlank()) {
+                                        Spacer(Modifier.height(14.dp))
+                                        Text(
+                                            text = item.title,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            textAlign = TextAlign.Center,
+                                            maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (item.author.isNotBlank()) {
+                                            Spacer(Modifier.height(4.dp))
                                             Text(
-                                                text = stringResource(R.string.hint_tap_to_read),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            Spacer(Modifier.height(6.dp))
-                                            PinchZoomText(
-                                                text = desc,
-                                                textScale = textScale,
-                                                onTextScaleChange = onTextScaleChange,
+                                                text = item.author,
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                onClick = {
-                                                    readerData = Triple(item.title, item.author, desc)
-                                                },
-                                                modifier = Modifier.fillMaxWidth()
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
-                                        val latest = feed?.episodes?.take(5).orEmpty()
-                                        if (latest.isNotEmpty()) {
-                                            Spacer(Modifier.height(14.dp))
-                                            HorizontalDivider()
-                                            Spacer(Modifier.height(10.dp))
-                                            latest.forEach { ep ->
+                                        if (item.primaryGenre.isNotBlank()) {
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                text = item.primaryGenre,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+
+                                        Spacer(Modifier.height(16.dp))
+                                        HorizontalDivider()
+                                        Spacer(Modifier.height(14.dp))
+
+                                        if (isLoadingPreview && feed == null) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 32.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                                            }
+                                        } else if (previewFailed && feed == null) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 24.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
                                                 Text(
-                                                    text = "• ${ep.title}",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier = Modifier.padding(vertical = 3.dp)
+                                                    text = stringResource(R.string.search_preview_failed),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    textAlign = TextAlign.Center
+                                                )
+                                                TextButton(onClick = { retryToken++ }) {
+                                                    Text(stringResource(R.string.action_retry))
+                                                }
+                                            }
+                                        } else if (desc.isNotBlank()) {
+                                            Column(modifier = Modifier.fillMaxWidth()) {
+                                                Text(
+                                                    text = stringResource(R.string.hint_tap_to_read),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Spacer(Modifier.height(6.dp))
+                                                PinchZoomText(
+                                                    text = desc,
+                                                    textScale = textScale,
+                                                    onTextScaleChange = onTextScaleChange,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    onClick = {
+                                                        readerData = Triple(item.title, item.author, desc)
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
                                                 )
                                             }
                                         }
+                                    }
+                                }
+
+                                if (feed != null && episodes.isNotEmpty()) {
+                                    item(key = "episodes_header_${item.feedUrl}") {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            Spacer(Modifier.height(16.dp))
+                                            HorizontalDivider()
+                                            Spacer(Modifier.height(12.dp))
+                                            val headerStyle = MaterialTheme.typography.titleSmall
+                                            Text(
+                                                text = stringResource(R.string.search_episodes_header, episodes.size),
+                                                style = headerStyle.copy(
+                                                    fontSize = if (headerStyle.fontSize.isSpecified) headerStyle.fontSize * textScale else headerStyle.fontSize
+                                                ),
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(Modifier.height(6.dp))
+                                        }
+                                    }
+
+                                    itemsIndexed(
+                                        items = episodes,
+                                        key = { epIdx, ep -> "${item.feedUrl}#ep#${ep.guid.ifBlank { ep.audioUrl }}#$epIdx" }
+                                    ) { _, ep ->
+                                        val titleStyle = MaterialTheme.typography.bodyMedium
+                                        val metaStyle = MaterialTheme.typography.labelSmall
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { selectedPreviewEpisode = feed to ep }
+                                                .padding(vertical = 10.dp)
+                                        ) {
+                                            Text(
+                                                text = ep.title,
+                                                style = titleStyle.copy(
+                                                    fontSize = if (titleStyle.fontSize.isSpecified) titleStyle.fontSize * textScale else titleStyle.fontSize,
+                                                    lineHeight = if (titleStyle.lineHeight.isSpecified) titleStyle.lineHeight * textScale else titleStyle.lineHeight
+                                                ),
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            val meta = buildString {
+                                                if (ep.pubDateMs > 0L) append(formatPubDate(ep.pubDateMs))
+                                                if (ep.durationMs > 0L) {
+                                                    if (isNotEmpty()) append(" • ")
+                                                    append(formatDuration(ep.durationMs))
+                                                }
+                                            }
+                                            if (meta.isNotEmpty()) {
+                                                Spacer(Modifier.height(3.dp))
+                                                Text(
+                                                    text = meta,
+                                                    style = metaStyle.copy(
+                                                        fontSize = if (metaStyle.fontSize.isSpecified) metaStyle.fontSize * textScale else metaStyle.fontSize
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                        HorizontalDivider(modifier = Modifier.alpha(0.35f))
                                     }
                                 }
                             }
@@ -541,22 +609,38 @@ fun SearchScreen(
                         val currentItem = results.getOrNull(pagerState.currentPage)
                         if (currentItem != null) {
                             HorizontalDivider()
-                            Box(
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 14.dp)
+                                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
+                                val currentFeed = previewCache[currentItem.feedUrl]
+                                if (currentFeed != null) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            previewIndex = null
+                                            onOpenPreviewPodcast(currentFeed)
+                                        },
+                                        modifier = Modifier.height(52.dp)
+                                    ) {
+                                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(stringResource(R.string.action_open_podcast))
+                                    }
+                                }
                                 val subscribedId = subscribedFeeds[currentItem.feedUrl]
                                 if (subscribedId != null) {
                                     OutlinedButton(
                                         onClick = { pendingUnsubscribe = subscribedId to currentItem.title },
                                         modifier = Modifier
-                                            .fillMaxWidth()
+                                            .weight(1f)
                                             .height(52.dp)
                                     ) {
                                         Icon(Icons.Default.CheckCircle, null)
                                         Spacer(Modifier.width(8.dp))
-                                        Text(stringResource(R.string.action_subscribed_tap))
+                                        Text(stringResource(R.string.action_subscribed_tap), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 } else {
                                     Button(
@@ -565,14 +649,131 @@ fun SearchScreen(
                                             onSubscribeFeedUrl(currentItem.feedUrl)
                                         },
                                         modifier = Modifier
-                                            .fillMaxWidth()
+                                            .weight(1f)
                                             .height(52.dp)
                                     ) {
                                         Icon(Icons.Default.Add, null, modifier = Modifier.size(24.dp))
                                         Spacer(Modifier.width(8.dp))
-                                        Text(stringResource(R.string.action_subscribe))
+                                        Text(stringResource(R.string.action_subscribe), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            selectedPreviewEpisode?.let { (epFeed, ep) ->
+                ModalBottomSheet(onDismissRequest = { selectedPreviewEpisode = null }) {
+                    val epDesc by produceState(initialValue = "", key1 = ep.descriptionHtml) {
+                        value = if (ep.descriptionHtml.isBlank()) "" else {
+                            withContext(Dispatchers.Default) { htmlToPlainText(ep.descriptionHtml) }
+                        }
+                    }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 24.dp)
+                    ) {
+                        Text(
+                            text = ep.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        val meta = buildString {
+                            append(epFeed.title)
+                            if (ep.pubDateMs > 0L) {
+                                append(" • ")
+                                append(formatPubDate(ep.pubDateMs))
+                            }
+                            if (ep.durationMs > 0L) {
+                                append(" • ")
+                                append(formatDuration(ep.durationMs))
+                            }
+                        }
+                        Text(
+                            text = meta,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    onAddPreviewEpisodeToQueue(epFeed, ep, true)
+                                    selectedPreviewEpisode = null
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.PlaylistPlay, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.preview_queue_next), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            FilledTonalButton(
+                                onClick = {
+                                    onAddPreviewEpisodeToQueue(epFeed, ep, false)
+                                    selectedPreviewEpisode = null
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.preview_queue_end), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    onDownloadPreviewEpisode(epFeed, ep)
+                                    selectedPreviewEpisode = null
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Download, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.cd_download), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    selectedPreviewEpisode = null
+                                    previewIndex = null
+                                    onOpenPreviewPodcast(epFeed)
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.OpenInNew, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.action_open_podcast), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        if (epDesc.isNotBlank()) {
+                            Spacer(Modifier.height(12.dp))
+                            HorizontalDivider()
+                            Spacer(Modifier.height(10.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                PinchZoomText(
+                                    text = epDesc,
+                                    textScale = textScale,
+                                    onTextScaleChange = onTextScaleChange,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
                             }
                         }
                     }

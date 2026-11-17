@@ -209,4 +209,7 @@
     <string name="action_disconnect_folder">Trennen</string>
     <string name="local_guide_title">Lokaler Podcast-Ordner</string>
     <string name="local_guide_body">Wähle einen übergeordneten Ordner auf deinem Gerät. Jeder Unterordner erscheint als eigener Podcast:\n\n• Hauptordner/PodcastName/episode.mp3\n• Unterstützte Formate: MP3, M4A, AAC, OGG, OPUS, FLAC, WAV\n• Cover-Bild: Lege cover.jpg, folder.jpg oder artwork.jpg in den Unterordner (oder nutze eingebettete Cover)\n• Wenn du Dateien direkt in PurePodcast löschen möchtest, erlaube beim Auswählen den Schreibzugriff; andernfalls bleibt der Ordner schreibgeschützt.</string>
+    <string name="search_episodes_header">Episoden (%1$d)</string>
+    <string name="action_open_podcast">Podcast</string>
+    <string name="snackbar_download_started">Download gestartet</string>
 </resources>

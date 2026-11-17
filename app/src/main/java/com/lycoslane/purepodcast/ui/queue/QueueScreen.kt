@@ -67,6 +67,7 @@ fun QueueScreen(
     currentPodcast: PodcastEntity?,
     scrollToggleTrigger: Int = 0,
     onOpenNowPlaying: () -> Unit,
+    onOpenPodcast: (Long) -> Unit = {},
     onPlay: (EpisodeEntity, PodcastEntity) -> Unit,
     onRemove: (Long) -> Unit,
     onClear: () -> Unit
@@ -167,6 +168,7 @@ fun QueueScreen(
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(RoundedCornerShape(8.dp))
+                                .clickable { onOpenPodcast(item.podcast.id) }
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {

@@ -117,6 +117,7 @@ fun PodcastDetailScreen(
     onRefresh: () -> Unit,
     onToggleSort: (Boolean) -> Unit,
     onDisableAutoDownload: () -> Unit,
+    onSubscribe: () -> Unit = {},
     onUnsubscribe: () -> Unit,
     onPlayEpisode: (EpisodeEntity) -> Unit,
     onPauseMainPlayer: () -> Unit,
@@ -186,8 +187,14 @@ fun PodcastDetailScreen(
                             Icon(Icons.Default.Refresh, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_refresh_feed))
                         }
                         if (!podcast.isLocal) {
-                            IconButton(onClick = { showUnsubscribeDialog = true }) {
-                                Icon(Icons.Default.Delete, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_remove_podcast))
+                            if (podcast.isSubscribed) {
+                                IconButton(onClick = { showUnsubscribeDialog = true }) {
+                                    Icon(Icons.Default.Delete, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_remove_podcast))
+                                }
+                            } else {
+                                TextButton(onClick = onSubscribe) {
+                                    Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_subscribe))
+                                }
                             }
                         }
                     }

@@ -7,6 +7,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.lycoslane.purepodcast.PurePodcastApplication
 import com.lycoslane.purepodcast.R
+import com.lycoslane.purepodcast.core.network.ParsedEpisode
 import com.lycoslane.purepodcast.core.network.ParsedPodcastFeed
 import com.lycoslane.purepodcast.core.network.PodcastSearchResult
 import com.lycoslane.purepodcast.core.network.RssFeedParser
@@ -93,6 +94,71 @@ class SearchViewModel(
         viewModelScope.launch {
             app.repository.unsubscribePodcast(podcastId)
             _statusMessage.value = app.getString(R.string.status_unsubscribed, title)
+        }
+    }
+
+    fun addPreviewEpisodeToQueue(
+        feed: ParsedPodcastFeed,
+        episode: ParsedEpisode,
+        toFront: Boolean,
+        onDone: (podcastId: Long) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                app.repository.ensurePodcastFromPreviewAndAct(
+                    feed = feed,
+                    episode = episode,
+                    addToQueueFront = toFront,
+                    download = false
+                )
+            }.onSuccess { (podcastId, _) ->
+                _statusMessage.value = app.getString(
+                    if (toFront) R.string.snackbar_added_to_queue_front else R.string.snackbar_added_to_queue
+                )
+                onDone(podcastId)
+            }.onFailure { err ->
+                _statusMessage.value = app.getString(R.string.status_search_failed, err.javaClass.simpleName)
+            }
+        }
+    }
+
+    fun downloadPreviewEpisode(
+        feed: ParsedPodcastFeed,
+        episode: ParsedEpisode,
+        onDone: (podcastId: Long) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                app.repository.ensurePodcastFromPreviewAndAct(
+                    feed = feed,
+                    episode = episode,
+                    addToQueueFront = null,
+                    download = true
+                )
+            }.onSuccess { (podcastId, _) ->
+                _statusMessage.value = app.getString(R.string.snackbar_download_started)
+                onDone(podcastId)
+            }.onFailure { err ->
+                _statusMessage.value = app.getString(R.string.status_search_failed, err.javaClass.simpleName)
+            }
+        }
+    }
+
+    fun openPreviewPodcast(
+        feed: ParsedPodcastFeed,
+        onOpenPodcast: (Long) -> Unit
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                app.repository.ensurePodcastFromPreviewAndAct(
+                    feed = feed,
+                    episode = null,
+                    addToQueueFront = null,
+                    download = false
+                )
+            }.onSuccess { (podcastId, _) ->
+                onOpenPodcast(podcastId)
+            }
         }
     }
 

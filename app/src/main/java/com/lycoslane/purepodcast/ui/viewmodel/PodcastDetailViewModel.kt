@@ -63,6 +63,11 @@ class PodcastDetailViewModel(
         viewModelScope.launch { app.repository.disableAutoDownload(podcastId) }
     }
 
+    fun subscribe() {
+        if (podcastId < 0L) return
+        viewModelScope.launch { app.repository.subscribePodcast(podcastId) }
+    }
+
     fun unsubscribe(onDone: () -> Unit) {
         if (podcastId < 0L) return
         viewModelScope.launch {

@@ -241,6 +241,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onRefresh = detailViewModel::refresh,
                     onToggleSort = detailViewModel::toggleSort,
                     onDisableAutoDownload = detailViewModel::disableAutoDownload,
+                    onSubscribe = detailViewModel::subscribe,
                     onUnsubscribe = {
                         detailViewModel.unsubscribe {
                             navController.popBackStack()
@@ -309,6 +310,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     currentPodcast = activePair.second,
                     scrollToggleTrigger = queueScrollTrigger,
                     onOpenNowPlaying = { showFullPlayer = true },
+                    onOpenPodcast = { podcastId -> navController.navigate("detail/$podcastId") },
                     onPlay = { ep, pod -> app.playerController.playEpisode(ep, pod) },
                     onRemove = mainViewModel::removeFromQueue,
                     onClear = mainViewModel::clearQueue
@@ -322,7 +324,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                 val isSearching by searchViewModel.isSearching.collectAsStateWithLifecycle()
                 val searchStatus by searchViewModel.statusMessage.collectAsStateWithLifecycle()
                 val subscribedFeeds = remember(podcasts) {
-                    podcasts.associate { it.podcast.feedUrl to it.podcast.id }
+                    podcasts.filter { it.podcast.isSubscribed }.associate { it.podcast.feedUrl to it.podcast.id }
                 }
 
                 SearchScreen(
@@ -343,6 +345,17 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         }
                     },
                     onUnsubscribeById = searchViewModel::unsubscribeById,
+                    onAddPreviewEpisodeToQueue = { feed, ep, toFront ->
+                        searchViewModel.addPreviewEpisodeToQueue(feed, ep, toFront)
+                    },
+                    onDownloadPreviewEpisode = { feed, ep ->
+                        searchViewModel.downloadPreviewEpisode(feed, ep)
+                    },
+                    onOpenPreviewPodcast = { feed ->
+                        searchViewModel.openPreviewPodcast(feed) { podcastId ->
+                            navController.navigate("detail/$podcastId")
+                        }
+                    },
                     onImportOpmlUri = searchViewModel::importOpmlUri
                 )
             }

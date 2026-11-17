@@ -25,5 +25,6 @@ data class PodcastEntity(
     val skipSilence: Boolean = false,
     val silenceIntensity: Int = 1, // 0 = Soft, 1 = Medium, 2 = Strong
     val lastRefreshedMs: Long = 0L,
-    val isLocal: Boolean = false
+    val isLocal: Boolean = false,
+    val isSubscribed: Boolean = true
 )
