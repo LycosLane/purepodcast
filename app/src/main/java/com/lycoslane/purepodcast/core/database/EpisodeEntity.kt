@@ -53,5 +53,7 @@ data class EpisodeEntity(
     val downloadState: DownloadState = DownloadState.NONE,
     val downloadProgress: Int = 0,
     val fileSizeBytes: Long = 0L,
-    val skipAutoDownload: Boolean = false
+    val skipAutoDownload: Boolean = false,
+    val chaptersJson: String = "",
+    val isTranscoded: Boolean = false
 )

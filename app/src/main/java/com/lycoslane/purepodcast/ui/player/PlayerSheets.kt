@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
@@ -62,6 +63,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.PlayerUiState
+import com.lycoslane.purepodcast.core.network.ChaptersParser
 import com.lycoslane.purepodcast.ui.common.CoverLightboxDialog
 import com.lycoslane.purepodcast.ui.common.PinchZoomText
 import com.lycoslane.purepodcast.ui.common.PodcastImage
@@ -173,6 +175,7 @@ fun FullPlayerSheet(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     var showNotes by remember { mutableStateOf(false) }
+    var showChapters by remember { mutableStateOf(false) }
     var showSpeedRow by remember { mutableStateOf(false) }
     var showSleepRow by remember { mutableStateOf(false) }
     var showSilenceIntensityRow by remember { mutableStateOf(false) }
@@ -187,6 +190,9 @@ fun FullPlayerSheet(
     val artworkUrl = ep.artworkUrl.ifEmpty { pod.artworkUrl }
     val plainNotes = remember(ep.descriptionHtml) {
         htmlToPlainText(ep.descriptionHtml)
+    }
+    val chapters = remember(ep.id, ep.chaptersJson) {
+        ChaptersParser.decodeChaptersJson(ep.chaptersJson)
     }
 
     ModalBottomSheet(
@@ -412,11 +418,24 @@ fun FullPlayerSheet(
                     selected = showNotes,
                     onClick = {
                         showNotes = !showNotes
+                        if (showNotes) showChapters = false
                         if (showNotes) expandSheet()
                     },
                     label = { Text(stringResource(R.string.player_notes)) },
                     leadingIcon = { Icon(Icons.Default.Description, null, modifier = Modifier.size(16.dp)) }
                 )
+                if (chapters.isNotEmpty()) {
+                    FilterChip(
+                        selected = showChapters,
+                        onClick = {
+                            showChapters = !showChapters
+                            if (showChapters) showNotes = false
+                            if (showChapters) expandSheet()
+                        },
+                        label = { Text(stringResource(R.string.player_chapters_count, chapters.size)) },
+                        leadingIcon = { Icon(Icons.Default.FormatListBulleted, null, modifier = Modifier.size(16.dp)) }
+                    )
+                }
             }
 
             if (showSilenceIntensityRow) {
@@ -482,6 +501,45 @@ fun FullPlayerSheet(
                             selected = mins == 0 && state.sleepTimerRemainingMs <= 0L,
                             onClick = { onSetSleepTimer(mins); showSleepRow = false },
                             label = { Text(label) }
+                        )
+                    }
+                }
+            }
+
+            if (showChapters && chapters.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(8.dp))
+                val currentChapterIdx = chapters.indexOfLast { it.startMs <= displayPosMs }
+                chapters.forEachIndexed { idx, ch ->
+                    val isCurrent = idx == currentChapterIdx
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (isCurrent) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                                else MaterialTheme.colorScheme.surface
+                            )
+                            .clickable { onSeekTo(ch.startMs) }
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = formatDuration(ch.startMs),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.width(64.dp)
+                        )
+                        Text(
+                            text = ch.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }

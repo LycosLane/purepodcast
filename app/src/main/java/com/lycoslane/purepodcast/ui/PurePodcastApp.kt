@@ -43,6 +43,7 @@ import com.lycoslane.purepodcast.PurePodcastApplication
 import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.PlayerController
 import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
+import com.lycoslane.purepodcast.core.local.LocalPodcastScanner
 import com.lycoslane.purepodcast.ui.detail.PodcastDetailScreen
 import com.lycoslane.purepodcast.ui.home.HomeScreen
 import com.lycoslane.purepodcast.ui.player.FullPlayerSheet
@@ -197,6 +198,19 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                             (context as? Activity)?.recreate()
                         }
                     },
+                    onChangeTranscodeBitrate = mainViewModel::setTranscodeBitrateKbps,
+                    onToggleTranscodeAuto = mainViewModel::setTranscodeAutoEnabled,
+                    onToggleTranscodeChargingOnly = mainViewModel::setTranscodeChargingOnly,
+                    onTranscodeAllNow = {
+                        mainViewModel.transcodeAllNow()
+                        scope.launch {
+                            snackbarHostState.currentSnackbarData?.dismiss()
+                            snackbarHostState.showSnackbar(context.getString(R.string.snackbar_compression_queued))
+                        }
+                    },
+                    onSelectLocalFolderUri = mainViewModel::setLocalFolderUri,
+                    onToggleShowSubscribed = mainViewModel::setShowSubscribedPodcasts,
+                    onToggleShowLocal = mainViewModel::setShowLocalPodcasts,
                     onExportBackupUri = mainViewModel::exportBackup,
                     onImportBackupUri = mainViewModel::importBackup
                 )
@@ -210,6 +224,9 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                 val podcast by detailViewModel.podcast.collectAsStateWithLifecycle()
                 val episodes by detailViewModel.episodes.collectAsStateWithLifecycle()
                 val isRefreshingDetail by detailViewModel.isRefreshing.collectAsStateWithLifecycle()
+                val canDeleteLocal = remember(settings.localFolderUri) {
+                    LocalPodcastScanner.hasWritePermission(context, settings.localFolderUri)
+                }
 
                 PodcastDetailScreen(
                     podcast = podcast,
@@ -218,6 +235,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     isRefreshing = isRefreshingDetail,
                     textScale = settings.textScale,
                     trashRetentionHours = settings.trashRetentionHours,
+                    canDeleteLocal = canDeleteLocal,
                     onTextScaleChange = mainViewModel::setTextScale,
                     onBack = { navController.popBackStack() },
                     onRefresh = detailViewModel::refresh,

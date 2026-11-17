@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Description
@@ -45,6 +46,7 @@ import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestoreFromTrash
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -59,6 +61,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -108,6 +111,7 @@ fun PodcastDetailScreen(
     isRefreshing: Boolean,
     textScale: Float,
     trashRetentionHours: Int,
+    canDeleteLocal: Boolean = true,
     onTextScaleChange: (Float) -> Unit,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
@@ -135,6 +139,8 @@ fun PodcastDetailScreen(
     var showCoverLightbox by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showDescriptionReader by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var expandDescription by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showEpisodeSearch by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var episodeSearchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     var showUnsubscribeDialog by remember { mutableStateOf(false) }
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
     var deleteActiveTarget by remember { mutableStateOf<EpisodeEntity?>(null) }
@@ -167,14 +173,22 @@ fun PodcastDetailScreen(
                 },
                 actions = {
                     if (podcast != null) {
+                        IconButton(onClick = {
+                            showEpisodeSearch = !showEpisodeSearch
+                            if (!showEpisodeSearch) episodeSearchQuery = ""
+                        }) {
+                            Icon(Icons.Default.Search, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.episode_search_hint))
+                        }
                         IconButton(onClick = { onToggleSort(!podcast.sortAscending) }) {
                             Icon(Icons.Default.SwapVert, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_toggle_sort))
                         }
                         IconButton(onClick = onRefresh) {
                             Icon(Icons.Default.Refresh, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_refresh_feed))
                         }
-                        IconButton(onClick = { showUnsubscribeDialog = true }) {
-                            Icon(Icons.Default.Delete, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_remove_podcast))
+                        if (!podcast.isLocal) {
+                            IconButton(onClick = { showUnsubscribeDialog = true }) {
+                                Icon(Icons.Default.Delete, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_remove_podcast))
+                            }
                         }
                     }
                 }
@@ -192,8 +206,8 @@ fun PodcastDetailScreen(
         val hiddenCount = remember(episodes) {
             episodes.count { it.isHidden }
         }
-        val filteredEpisodes = remember(episodes, activeFilter) {
-            when (activeFilter) {
+        val filteredEpisodes = remember(episodes, activeFilter, episodeSearchQuery) {
+            val base = when (activeFilter) {
                 EpisodeFilter.ALL -> episodes.filter { !it.isHidden }
                 EpisodeFilter.UNPLAYED -> episodes.filter { !it.isHidden && !it.isPlayed }
                 EpisodeFilter.HIDDEN -> episodes.filter { it.isHidden }
@@ -201,15 +215,47 @@ fun PodcastDetailScreen(
                     it.markedForDeletionAtMs > 0L && it.downloadState == DownloadState.DOWNLOADED
                 }
             }
+            val q = episodeSearchQuery.trim()
+            if (q.isEmpty()) base else {
+                base.filter { ep ->
+                    ep.title.contains(q, ignoreCase = true) ||
+                        ep.descriptionHtml.contains(q, ignoreCase = true)
+                }
+            }
         }
 
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = onRefresh,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            if (showEpisodeSearch) {
+                OutlinedTextField(
+                    value = episodeSearchQuery,
+                    onValueChange = { episodeSearchQuery = it },
+                    placeholder = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.episode_search_hint)) },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (episodeSearchQuery.isNotEmpty()) {
+                            IconButton(onClick = { episodeSearchQuery = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cancel))
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 16.dp)
@@ -524,25 +570,27 @@ fun PodcastDetailScreen(
                         selectedEpisodeForMenuId = null
                     })
                 )
-                HorizontalDivider()
-                ListItem(
-                    headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_auto_download_newer)) },
-                    supportingContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_auto_download_newer_sub)) },
-                    leadingContent = { Icon(Icons.Default.AutoAwesome, null) },
-                    modifier = Modifier.clickable(onClick = {
-                        onDownloadNewerFrom(ep)
-                        selectedEpisodeForMenuId = null
-                    })
-                )
-                ListItem(
-                    headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cleanup_older)) },
-                    supportingContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cleanup_older_sub)) },
-                    leadingContent = { Icon(Icons.Default.CleaningServices, null) },
-                    modifier = Modifier.clickable(onClick = {
-                        onCleanupOlderThan(ep)
-                        selectedEpisodeForMenuId = null
-                    })
-                )
+                if (podcast?.isLocal != true) {
+                    HorizontalDivider()
+                    ListItem(
+                        headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_auto_download_newer)) },
+                        supportingContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_auto_download_newer_sub)) },
+                        leadingContent = { Icon(Icons.Default.AutoAwesome, null) },
+                        modifier = Modifier.clickable(onClick = {
+                            onDownloadNewerFrom(ep)
+                            selectedEpisodeForMenuId = null
+                        })
+                    )
+                    ListItem(
+                        headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cleanup_older)) },
+                        supportingContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cleanup_older_sub)) },
+                        leadingContent = { Icon(Icons.Default.CleaningServices, null) },
+                        modifier = Modifier.clickable(onClick = {
+                            onCleanupOlderThan(ep)
+                            selectedEpisodeForMenuId = null
+                        })
+                    )
+                }
             }
         }
         }
@@ -557,6 +605,7 @@ fun PodcastDetailScreen(
                 episode = previewEp,
                 podcast = pod,
                 textScale = textScale,
+                canDeleteDownload = !pod.isLocal || canDeleteLocal,
                 onTextScaleChange = onTextScaleChange,
                 onPauseMainPlayer = onPauseMainPlayer,
                 onPlayInMainPlayer = { onPlayEpisode(previewEp) },
@@ -888,64 +937,66 @@ private fun EpisodeSwipeRow(
                 }
             }
 
-            Spacer(Modifier.width(8.dp))
+            if (showDownloadAction) {
+                Spacer(Modifier.width(8.dp))
 
-            when (episode.downloadState) {
-                DownloadState.DOWNLOADING -> {
-                    Box(
-                        modifier = Modifier.size(48.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            progress = { episode.downloadProgress / 100f },
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.5.dp
-                        )
-                    }
-                }
-                DownloadState.QUEUED -> {
-                    Box(
-                        modifier = Modifier.size(48.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.dp
-                        )
-                    }
-                }
-                DownloadState.DOWNLOADED -> {
-                    IconButton(onClick = onDownloadClick) {
-                        if (episode.markedForDeletionAtMs > 0L) {
-                            Icon(
-                                Icons.Default.RestoreFromTrash,
-                                contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_restore_trash),
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        } else {
-                            Icon(
-                                Icons.Default.DownloadDone,
-                                contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_downloaded),
-                                tint = MaterialTheme.colorScheme.primary
+                when (episode.downloadState) {
+                    DownloadState.DOWNLOADING -> {
+                        Box(
+                            modifier = Modifier.size(48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                progress = { episode.downloadProgress / 100f },
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.5.dp
                             )
                         }
                     }
-                }
-                DownloadState.FAILED -> {
-                    IconButton(onClick = onDownloadClick) {
-                        Icon(
-                            Icons.Default.ErrorOutline,
-                            contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_download_failed),
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                    DownloadState.QUEUED -> {
+                        Box(
+                            modifier = Modifier.size(48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
                     }
-                }
-                else -> {
-                    IconButton(onClick = onDownloadClick) {
-                        Icon(
-                            Icons.Default.Download,
-                            contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_download)
-                        )
+                    DownloadState.DOWNLOADED -> {
+                        IconButton(onClick = onDownloadClick) {
+                            if (episode.markedForDeletionAtMs > 0L) {
+                                Icon(
+                                    Icons.Default.RestoreFromTrash,
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_restore_trash),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.DownloadDone,
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_downloaded),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                    DownloadState.FAILED -> {
+                        IconButton(onClick = onDownloadClick) {
+                            Icon(
+                                Icons.Default.ErrorOutline,
+                                contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_download_failed),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                    else -> {
+                        IconButton(onClick = onDownloadClick) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_download)
+                            )
+                        }
                     }
                 }
             }

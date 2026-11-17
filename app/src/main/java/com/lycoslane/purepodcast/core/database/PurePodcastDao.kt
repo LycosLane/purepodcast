@@ -266,6 +266,7 @@ interface PurePodcastDao {
 
     @Transaction
     suspend fun enqueueToQueue(episodeId: Long) {
+        removeFromQueue(episodeId)
         val nextOrder = getMaxQueueOrder() + 1
         insertQueueItem(QueueItemEntity(episodeId = episodeId, sortOrder = nextOrder))
     }
@@ -282,4 +283,25 @@ interface PurePodcastDao {
 
     @Query("DELETE FROM queue_items")
     suspend fun clearQueue()
+
+    @Query(
+        """
+        SELECT * FROM episodes
+        WHERE downloadState = 'DOWNLOADED' AND localFilePath IS NOT NULL
+          AND isTranscoded = 0 AND markedForDeletionAtMs = 0
+        """
+    )
+    suspend fun getUntranscodedDownloads(): List<EpisodeEntity>
+
+    @Query(
+        """
+        UPDATE episodes
+        SET localFilePath = :newPath, fileSizeBytes = :newSizeBytes, isTranscoded = 1
+        WHERE id = :episodeId
+        """
+    )
+    suspend fun markEpisodeTranscoded(episodeId: Long, newPath: String, newSizeBytes: Long)
+
+    @Query("SELECT * FROM podcasts WHERE isLocal = 1")
+    suspend fun getLocalPodcasts(): List<PodcastEntity>
 }

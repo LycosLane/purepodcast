@@ -321,7 +321,7 @@ class PodcastRepository(
 
             val maxDownloads = preferences.settings.value.maxDownloadsPerPodcast
             if (maxDownloads > 0) {
-                dao.getAllPodcasts().forEach { pod ->
+                dao.getAllPodcasts().filter { !it.isLocal }.forEach { pod ->
                     val activeList = dao.getActiveDownloadsForPodcastNotInQueue(pod.id)
                     if (activeList.size > maxDownloads) {
                         activeList.drop(maxDownloads).forEach { ep ->
@@ -343,6 +343,13 @@ class PodcastRepository(
 
     private fun safeDeleteEpisodeFile(path: String) {
         runCatching {
+            if (path.startsWith("content://")) {
+                val treeUri = preferences.settings.value.localFolderUri
+                if (com.lycoslane.purepodcast.core.local.LocalPodcastScanner.hasWritePermission(context, treeUri)) {
+                    com.lycoslane.purepodcast.core.local.LocalPodcastScanner.deleteLocalDocument(context, path)
+                }
+                return
+            }
             val episodesRoot = File(context.filesDir, "episodes").canonicalFile
             val target = File(path).canonicalFile
             if (target.path.startsWith(episodesRoot.path + File.separator)) {
@@ -409,10 +416,13 @@ class PodcastRepository(
                     put("bluetoothNextPrevSeeks", settings.bluetoothNextPrevSeeks)
                     put("textScale", settings.textScale.toDouble())
                     put("appLanguage", settings.appLanguage)
+                    put("transcodeBitrateKbps", settings.transcodeBitrateKbps)
+                    put("transcodeAutoEnabled", settings.transcodeAutoEnabled)
+                    put("transcodeChargingOnly", settings.transcodeChargingOnly)
                 }
             )
             val podcastsArr = org.json.JSONArray()
-            dao.getAllPodcasts().forEach { pod ->
+            dao.getAllPodcasts().filter { !it.isLocal }.forEach { pod ->
                 val epArr = org.json.JSONArray()
                 dao.getEpisodesWithProgress(pod.id).forEach { ep ->
                     epArr.put(

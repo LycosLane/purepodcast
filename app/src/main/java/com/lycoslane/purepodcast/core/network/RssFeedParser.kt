@@ -20,7 +20,9 @@ data class ParsedEpisode(
     val artworkUrl: String,
     val pubDateMs: Long,
     val durationMs: Long,
-    val fileSizeBytes: Long
+    val fileSizeBytes: Long,
+    val chaptersJson: String = "",
+    val chaptersUrl: String = ""
 )
 
 data class ParsedPodcastFeed(
@@ -89,6 +91,8 @@ object RssFeedParser {
         var epArtwork = ""
         var epPubDateMs = 0L
         var epDurationMs = 0L
+        var epChaptersUrl = ""
+        val epChapters = mutableListOf<EpisodeChapter>()
 
         var eventType = parser.eventType
         while (eventType != XmlPullParser.END_DOCUMENT && episodes.size < MAX_EPISODES) {
@@ -107,6 +111,8 @@ object RssFeedParser {
                             epArtwork = ""
                             epPubDateMs = 0L
                             epDurationMs = 0L
+                            epChaptersUrl = ""
+                            epChapters.clear()
                         }
                         !inItem && tag == "image" -> inImage = true
                         !inItem && tag == "itunes:image" -> {
@@ -128,6 +134,23 @@ object RssFeedParser {
                             "itunes:image" -> {
                                 val href = parser.getAttributeValue(null, "href").orEmpty().trim()
                                 if (NetworkSecurity.isValidHttpUrl(href)) epArtwork = href
+                            }
+                            "podcast:chapters" -> {
+                                val urlAttr = parser.getAttributeValue(null, "url").orEmpty().trim()
+                                val typeAttr = parser.getAttributeValue(null, "type").orEmpty().lowercase(Locale.ROOT)
+                                if (NetworkSecurity.isValidHttpUrl(urlAttr) &&
+                                    (typeAttr.isEmpty() || typeAttr.contains("json"))
+                                ) {
+                                    epChaptersUrl = urlAttr
+                                }
+                            }
+                            "psc:chapter", "chapter" -> {
+                                val startRaw = parser.getAttributeValue(null, "start").orEmpty()
+                                val chTitle = parser.getAttributeValue(null, "title").orEmpty().trim()
+                                val startMs = ChaptersParser.parsePodloveTimestampMs(startRaw)
+                                if (startMs >= 0L && chTitle.isNotEmpty()) {
+                                    epChapters += EpisodeChapter(startMs = startMs, title = chTitle)
+                                }
                             }
                             "enclosure" -> {
                                 val urlAttr = parser.getAttributeValue(null, "url").orEmpty().trim()
@@ -165,7 +188,9 @@ object RssFeedParser {
                                 artworkUrl = epArtwork.ifEmpty { channelArtwork },
                                 pubDateMs = epPubDateMs,
                                 durationMs = epDurationMs,
-                                fileSizeBytes = epAudioSize
+                                fileSizeBytes = epAudioSize,
+                                chaptersJson = ChaptersParser.encodeChaptersJson(epChapters),
+                                chaptersUrl = epChaptersUrl
                             )
                         }
                     } else if (tag == "image") {

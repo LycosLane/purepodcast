@@ -54,7 +54,9 @@ private object NativeImageCache {
         if (url.isBlank()) null else memoryCache.get(url)
 
     suspend fun load(context: Context, url: String): ImageBitmap? {
-        if (url.isBlank() || !NetworkSecurity.isValidHttpUrl(url)) return null
+        if (url.isBlank()) return null
+        val isLocal = url.startsWith("content://") || url.startsWith("/") || url.startsWith("file://")
+        if (!isLocal && !NetworkSecurity.isValidHttpUrl(url)) return null
         memoryCache.get(url)?.let { return it }
 
         val failedAt = failedUrls[url]
@@ -76,6 +78,39 @@ private object NativeImageCache {
 
     private fun loadInternal(appContext: Context, url: String): ImageBitmap? {
         memoryCache.get(url)?.let { return it }
+
+        if (url.startsWith("content://")) {
+            val bitmap = runCatching {
+                appContext.contentResolver.openInputStream(android.net.Uri.parse(url))?.use { stream ->
+                    BitmapFactory.decodeStream(stream)
+                }
+            }.getOrNull()
+            return if (bitmap != null) {
+                failedUrls.remove(url)
+                val imageBitmap = bitmap.asImageBitmap()
+                memoryCache.put(url, imageBitmap)
+                imageBitmap
+            } else {
+                failedUrls[url] = System.currentTimeMillis()
+                null
+            }
+        }
+
+        if (url.startsWith("/") || url.startsWith("file://")) {
+            val filePath = if (url.startsWith("file://")) android.net.Uri.parse(url).path ?: "" else url
+            val localFile = File(filePath)
+            val bitmap = if (localFile.exists()) decodeSampledFile(localFile) else null
+            return if (bitmap != null) {
+                failedUrls.remove(url)
+                val imageBitmap = bitmap.asImageBitmap()
+                memoryCache.put(url, imageBitmap)
+                imageBitmap
+            } else {
+                failedUrls[url] = System.currentTimeMillis()
+                null
+            }
+        }
+
         val cacheDir = File(appContext.cacheDir, "artwork").apply { mkdirs() }
         val file = File(cacheDir, sha256(url))
 

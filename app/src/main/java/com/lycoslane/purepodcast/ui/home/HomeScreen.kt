@@ -1,5 +1,6 @@
 package com.lycoslane.purepodcast.ui.home
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,10 +36,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,6 +58,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -67,6 +72,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -79,6 +85,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.database.PodcastWithStats
+import com.lycoslane.purepodcast.core.local.LocalPodcastScanner
 import com.lycoslane.purepodcast.core.preferences.AppSettings
 import com.lycoslane.purepodcast.ui.common.PodcastImage
 import kotlin.math.roundToInt
@@ -105,10 +112,19 @@ fun HomeScreen(
     onToggleAudioNormalization: (Boolean) -> Unit,
     onChangeBluetoothNextPrevSeeks: (Boolean) -> Unit,
     onChangeAppLanguage: (String) -> Unit,
+    onChangeTranscodeBitrate: (Int) -> Unit,
+    onToggleTranscodeAuto: (Boolean) -> Unit,
+    onToggleTranscodeChargingOnly: (Boolean) -> Unit,
+    onTranscodeAllNow: () -> Unit,
+    onSelectLocalFolderUri: (String) -> Unit,
+    onToggleShowSubscribed: (Boolean) -> Unit,
+    onToggleShowLocal: (Boolean) -> Unit,
     onExportBackupUri: (Uri) -> Unit,
     onImportBackupUri: (Uri) -> Unit
 ) {
+    val context = LocalContext.current
     var showSettings by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showLocalGuideDialog by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -120,6 +136,26 @@ fun HomeScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) onImportBackupUri(uri)
+    }
+
+    val localFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            val rwFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            val taken = runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, rwFlags)
+                true
+            }.getOrElse {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    true
+                }.getOrDefault(false)
+            }
+            if (taken) {
+                onSelectLocalFolderUri(uri.toString())
+            }
+        }
     }
 
     Scaffold(
@@ -162,6 +198,19 @@ fun HomeScreen(
             )
         }
     ) { innerPadding ->
+        val hasLocal = remember(podcasts, settings.localFolderUri) {
+            podcasts.any { it.podcast.isLocal } || settings.localFolderUri.isNotBlank()
+        }
+        val visiblePodcasts = remember(podcasts, settings.showSubscribedPodcasts, settings.showLocalPodcasts, hasLocal) {
+            if (!hasLocal || (settings.showSubscribedPodcasts == settings.showLocalPodcasts)) {
+                podcasts
+            } else if (settings.showSubscribedPodcasts) {
+                podcasts.filter { !it.podcast.isLocal }
+            } else {
+                podcasts.filter { it.podcast.isLocal }
+            }
+        }
+
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = onRefreshAll,
@@ -203,18 +252,41 @@ fun HomeScreen(
                     }
                 }
             } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 112.dp),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    items(podcasts, key = { it.podcast.id }) { item ->
-                        PodcastThumbnailCard(
-                            item = item,
-                            onClick = { onPodcastClick(item.podcast.id) }
-                        )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (hasLocal) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = settings.showSubscribedPodcasts,
+                                onClick = { onToggleShowSubscribed(!settings.showSubscribedPodcasts) },
+                                label = { Text(stringResource(R.string.filter_source_subscribed)) }
+                            )
+                            FilterChip(
+                                selected = settings.showLocalPodcasts,
+                                onClick = { onToggleShowLocal(!settings.showLocalPodcasts) },
+                                label = { Text(stringResource(R.string.filter_source_local)) }
+                            )
+                        }
+                    }
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 112.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentPadding = PaddingValues(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        items(visiblePodcasts, key = { it.podcast.id }) { item ->
+                            PodcastThumbnailCard(
+                                item = item,
+                                onClick = { onPodcastClick(item.podcast.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -493,6 +565,120 @@ fun HomeScreen(
                 }
 
                 Spacer(Modifier.height(14.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(14.dp))
+
+                // --- Section: Audio Compression (AAC/M4A) ---
+                Text(
+                    text = stringResource(R.string.settings_section_compression),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.settings_compression_sub),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    listOf(
+                        0 to stringResource(R.string.settings_compression_off),
+                        96 to "96 kbps",
+                        128 to "128 kbps"
+                    ).forEach { (kbps, label) ->
+                        FilterChip(
+                            selected = settings.transcodeBitrateKbps == kbps,
+                            onClick = { onChangeTranscodeBitrate(kbps) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+                if (settings.transcodeBitrateKbps > 0) {
+                    Spacer(Modifier.height(6.dp))
+                    SettingSwitchRow(
+                        title = stringResource(R.string.settings_compression_auto),
+                        subtitle = stringResource(R.string.settings_compression_auto_sub),
+                        checked = settings.transcodeAutoEnabled,
+                        onCheckedChange = onToggleTranscodeAuto
+                    )
+                    SettingSwitchRow(
+                        title = stringResource(R.string.settings_compression_charging_only),
+                        subtitle = stringResource(R.string.settings_compression_charging_only_sub),
+                        checked = settings.transcodeChargingOnly,
+                        onCheckedChange = onToggleTranscodeChargingOnly
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton(
+                        onClick = onTranscodeAllNow,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.action_compress_all_now))
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(14.dp))
+
+                // --- Section: Local Podcast Folder ---
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = stringResource(R.string.settings_section_local_folder),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    TextButton(onClick = { showLocalGuideDialog = true }) {
+                        Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.action_local_folder_guide))
+                    }
+                }
+                val hasLocalFolder = settings.localFolderUri.isNotBlank()
+                val localStatusText = if (hasLocalFolder) {
+                    val canWrite = LocalPodcastScanner.hasWritePermission(context, settings.localFolderUri)
+                    if (canWrite) stringResource(R.string.settings_local_folder_rw)
+                    else stringResource(R.string.settings_local_folder_ro)
+                } else {
+                    stringResource(R.string.settings_local_folder_none)
+                }
+                Text(
+                    text = localStatusText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { localFolderLauncher.launch(null) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.action_choose_folder))
+                    }
+                    if (hasLocalFolder) {
+                        OutlinedButton(
+                            onClick = { onSelectLocalFolderUri("") }
+                        ) {
+                            Text(stringResource(R.string.action_disconnect_folder))
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(14.dp))
                 Text(
                     text = stringResource(R.string.settings_language),
                     style = MaterialTheme.typography.bodyMedium,
@@ -558,6 +744,19 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    if (showLocalGuideDialog) {
+        AlertDialog(
+            onDismissRequest = { showLocalGuideDialog = false },
+            title = { Text(stringResource(R.string.local_guide_title)) },
+            text = { Text(stringResource(R.string.local_guide_body)) },
+            confirmButton = {
+                TextButton(onClick = { showLocalGuideDialog = false }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            }
+        )
     }
 }
 

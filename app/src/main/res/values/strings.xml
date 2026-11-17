@@ -185,4 +185,28 @@
     <string name="cd_podcast_cover">Podcast cover</string>
     <string name="action_close">Close</string>
     <string name="hint_tap_to_read">Tap to read fullscreen • Pinch to zoom</string>
+
+    <!-- v1.0.0: Chapters, Search, Compression & Local Folder -->
+    <string name="player_chapters_count">Chapters (%1$d)</string>
+    <string name="episode_search_hint">Search episodes…</string>
+    <string name="filter_source_subscribed">Subscribed</string>
+    <string name="filter_source_local">Local</string>
+    <string name="settings_section_compression">Audio Compression</string>
+    <string name="settings_compression_sub">Transcode downloaded episodes to AAC (M4A) to save storage</string>
+    <string name="settings_compression_off">Off</string>
+    <string name="settings_compression_auto">Auto-compress after download</string>
+    <string name="settings_compression_auto_sub">Transcodes newly downloaded episodes in the background</string>
+    <string name="settings_compression_charging_only">Only while charging</string>
+    <string name="settings_compression_charging_only_sub">Saves battery during transcoding</string>
+    <string name="action_compress_all_now">Compress all downloads now</string>
+    <string name="snackbar_compression_queued">Compression queued in background</string>
+    <string name="settings_section_local_folder">Local Podcast Folder</string>
+    <string name="action_local_folder_guide">How it works</string>
+    <string name="settings_local_folder_rw">Connected (read &amp; delete enabled)</string>
+    <string name="settings_local_folder_ro">Connected (read-only)</string>
+    <string name="settings_local_folder_none">No folder connected</string>
+    <string name="action_choose_folder">Choose folder</string>
+    <string name="action_disconnect_folder">Disconnect</string>
+    <string name="local_guide_title">Local Podcast Folder</string>
+    <string name="local_guide_body">Select a parent folder on your device. Each subfolder becomes a local podcast:\n\n• ParentFolder/PodcastName/episode.mp3\n• Supported formats: MP3, M4A, AAC, OGG, OPUS, FLAC, WAV\n• Cover art: place cover.jpg, folder.jpg, or artwork.jpg inside the subfolder (or use embedded audio artwork)\n• Grant write access when prompted if you want to delete files directly from PurePodcast; otherwise the folder stays read-only.</string>
 </resources>

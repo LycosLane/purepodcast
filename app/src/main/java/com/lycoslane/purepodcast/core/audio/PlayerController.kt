@@ -154,8 +154,12 @@ class PlayerController(
             }
             val localUri = withContext(Dispatchers.IO) {
                 freshEpisode.localFilePath?.let { path ->
-                    val f = File(path)
-                    if (f.exists()) Uri.fromFile(f) else null
+                    if (path.startsWith("content://")) {
+                        Uri.parse(path)
+                    } else {
+                        val f = File(path)
+                        if (f.exists()) Uri.fromFile(f) else null
+                    }
                 }
             }
             val mediaUri = localUri ?: run {

@@ -185,4 +185,28 @@
     <string name="cd_podcast_cover">Podcast-Cover</string>
     <string name="action_close">Schließen</string>
     <string name="hint_tap_to_read">Tippen für Vollbild • Zweifinger-Zoom für Textgröße</string>
+
+    <!-- v1.0.0: Kapitel, Suche, Komprimierung & Lokaler Ordner -->
+    <string name="player_chapters_count">Kapitel (%1$d)</string>
+    <string name="episode_search_hint">Episoden durchsuchen…</string>
+    <string name="filter_source_subscribed">Abonniert</string>
+    <string name="filter_source_local">Lokal</string>
+    <string name="settings_section_compression">Audio-Komprimierung</string>
+    <string name="settings_compression_sub">Wandelt heruntergeladene Episoden in AAC (M4A) um, um Speicher zu sparen</string>
+    <string name="settings_compression_off">Aus</string>
+    <string name="settings_compression_auto">Nach Download automatisch komprimieren</string>
+    <string name="settings_compression_auto_sub">Komprimiert neue Downloads im Hintergrund</string>
+    <string name="settings_compression_charging_only">Nur beim Laden</string>
+    <string name="settings_compression_charging_only_sub">Schont den Akku bei der Umwandlung</string>
+    <string name="action_compress_all_now">Alle Downloads jetzt komprimieren</string>
+    <string name="snackbar_compression_queued">Komprimierung im Hintergrund gestartet</string>
+    <string name="settings_section_local_folder">Lokaler Podcast-Ordner</string>
+    <string name="action_local_folder_guide">So funktioniert\u2019s</string>
+    <string name="settings_local_folder_rw">Verbunden (Lesen &amp; Löschen aktiv)</string>
+    <string name="settings_local_folder_ro">Verbunden (nur Lesen)</string>
+    <string name="settings_local_folder_none">Kein Ordner verbunden</string>
+    <string name="action_choose_folder">Ordner wählen</string>
+    <string name="action_disconnect_folder">Trennen</string>
+    <string name="local_guide_title">Lokaler Podcast-Ordner</string>
+    <string name="local_guide_body">Wähle einen übergeordneten Ordner auf deinem Gerät. Jeder Unterordner erscheint als eigener Podcast:\n\n• Hauptordner/PodcastName/episode.mp3\n• Unterstützte Formate: MP3, M4A, AAC, OGG, OPUS, FLAC, WAV\n• Cover-Bild: Lege cover.jpg, folder.jpg oder artwork.jpg in den Unterordner (oder nutze eingebettete Cover)\n• Wenn du Dateien direkt in PurePodcast löschen möchtest, erlaube beim Auswählen den Schreibzugriff; andernfalls bleibt der Ordner schreibgeschützt.</string>
 </resources>

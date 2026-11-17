@@ -99,6 +99,7 @@ fun EpisodePreviewSheet(
     episode: EpisodeEntity,
     podcast: PodcastEntity,
     textScale: Float,
+    canDeleteDownload: Boolean = true,
     onTextScaleChange: (Float) -> Unit,
     onPauseMainPlayer: () -> Unit,
     onPlayInMainPlayer: () -> Unit,
@@ -119,11 +120,18 @@ fun EpisodePreviewSheet(
     val artworkUrl = episode.artworkUrl.ifEmpty { podcast.artworkUrl }
     val pubDateText = remember(episode.pubDateMs) { formatPubDate(episode.pubDateMs) }
     val plainNotes = remember(episode.descriptionHtml) { htmlToPlainText(episode.descriptionHtml) }
+    val chapters = remember(episode.id, episode.chaptersJson) {
+        com.lycoslane.purepodcast.core.network.ChaptersParser.decodeChaptersJson(episode.chaptersJson)
+    }
 
     val localUri = remember(episode.id, episode.localFilePath) {
         episode.localFilePath?.let { path ->
-            val f = File(path)
-            if (f.exists()) Uri.fromFile(f) else null
+            if (path.startsWith("content://")) {
+                Uri.parse(path)
+            } else {
+                val f = File(path)
+                if (f.exists()) Uri.fromFile(f) else null
+            }
         }
     }
     val hasValidMedia = localUri != null || NetworkSecurity.isValidHttpUrl(episode.audioUrl)
@@ -403,35 +411,37 @@ fun EpisodePreviewSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                val isInProgress = episode.downloadState == DownloadState.DOWNLOADING ||
-                    episode.downloadState == DownloadState.QUEUED
-                val dlLabel = when {
-                    episode.markedForDeletionAtMs > 0L -> stringResource(R.string.action_restore_trash)
-                    episode.downloadState == DownloadState.DOWNLOADED -> stringResource(R.string.action_delete_download)
-                    episode.downloadState == DownloadState.DOWNLOADING -> "${episode.downloadProgress}%"
-                    episode.downloadState == DownloadState.QUEUED -> "…"
-                    else -> stringResource(R.string.cd_download)
-                }
-                val dlIcon = when {
-                    episode.markedForDeletionAtMs > 0L -> Icons.Default.RestoreFromTrash
-                    episode.downloadState == DownloadState.DOWNLOADED -> Icons.Default.Delete
-                    else -> Icons.Default.Download
-                }
-                FilterChip(
-                    selected = episode.downloadState == DownloadState.DOWNLOADED && episode.markedForDeletionAtMs == 0L,
-                    enabled = !isInProgress,
-                    onClick = onDownloadClick,
-                    label = { Text(dlLabel) },
-                    leadingIcon = {
-                        if (isInProgress) {
-                            Box(modifier = Modifier.size(16.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                            }
-                        } else {
-                            Icon(dlIcon, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
+                if (!podcast.isLocal || canDeleteDownload) {
+                    val isInProgress = episode.downloadState == DownloadState.DOWNLOADING ||
+                        episode.downloadState == DownloadState.QUEUED
+                    val dlLabel = when {
+                        episode.markedForDeletionAtMs > 0L -> stringResource(R.string.action_restore_trash)
+                        episode.downloadState == DownloadState.DOWNLOADED -> stringResource(R.string.action_delete_download)
+                        episode.downloadState == DownloadState.DOWNLOADING -> "${episode.downloadProgress}%"
+                        episode.downloadState == DownloadState.QUEUED -> "…"
+                        else -> stringResource(R.string.cd_download)
                     }
-                )
+                    val dlIcon = when {
+                        episode.markedForDeletionAtMs > 0L -> Icons.Default.RestoreFromTrash
+                        episode.downloadState == DownloadState.DOWNLOADED -> Icons.Default.Delete
+                        else -> Icons.Default.Download
+                    }
+                    FilterChip(
+                        selected = episode.downloadState == DownloadState.DOWNLOADED && episode.markedForDeletionAtMs == 0L,
+                        enabled = !isInProgress,
+                        onClick = onDownloadClick,
+                        label = { Text(dlLabel) },
+                        leadingIcon = {
+                            if (isInProgress) {
+                                Box(modifier = Modifier.size(16.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                }
+                            } else {
+                                Icon(dlIcon, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    )
+                }
 
                 FilterChip(
                     selected = episode.isHidden,
@@ -468,6 +478,44 @@ fun EpisodePreviewSheet(
                         )
                     }
                 )
+            }
+
+            if (chapters.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.player_chapters_count, chapters.size),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(6.dp))
+                chapters.forEach { ch ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(enabled = hasValidMedia) {
+                                seekPreviewTo(ch.startMs)
+                            }
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = formatDuration(ch.startMs),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.width(64.dp)
+                        )
+                        Text(
+                            text = ch.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(12.dp))

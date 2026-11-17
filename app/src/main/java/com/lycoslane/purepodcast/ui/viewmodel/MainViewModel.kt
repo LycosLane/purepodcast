@@ -94,6 +94,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setBluetoothNextPrevSeeks(seeks: Boolean) = app.preferences.setBluetoothNextPrevSeeks(seeks)
     fun setTextScale(scale: Float) = app.preferences.setTextScale(scale)
 
+    fun setTranscodeBitrateKbps(kbps: Int) = app.preferences.setTranscodeBitrateKbps(kbps)
+    fun setTranscodeAutoEnabled(enabled: Boolean) = app.preferences.setTranscodeAutoEnabled(enabled)
+    fun setTranscodeChargingOnly(chargingOnly: Boolean) = app.preferences.setTranscodeChargingOnly(chargingOnly)
+
+    fun transcodeAllNow() {
+        val settings = app.preferences.settings.value
+        if (settings.transcodeBitrateKbps > 0) {
+            com.lycoslane.purepodcast.core.download.TranscodeWorker.enqueueAllNow(
+                context = app,
+                chargingOnly = settings.transcodeChargingOnly
+            )
+        }
+    }
+
+    fun setLocalFolderUri(uri: String) {
+        app.preferences.setLocalFolderUri(uri)
+        viewModelScope.launch {
+            runCatching { app.repository.syncLocalFolder() }
+        }
+    }
+
+    fun setShowSubscribedPodcasts(show: Boolean) = app.preferences.setShowSubscribedPodcasts(show)
+    fun setShowLocalPodcasts(show: Boolean) = app.preferences.setShowLocalPodcasts(show)
+
     fun unhideEpisode(episodeId: Long) {
         viewModelScope.launch {
             app.repository.toggleHidden(episodeId, false, app.playerController.state.value.currentEpisode?.id)

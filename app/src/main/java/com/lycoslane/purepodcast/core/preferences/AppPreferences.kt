@@ -19,7 +19,13 @@ data class AppSettings(
     val audioNormalizationEnabled: Boolean = false,
     val bluetoothNextPrevSeeks: Boolean = true, // true = -10s/+30s, false = prev/next in queue
     val textScale: Float = 1.0f, // 0.8f..1.8f global pinch-to-zoom text scale
-    val appLanguage: String = "en" // "en" or "de"
+    val appLanguage: String = "en", // "en" or "de"
+    val transcodeBitrateKbps: Int = 0, // 0 = off, 96 = 96 kbps, 128 = 128 kbps
+    val transcodeAutoEnabled: Boolean = false,
+    val transcodeChargingOnly: Boolean = true,
+    val localFolderUri: String = "",
+    val showSubscribedPodcasts: Boolean = true,
+    val showLocalPodcasts: Boolean = true
 )
 
 class AppPreferences(context: Context) {
@@ -44,7 +50,15 @@ class AppPreferences(context: Context) {
         audioNormalizationEnabled = prefs.getBoolean(KEY_AUDIO_NORMALIZATION, false),
         bluetoothNextPrevSeeks = prefs.getBoolean(KEY_BLUETOOTH_NEXT_PREV_SEEKS, true),
         textScale = prefs.getFloat(KEY_TEXT_SCALE, 1.0f).coerceIn(0.8f, 1.8f),
-        appLanguage = prefs.getString(KEY_APP_LANGUAGE, "en") ?: "en"
+        appLanguage = prefs.getString(KEY_APP_LANGUAGE, "en") ?: "en",
+        transcodeBitrateKbps = prefs.getInt(KEY_TRANSCODE_BITRATE_KBPS, 0).let {
+            if (it in listOf(0, 96, 128)) it else 0
+        },
+        transcodeAutoEnabled = prefs.getBoolean(KEY_TRANSCODE_AUTO, false),
+        transcodeChargingOnly = prefs.getBoolean(KEY_TRANSCODE_CHARGING_ONLY, true),
+        localFolderUri = prefs.getString(KEY_LOCAL_FOLDER_URI, "") ?: "",
+        showSubscribedPodcasts = prefs.getBoolean(KEY_SHOW_SUBSCRIBED, true),
+        showLocalPodcasts = prefs.getBoolean(KEY_SHOW_LOCAL, true)
     )
 
     fun setRefreshIntervalHours(hours: Int) {
@@ -116,6 +130,37 @@ class AppPreferences(context: Context) {
         _settings.update { it.copy(appLanguage = normalized) }
     }
 
+    fun setTranscodeBitrateKbps(kbps: Int) {
+        val normalized = if (kbps in listOf(0, 96, 128)) kbps else 0
+        prefs.edit().putInt(KEY_TRANSCODE_BITRATE_KBPS, normalized).apply()
+        _settings.update { it.copy(transcodeBitrateKbps = normalized) }
+    }
+
+    fun setTranscodeAutoEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_TRANSCODE_AUTO, enabled).apply()
+        _settings.update { it.copy(transcodeAutoEnabled = enabled) }
+    }
+
+    fun setTranscodeChargingOnly(chargingOnly: Boolean) {
+        prefs.edit().putBoolean(KEY_TRANSCODE_CHARGING_ONLY, chargingOnly).apply()
+        _settings.update { it.copy(transcodeChargingOnly = chargingOnly) }
+    }
+
+    fun setLocalFolderUri(uri: String) {
+        prefs.edit().putString(KEY_LOCAL_FOLDER_URI, uri).apply()
+        _settings.update { it.copy(localFolderUri = uri) }
+    }
+
+    fun setShowSubscribedPodcasts(show: Boolean) {
+        prefs.edit().putBoolean(KEY_SHOW_SUBSCRIBED, show).apply()
+        _settings.update { it.copy(showSubscribedPodcasts = show) }
+    }
+
+    fun setShowLocalPodcasts(show: Boolean) {
+        prefs.edit().putBoolean(KEY_SHOW_LOCAL, show).apply()
+        _settings.update { it.copy(showLocalPodcasts = show) }
+    }
+
     companion object {
         const val PREFS_NAME = "purepodcast_prefs"
         const val KEY_APP_LANGUAGE = "app_language"
@@ -131,5 +176,11 @@ class AppPreferences(context: Context) {
         private const val KEY_AUDIO_NORMALIZATION = "audio_normalization_enabled"
         private const val KEY_BLUETOOTH_NEXT_PREV_SEEKS = "bluetooth_next_prev_seeks"
         private const val KEY_TEXT_SCALE = "text_scale"
+        private const val KEY_TRANSCODE_BITRATE_KBPS = "transcode_bitrate_kbps"
+        private const val KEY_TRANSCODE_AUTO = "transcode_auto_enabled"
+        private const val KEY_TRANSCODE_CHARGING_ONLY = "transcode_charging_only"
+        private const val KEY_LOCAL_FOLDER_URI = "local_folder_uri"
+        private const val KEY_SHOW_SUBSCRIBED = "show_subscribed_podcasts"
+        private const val KEY_SHOW_LOCAL = "show_local_podcasts"
     }
 }

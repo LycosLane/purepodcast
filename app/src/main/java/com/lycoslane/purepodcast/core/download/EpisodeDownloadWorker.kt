@@ -114,8 +114,16 @@ class EpisodeDownloadWorker(
                 localPath = targetFile.absolutePath
             )
             val app = applicationContext as PurePodcastApplication
-            if (app.preferences.settings.value.addToQueueWhenDownloaded && !latest.isHidden) {
+            val settings = app.preferences.settings.value
+            if (settings.addToQueueWhenDownloaded && !latest.isHidden) {
                 dao.enqueueToQueue(episodeId)
+            }
+            if (settings.transcodeAutoEnabled && settings.transcodeBitrateKbps > 0) {
+                TranscodeWorker.enqueueSingle(
+                    context = applicationContext,
+                    episodeId = episodeId,
+                    chargingOnly = settings.transcodeChargingOnly
+                )
             }
             runCatching {
                 app.repository.cleanupPlayedDownloads(app.playerController.state.value.currentEpisode?.id)
