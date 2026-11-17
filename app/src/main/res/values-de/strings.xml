@@ -99,4 +99,14 @@
     <string name="player_sleep">Sleep</string>
     <string name="player_notes">Notes</string>
     <string name="sleep_off">Aus</string>
+
+    <!-- Auto-remove & Language -->
+    <string name="settings_auto_remove_played">Gehörte Downloads entfernen</string>
+    <string name="settings_auto_remove_played_sub">Heruntergeladene Audiodatei nach dem Anhören löschen.</string>
+    <string name="auto_remove_never">Behalten</string>
+    <string name="auto_remove_immediately">Sofort</string>
+    <string name="auto_remove_days">%dT</string>
+    <string name="settings_language">Sprache</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_de">Deutsch</string>
 </resources>

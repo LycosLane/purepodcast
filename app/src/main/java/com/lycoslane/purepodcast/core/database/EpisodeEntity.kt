@@ -40,6 +40,7 @@ data class EpisodeEntity(
     val durationMs: Long = 0L,
     val positionMs: Long = 0L,
     val isPlayed: Boolean = false,
+    val playedAtMs: Long = 0L,
     val localFilePath: String? = null,
     val downloadState: DownloadState = DownloadState.NONE,
     val downloadProgress: Int = 0,

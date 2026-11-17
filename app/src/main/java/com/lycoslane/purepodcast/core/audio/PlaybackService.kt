@@ -60,9 +60,22 @@ class PlaybackService : MediaSessionService() {
                     val episodeId = player.currentMediaItem?.mediaId?.toLongOrNull() ?: return
                     serviceScope.launch(Dispatchers.IO) {
                         val dao = PurePodcastDatabase.getInstance(applicationContext).dao()
-                        dao.setPlayed(episodeId, true)
+                        val now = System.currentTimeMillis()
+                        dao.setPlayed(episodeId, true, now)
                         dao.updatePosition(episodeId, 0L)
                         dao.removeFromQueue(episodeId)
+                        val autoRemoveDays = com.lycoslane.purepodcast.core.preferences.AppPreferences(applicationContext)
+                            .settings.value.autoRemovePlayedDays
+                        if (autoRemoveDays == 0) {
+                            val ep = dao.getEpisode(episodeId)
+                            ep?.localFilePath?.let { path -> java.io.File(path).delete() }
+                            dao.updateDownloadState(
+                                episodeId,
+                                com.lycoslane.purepodcast.core.database.DownloadState.NONE,
+                                0,
+                                null
+                            )
+                        }
                     }
                 }
             }

@@ -97,8 +97,19 @@ interface PurePodcastDao {
     @Query("UPDATE episodes SET positionMs = :positionMs WHERE id = :episodeId")
     suspend fun updatePosition(episodeId: Long, positionMs: Long)
 
-    @Query("UPDATE episodes SET isPlayed = :isPlayed WHERE id = :episodeId")
-    suspend fun setPlayed(episodeId: Long, isPlayed: Boolean)
+    @Query("UPDATE episodes SET isPlayed = :isPlayed, playedAtMs = :playedAtMs WHERE id = :episodeId")
+    suspend fun setPlayed(episodeId: Long, isPlayed: Boolean, playedAtMs: Long)
+
+    @Query("SELECT * FROM episodes WHERE isPlayed = 1 AND localFilePath IS NOT NULL")
+    suspend fun getAllPlayedDownloads(): List<EpisodeEntity>
+
+    @Query(
+        """
+        SELECT * FROM episodes
+        WHERE isPlayed = 1 AND localFilePath IS NOT NULL AND playedAtMs > 0 AND playedAtMs <= :cutoffMs
+        """
+    )
+    suspend fun getPlayedDownloadsOlderThan(cutoffMs: Long): List<EpisodeEntity>
 
     @Query(
         """

@@ -62,6 +62,22 @@ class FeedRefreshWorker(
                 // Keep refreshing remaining feeds even if one fails
             }
         }
+
+        // Clean up played downloads according to user retention setting
+        val removeDays = settings.autoRemovePlayedDays
+        if (removeDays >= 0) {
+            val targets = if (removeDays == 0) {
+                dao.getAllPlayedDownloads()
+            } else {
+                val cutoffMs = System.currentTimeMillis() - removeDays * 86_400_000L
+                dao.getPlayedDownloadsOlderThan(cutoffMs)
+            }
+            targets.forEach { ep ->
+                ep.localFilePath?.let { path -> java.io.File(path).delete() }
+                dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+            }
+        }
+
         return Result.success()
     }
 

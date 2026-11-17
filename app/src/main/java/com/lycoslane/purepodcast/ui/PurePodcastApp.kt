@@ -147,8 +147,18 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onToggleAddToQueueWhenDownloaded = { enabled ->
                         app.preferences.setAddToQueueWhenDownloaded(enabled)
                     },
+                    onChangeAutoRemovePlayedDays = { days ->
+                        app.preferences.setAutoRemovePlayedDays(days)
+                        scope.launch { app.repository.cleanupPlayedDownloads() }
+                    },
                     onChangeSmartRewind = { secs ->
                         app.preferences.setSmartRewindSeconds(secs)
+                    },
+                    onChangeAppLanguage = { lang ->
+                        if (settings.appLanguage != lang) {
+                            app.preferences.setAppLanguage(lang)
+                            (context as? android.app.Activity)?.recreate()
+                        }
                     },
                     onExportBackupUri = { uri ->
                         scope.launch {

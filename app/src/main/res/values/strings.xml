@@ -99,4 +99,14 @@
     <string name="player_sleep">Sleep</string>
     <string name="player_notes">Notes</string>
     <string name="sleep_off">Off</string>
+
+    <!-- Auto-remove & Language -->
+    <string name="settings_auto_remove_played">Auto-remove listened downloads</string>
+    <string name="settings_auto_remove_played_sub">Delete downloaded audio after finishing an episode.</string>
+    <string name="auto_remove_never">Keep</string>
+    <string name="auto_remove_immediately">Immediately</string>
+    <string name="auto_remove_days">%dd</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_de">Deutsch</string>
 </resources>

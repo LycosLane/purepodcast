@@ -198,7 +198,11 @@ class PodcastRepository(
                     put("refreshIntervalHours", settings.refreshIntervalHours)
                     put("wifiOnlyDownloads", settings.wifiOnlyDownloads)
                     put("autoDownloadNewByDefault", settings.autoDownloadNewByDefault)
+                    put("downloadWhenQueued", settings.downloadWhenQueued)
+                    put("addToQueueWhenDownloaded", settings.addToQueueWhenDownloaded)
+                    put("autoRemovePlayedDays", settings.autoRemovePlayedDays)
                     put("smartRewindSeconds", settings.smartRewindSeconds)
+                    put("appLanguage", settings.appLanguage)
                 }
             )
             val podcastsArr = org.json.JSONArray()
@@ -235,7 +239,11 @@ class PodcastRepository(
             if (s.has("refreshIntervalHours")) preferences.setRefreshIntervalHours(s.getInt("refreshIntervalHours"))
             if (s.has("wifiOnlyDownloads")) preferences.setWifiOnlyDownloads(s.getBoolean("wifiOnlyDownloads"))
             if (s.has("autoDownloadNewByDefault")) preferences.setAutoDownloadNewByDefault(s.getBoolean("autoDownloadNewByDefault"))
+            if (s.has("downloadWhenQueued")) preferences.setDownloadWhenQueued(s.getBoolean("downloadWhenQueued"))
+            if (s.has("addToQueueWhenDownloaded")) preferences.setAddToQueueWhenDownloaded(s.getBoolean("addToQueueWhenDownloaded"))
+            if (s.has("autoRemovePlayedDays")) preferences.setAutoRemovePlayedDays(s.getInt("autoRemovePlayedDays"))
             if (s.has("smartRewindSeconds")) preferences.setSmartRewindSeconds(s.getInt("smartRewindSeconds"))
+            if (s.has("appLanguage")) preferences.setAppLanguage(s.getString("appLanguage"))
         }
 
         val podcastsArr = root.optJSONArray("podcasts") ?: return@withContext 0

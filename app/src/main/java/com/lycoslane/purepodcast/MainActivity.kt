@@ -1,6 +1,7 @@
 package com.lycoslane.purepodcast
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -9,10 +10,15 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.lycoslane.purepodcast.core.preferences.LocaleHelper
 import com.lycoslane.purepodcast.ui.PurePodcastApp
 import com.lycoslane.purepodcast.ui.theme.PurePodcastTheme
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.wrapContext(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

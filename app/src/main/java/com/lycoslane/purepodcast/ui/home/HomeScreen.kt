@@ -83,7 +83,9 @@ fun HomeScreen(
     onToggleAutoDownloadDefault: (Boolean) -> Unit,
     onToggleDownloadWhenQueued: (Boolean) -> Unit,
     onToggleAddToQueueWhenDownloaded: (Boolean) -> Unit,
+    onChangeAutoRemovePlayedDays: (Int) -> Unit,
     onChangeSmartRewind: (Int) -> Unit,
+    onChangeAppLanguage: (String) -> Unit,
     onExportBackupUri: (Uri) -> Unit,
     onImportBackupUri: (Uri) -> Unit
 ) {
@@ -243,6 +245,35 @@ fun HomeScreen(
                     checked = settings.downloadWhenQueued,
                     onCheckedChange = onToggleDownloadWhenQueued
                 )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = stringResource(R.string.settings_auto_remove_played),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = stringResource(R.string.settings_auto_remove_played_sub),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(6.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(-1, 0, 1, 3, 7).forEach { days ->
+                        val label = when (days) {
+                            -1 -> stringResource(R.string.auto_remove_never)
+                            0 -> stringResource(R.string.auto_remove_immediately)
+                            else -> stringResource(R.string.auto_remove_days, days)
+                        }
+                        FilterChip(
+                            selected = settings.autoRemovePlayedDays == days,
+                            onClick = { onChangeAutoRemovePlayedDays(days) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
 
                 Spacer(Modifier.height(14.dp))
                 HorizontalDivider()
@@ -325,6 +356,28 @@ fun HomeScreen(
                             label = { Text(label) }
                         )
                     }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    text = stringResource(R.string.settings_language),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = settings.appLanguage == "en",
+                        onClick = { onChangeAppLanguage("en") },
+                        label = { Text(stringResource(R.string.settings_language_en)) }
+                    )
+                    FilterChip(
+                        selected = settings.appLanguage == "de",
+                        onClick = { onChangeAppLanguage("de") },
+                        label = { Text(stringResource(R.string.settings_language_de)) }
+                    )
                 }
 
                 Spacer(Modifier.height(14.dp))

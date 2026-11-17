@@ -7,6 +7,9 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+
 class Converters {
     @TypeConverter
     fun fromDownloadState(state: DownloadState): String = state.name
@@ -22,7 +25,7 @@ class Converters {
         EpisodeEntity::class,
         QueueItemEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -33,13 +36,22 @@ abstract class PurePodcastDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: PurePodcastDatabase? = null
 
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE episodes ADD COLUMN playedAtMs INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): PurePodcastDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     PurePodcastDatabase::class.java,
                     "purepodcast.db"
-                ).build().also { INSTANCE = it }
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build()
+                    .also { INSTANCE = it }
             }
         }
     }
