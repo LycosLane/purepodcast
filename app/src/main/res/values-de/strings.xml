@@ -212,4 +212,11 @@
     <string name="search_episodes_header">Episoden (%1$d)</string>
     <string name="action_open_podcast">Podcast</string>
     <string name="snackbar_download_started">Download gestartet</string>
+    <string name="snackbar_compression_select_bitrate">Bitte zuerst 96 oder 128 kbps wählen</string>
+    <string name="snackbar_compression_nothing_to_do">Alle Downloads sind bereits komprimiert</string>
+    <string name="snackbar_compression_queued_count">Komprimierung für %1$d Episoden gestartet</string>
+    <string name="notif_transcode_channel">Audio-Komprimierung</string>
+    <string name="notif_transcode_progress">Komprimiere Episode %1$d von %2$d…</string>
+    <string name="notif_transcode_done">Komprimierung fertig: %1$d Episoden umgewandelt</string>
+    <string name="notif_transcode_nothing">Alle Downloads sind bereits komprimiert</string>
 </resources>

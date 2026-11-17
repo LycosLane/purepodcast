@@ -202,10 +202,11 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onToggleTranscodeAuto = mainViewModel::setTranscodeAutoEnabled,
                     onToggleTranscodeChargingOnly = mainViewModel::setTranscodeChargingOnly,
                     onTranscodeAllNow = {
-                        mainViewModel.transcodeAllNow()
-                        scope.launch {
-                            snackbarHostState.currentSnackbarData?.dismiss()
-                            snackbarHostState.showSnackbar(context.getString(R.string.snackbar_compression_queued))
+                        mainViewModel.transcodeAllNow { msg ->
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                snackbarHostState.showSnackbar(msg)
+                            }
                         }
                     },
                     onSelectLocalFolderUri = mainViewModel::setLocalFolderUri,

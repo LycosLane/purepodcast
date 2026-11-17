@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -187,6 +188,12 @@ fun FullPlayerSheet(
         scope.launch { runCatching { sheetState.expand() } }
     }
 
+    androidx.compose.runtime.LaunchedEffect(showNotes, showChapters, textScale) {
+        if (showNotes || showChapters) {
+            runCatching { sheetState.expand() }
+        }
+    }
+
     val artworkUrl = ep.artworkUrl.ifEmpty { pod.artworkUrl }
     val plainNotes = remember(ep.descriptionHtml) {
         htmlToPlainText(ep.descriptionHtml)
@@ -202,6 +209,7 @@ fun FullPlayerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.95f)
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .padding(horizontal = 24.dp)
@@ -418,8 +426,12 @@ fun FullPlayerSheet(
                     selected = showNotes,
                     onClick = {
                         showNotes = !showNotes
-                        if (showNotes) showChapters = false
-                        if (showNotes) expandSheet()
+                        if (showNotes) {
+                            showChapters = false
+                            expandSheet()
+                        } else if (!showChapters) {
+                            scope.launch { runCatching { sheetState.partialExpand() } }
+                        }
                     },
                     label = { Text(stringResource(R.string.player_notes)) },
                     leadingIcon = { Icon(Icons.Default.Description, null, modifier = Modifier.size(16.dp)) }
@@ -429,8 +441,12 @@ fun FullPlayerSheet(
                         selected = showChapters,
                         onClick = {
                             showChapters = !showChapters
-                            if (showChapters) showNotes = false
-                            if (showChapters) expandSheet()
+                            if (showChapters) {
+                                showNotes = false
+                                expandSheet()
+                            } else if (!showNotes) {
+                                scope.launch { runCatching { sheetState.partialExpand() } }
+                            }
                         },
                         label = { Text(stringResource(R.string.player_chapters_count, chapters.size)) },
                         leadingIcon = { Icon(Icons.Default.FormatListBulleted, null, modifier = Modifier.size(16.dp)) }

@@ -1,6 +1,9 @@
 package com.lycoslane.purepodcast.core.download
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -9,6 +12,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.lycoslane.purepodcast.PurePodcastApplication
+import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.AudioTranscoder
 import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
@@ -34,16 +38,38 @@ class TranscodeWorker(
             listOfNotNull(dao.getEpisode(singleEpisodeId))
         } else {
             dao.getUntranscodedDownloads()
+        }.filter {
+            !it.isTranscoded &&
+                it.downloadState == DownloadState.DOWNLOADED &&
+                it.localFilePath?.startsWith("content://") != true
         }
 
+        val isBatch = singleEpisodeId <= 0L
         val activeId = app.playerController.state.value.currentEpisode?.id
+        var processed = 0
+        var converted = 0
+
+        if (isBatch && targets.isEmpty()) {
+            postNotification(
+                title = applicationContext.getString(R.string.app_name),
+                text = applicationContext.getString(R.string.notif_transcode_nothing),
+                progress = null
+            )
+            return@withContext Result.success()
+        }
 
         for (ep in targets) {
             if (isStopped) break
+            processed++
+            if (isBatch) {
+                postNotification(
+                    title = applicationContext.getString(R.string.settings_section_compression),
+                    text = applicationContext.getString(R.string.notif_transcode_progress, processed, targets.size),
+                    progress = processed to targets.size
+                )
+            }
             if (ep.id == activeId) continue
-            if (ep.isTranscoded || ep.downloadState != DownloadState.DOWNLOADED) continue
             val path = ep.localFilePath ?: continue
-            if (path.startsWith("content://")) continue // Never modify external SAF local folder files
 
             val sourceFile = File(path)
             if (!sourceFile.exists() || sourceFile.length() <= 0L) continue
@@ -72,23 +98,65 @@ class TranscodeWorker(
                             sourceFile.delete()
                         }
                         dao.markEpisodeTranscoded(ep.id, targetM4a.absolutePath, targetM4a.length())
+                        converted++
                     }
                 } else {
                     // Transcoded file wasn't smaller (e.g., source already low-bitrate); keep original
                     tempFile.delete()
                     dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length())
+                    converted++
                 }
             } else {
                 tempFile.delete()
             }
         }
 
+        if (isBatch) {
+            val text = if (converted > 0) {
+                applicationContext.getString(R.string.notif_transcode_done, converted)
+            } else {
+                applicationContext.getString(R.string.notif_transcode_nothing)
+            }
+            postNotification(
+                title = applicationContext.getString(R.string.settings_section_compression),
+                text = text,
+                progress = null
+            )
+        }
+
         Result.success()
+    }
+
+    private fun postNotification(title: String, text: String, progress: Pair<Int, Int>?) {
+        val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            ?: return
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            applicationContext.getString(R.string.notif_transcode_channel),
+            NotificationManager.IMPORTANCE_LOW
+        )
+        nm.createNotificationChannel(channel)
+        val builder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setOnlyAlertOnce(true)
+            .setOngoing(progress != null)
+            .setAutoCancel(progress == null)
+        if (progress != null) {
+            builder.setProgress(progress.second, progress.first, false)
+        }
+        try {
+            nm.notify(NOTIFICATION_ID, builder.build())
+        } catch (_: SecurityException) {
+        }
     }
 
     companion object {
         private const val KEY_EPISODE_ID = "episode_id"
         private const val UNIQUE_BATCH_WORK = "transcode_all_downloads"
+        private const val CHANNEL_ID = "purepodcast_transcode"
+        private const val NOTIFICATION_ID = 4102
 
         fun enqueueSingle(context: Context, episodeId: Long, chargingOnly: Boolean) {
             val constraints = Constraints.Builder()

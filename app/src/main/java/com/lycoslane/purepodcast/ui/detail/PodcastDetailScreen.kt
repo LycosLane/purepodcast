@@ -256,6 +256,25 @@ fun PodcastDetailScreen(
                 )
             }
 
+            val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+            var lastHiddenEpisodeId by remember { mutableStateOf<Long?>(null) }
+            var sawHiddenRemoved by remember { mutableStateOf(false) }
+
+            androidx.compose.runtime.LaunchedEffect(filteredEpisodes, lastHiddenEpisodeId) {
+                val targetId = lastHiddenEpisodeId ?: return@LaunchedEffect
+                val idx = filteredEpisodes.indexOfFirst { it.id == targetId }
+                if (idx < 0) {
+                    sawHiddenRemoved = true
+                } else if (sawHiddenRemoved) {
+                    lastHiddenEpisodeId = null
+                    sawHiddenRemoved = false
+                    val listIdx = (idx + 1).coerceAtLeast(0)
+                    if (listIdx <= listState.firstVisibleItemIndex) {
+                        listState.animateScrollToItem(listIdx)
+                    }
+                }
+            }
+
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
                 onRefresh = onRefresh,
@@ -264,6 +283,7 @@ fun PodcastDetailScreen(
                     .fillMaxWidth()
             ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 16.dp)
         ) {
@@ -444,6 +464,10 @@ fun PodcastDetailScreen(
                         if (isTrashFilter) {
                             deletePermanentlyTarget = episode
                         } else {
+                            if (!episode.isHidden) {
+                                lastHiddenEpisodeId = episode.id
+                                sawHiddenRemoved = false
+                            }
                             onToggleHidden(episode)
                         }
                     },
