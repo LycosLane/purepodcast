@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icons/app_icon.png" width="128" alt="PurePodcast Fedora Microphone Icon" />
+</p>
+
 # PurePodcast
 
 > Pure, fast, ad-free & open-source Android podcast player.  
