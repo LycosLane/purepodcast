@@ -168,6 +168,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setHidden(episodeId: Long, hidden: Boolean, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            app.repository.toggleHidden(episodeId, hidden, app.playerController.state.value.currentEpisode?.id)
+            onDone()
+        }
+    }
+
     fun addToQueueEnd(episodeId: Long, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             app.repository.addToQueue(episodeId)
