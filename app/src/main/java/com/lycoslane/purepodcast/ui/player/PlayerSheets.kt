@@ -324,7 +324,8 @@ fun FullPlayerSheet(
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                itemVerticalAlignment = Alignment.CenterVertically
             ) {
                 FilterChip(
                     selected = showSpeedRow,
@@ -339,51 +340,56 @@ fun FullPlayerSheet(
                 )
 
                 val silenceSelected = state.skipSilence
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (silenceSelected) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surface
-                    },
-                    border = if (silenceSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier
-                        .height(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .combinedClickable(
-                            onClick = onToggleSkipSilence,
-                            onLongClick = {
-                                showSilenceIntensityRow = !showSilenceIntensityRow
-                                showSpeedRow = false
-                                showSleepRow = false
-                                if (showSilenceIntensityRow) expandSheet()
-                            }
-                        )
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier.height(48.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (silenceSelected) {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surface
+                        },
+                        border = if (silenceSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        modifier = Modifier
+                            .height(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .combinedClickable(
+                                onClick = onToggleSkipSilence,
+                                onLongClick = {
+                                    showSilenceIntensityRow = !showSilenceIntensityRow
+                                    showSpeedRow = false
+                                    showSleepRow = false
+                                    if (showSilenceIntensityRow) expandSheet()
+                                }
+                            )
                     ) {
-                        Icon(
-                            Icons.Default.GraphicEq,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = if (silenceSelected) {
-                                MaterialTheme.colorScheme.onSecondaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            }
-                        )
-                        Text(
-                            text = stringResource(R.string.player_silence),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (silenceSelected) {
-                                MaterialTheme.colorScheme.onSecondaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.GraphicEq,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (silenceSelected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                }
+                            )
+                            Text(
+                                text = stringResource(R.string.player_silence),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (silenceSelected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
                     }
                 }
 

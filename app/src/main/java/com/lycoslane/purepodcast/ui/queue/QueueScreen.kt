@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -34,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,12 +63,28 @@ fun QueueScreen(
     queue: List<EpisodeWithPodcast>,
     currentEpisode: EpisodeEntity?,
     currentPodcast: PodcastEntity?,
+    scrollToggleTrigger: Int = 0,
     onOpenNowPlaying: () -> Unit,
     onPlay: (EpisodeEntity, PodcastEntity) -> Unit,
     onRemove: (Long) -> Unit,
     onClear: () -> Unit
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(scrollToggleTrigger) {
+        if (scrollToggleTrigger > 0) {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            if (totalItems > 0) {
+                val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+                if (isAtTop && listState.canScrollForward) {
+                    listState.animateScrollToItem(totalItems - 1)
+                } else {
+                    listState.animateScrollToItem(0)
+                }
+            }
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
@@ -116,6 +134,7 @@ fun QueueScreen(
             }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),

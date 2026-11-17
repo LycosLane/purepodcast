@@ -766,16 +766,14 @@ private fun EpisodeSwipeRow(
     )
 
     androidx.compose.runtime.LaunchedEffect(dismissState.currentValue) {
-        when (dismissState.currentValue) {
-            SwipeToDismissBoxValue.StartToEnd -> {
-                latestRight()
-                dismissState.reset()
+        val value = dismissState.currentValue
+        if (value != SwipeToDismissBoxValue.Settled) {
+            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+            when (value) {
+                SwipeToDismissBoxValue.StartToEnd -> latestRight()
+                SwipeToDismissBoxValue.EndToStart -> latestLeft()
+                SwipeToDismissBoxValue.Settled -> Unit
             }
-            SwipeToDismissBoxValue.EndToStart -> {
-                latestLeft()
-                dismissState.reset()
-            }
-            SwipeToDismissBoxValue.Settled -> Unit
         }
     }
 

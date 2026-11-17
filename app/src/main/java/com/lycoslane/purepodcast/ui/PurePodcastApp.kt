@@ -82,6 +82,8 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     }.collectAsStateWithLifecycle(initialValue = null)
 
     var showFullPlayer by rememberSaveable { mutableStateOf(false) }
+    var queueScrollTrigger by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var focusSearchTrigger by remember { androidx.compose.runtime.mutableIntStateOf(0) }
 
     LaunchedEffect(activeEpisodeId) {
         if (activeEpisodeId == null) {
@@ -113,14 +115,26 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                 )
                 NavigationBar {
                     NavigationBarItem(
-                        selected = currentRoute == "home",
-                        onClick = { navigateTopLevel("home") },
+                        selected = currentRoute == "home" || currentRoute?.startsWith("detail/") == true,
+                        onClick = {
+                            if (currentRoute?.startsWith("detail/") == true) {
+                                navController.popBackStack("home", inclusive = false)
+                            } else {
+                                navigateTopLevel("home")
+                            }
+                        },
                         icon = { Icon(Icons.Default.Podcasts, null) },
                         label = { Text(stringResource(R.string.nav_podcasts)) }
                     )
                     NavigationBarItem(
                         selected = currentRoute == "queue",
-                        onClick = { navigateTopLevel("queue") },
+                        onClick = {
+                            if (currentRoute == "queue") {
+                                queueScrollTrigger++
+                            } else {
+                                navigateTopLevel("queue")
+                            }
+                        },
                         icon = {
                             BadgedBox(
                                 badge = {
@@ -136,7 +150,13 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     )
                     NavigationBarItem(
                         selected = currentRoute == "search",
-                        onClick = { navigateTopLevel("search") },
+                        onClick = {
+                            if (currentRoute == "search") {
+                                focusSearchTrigger++
+                            } else {
+                                navigateTopLevel("search")
+                            }
+                        },
                         icon = { Icon(Icons.Default.Explore, null) },
                         label = { Text(stringResource(R.string.nav_discover)) }
                     )
@@ -269,6 +289,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     queue = queue,
                     currentEpisode = activePair.first,
                     currentPodcast = activePair.second,
+                    scrollToggleTrigger = queueScrollTrigger,
                     onOpenNowPlaying = { showFullPlayer = true },
                     onPlay = { ep, pod -> app.playerController.playEpisode(ep, pod) },
                     onRemove = mainViewModel::removeFromQueue,
@@ -293,6 +314,9 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     subscribedFeeds = subscribedFeeds,
                     isSearching = isSearching,
                     statusMessage = searchStatus,
+                    textScale = settings.textScale,
+                    onTextScaleChange = mainViewModel::setTextScale,
+                    focusSearchTrigger = focusSearchTrigger,
                     onSearch = searchViewModel::search,
                     onLoadFeedPreview = searchViewModel::loadFeedPreview,
                     onSubscribeFeedUrl = { url ->
