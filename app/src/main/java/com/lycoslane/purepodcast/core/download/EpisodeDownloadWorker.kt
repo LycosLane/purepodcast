@@ -93,7 +93,7 @@ class EpisodeDownloadWorker(
             }
 
             val latest = dao.getEpisode(episodeId)
-            if (isStopped || latest == null || latest.isHidden) {
+            if (isStopped || latest == null || latest.isHidden || latest.skipAutoDownload) {
                 tempFile.delete()
                 if (latest != null) {
                     dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)

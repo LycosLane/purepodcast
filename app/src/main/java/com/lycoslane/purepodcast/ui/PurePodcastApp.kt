@@ -1,6 +1,6 @@
 package com.lycoslane.purepodcast.ui
 
-import android.net.Uri
+import android.app.Activity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
@@ -14,8 +14,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,11 +25,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -37,20 +41,20 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.lycoslane.purepodcast.PurePodcastApplication
 import com.lycoslane.purepodcast.R
-import com.lycoslane.purepodcast.core.download.FeedRefreshWorker
-import com.lycoslane.purepodcast.core.network.PodcastSearchResult
+import com.lycoslane.purepodcast.core.audio.PlayerController
+import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
 import com.lycoslane.purepodcast.ui.detail.PodcastDetailScreen
 import com.lycoslane.purepodcast.ui.home.HomeScreen
 import com.lycoslane.purepodcast.ui.player.FullPlayerSheet
 import com.lycoslane.purepodcast.ui.player.MiniPlayer
 import com.lycoslane.purepodcast.ui.queue.QueueScreen
 import com.lycoslane.purepodcast.ui.search.SearchScreen
-import kotlinx.coroutines.Dispatchers
+import com.lycoslane.purepodcast.ui.viewmodel.MainViewModel
+import com.lycoslane.purepodcast.ui.viewmodel.PodcastDetailViewModel
+import com.lycoslane.purepodcast.ui.viewmodel.SearchViewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
-
-private const val MAX_BACKUP_BYTES = 10 * 1024 * 1024
 
 @Composable
 fun PurePodcastApp(app: PurePodcastApplication) {
@@ -59,27 +63,28 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
+    val mainViewModel: MainViewModel = viewModel()
+
     LaunchedEffect(Unit) {
         app.playerController.connect()
     }
 
-    val podcasts by app.repository.observePodcasts().collectAsStateWithLifecycle(initialValue = emptyList())
-    val queue by app.repository.observeQueue().collectAsStateWithLifecycle(initialValue = emptyList())
-    val playerState by app.playerController.state.collectAsStateWithLifecycle()
-    val settings by app.preferences.settings.collectAsStateWithLifecycle()
+    val podcasts by mainViewModel.podcasts.collectAsStateWithLifecycle()
+    val queue by mainViewModel.queue.collectAsStateWithLifecycle()
+    val settings by mainViewModel.settings.collectAsStateWithLifecycle()
+    val isRefreshing by mainViewModel.isRefreshing.collectAsStateWithLifecycle()
+    val backupStatus by mainViewModel.backupStatus.collectAsStateWithLifecycle()
 
-    var isRefreshing by remember { mutableStateOf(false) }
-    var isRefreshingDetail by remember { mutableStateOf(false) }
-    var searchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
-    var searchResults by remember { mutableStateOf<List<PodcastSearchResult>>(emptyList()) }
-    var isSearching by remember { mutableStateOf(false) }
-    var searchStatus by remember { mutableStateOf<String?>(null) }
-    var searchJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    var backupStatus by remember { mutableStateOf<String?>(null) }
-    var showFullPlayer by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val activeEpisodeId by remember(app.playerController) {
+        app.playerController.state
+            .map { it.currentEpisode?.id }
+            .distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = null)
 
-    LaunchedEffect(playerState.currentEpisode) {
-        if (playerState.currentEpisode == null) {
+    var showFullPlayer by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(activeEpisodeId) {
+        if (activeEpisodeId == null) {
             showFullPlayer = false
         }
     }
@@ -102,10 +107,8 @@ fun PurePodcastApp(app: PurePodcastApplication) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             Column {
-                MiniPlayer(
-                    state = playerState,
-                    onTogglePlayPause = { app.playerController.togglePlayPause() },
-                    onForward30 = { app.playerController.seekBy(30_000L) },
+                MiniPlayerBar(
+                    playerController = app.playerController,
                     onExpand = { showFullPlayer = true }
                 )
                 NavigationBar {
@@ -152,309 +155,209 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     isRefreshing = isRefreshing,
                     settings = settings,
                     backupStatus = backupStatus,
-                    onRefreshAll = {
-                        scope.launch {
-                            isRefreshing = true
-                            try {
-                                app.repository.refreshAllPodcasts()
-                            } finally {
-                                isRefreshing = false
-                            }
-                        }
-                    },
+                    onRefreshAll = mainViewModel::refreshAll,
                     onPodcastClick = { podcastId ->
                         navController.navigate("detail/$podcastId")
                     },
                     onAddClick = { navigateTopLevel("search") },
-                    onChangeRefreshInterval = { hours ->
-                        app.preferences.setRefreshIntervalHours(hours)
-                        FeedRefreshWorker.schedulePeriodic(context, hours, replaceExisting = true)
-                    },
-                    onToggleWifiOnly = { wifiOnly ->
-                        app.preferences.setWifiOnlyDownloads(wifiOnly)
-                    },
-                    onToggleAutoDownloadDefault = { enabled ->
-                        app.preferences.setAutoDownloadNewByDefault(enabled)
-                    },
-                    onToggleDownloadWhenQueued = { enabled ->
-                        app.preferences.setDownloadWhenQueued(enabled)
-                    },
-                    onToggleAddToQueueWhenDownloaded = { enabled ->
-                        app.preferences.setAddToQueueWhenDownloaded(enabled)
-                    },
-                    onChangeAutoRemovePlayedDays = { days ->
-                        app.preferences.setAutoRemovePlayedDays(days)
-                        scope.launch {
-                            app.repository.cleanupPlayedDownloads(playerState.currentEpisode?.id)
-                        }
-                    },
-                    onChangeMaxDownloadsPerPodcast = { limit ->
-                        app.preferences.setMaxDownloadsPerPodcast(limit)
-                        scope.launch {
-                            app.repository.cleanupPlayedDownloads(playerState.currentEpisode?.id)
-                        }
-                    },
-                    onChangeSmartRewind = { secs ->
-                        app.preferences.setSmartRewindSeconds(secs)
-                    },
-                    onToggleAudioNormalization = { enabled ->
-                        app.preferences.setAudioNormalizationEnabled(enabled)
-                        app.playerController.setAudioNormalization(enabled)
-                    },
-                    onChangeBluetoothNextPrevSeeks = { seeks ->
-                        app.preferences.setBluetoothNextPrevSeeks(seeks)
-                    },
+                    onChangeRefreshInterval = mainViewModel::setRefreshInterval,
+                    onToggleWifiOnly = mainViewModel::setWifiOnly,
+                    onToggleAutoDownloadDefault = mainViewModel::setAutoDownloadDefault,
+                    onToggleDownloadWhenQueued = mainViewModel::setDownloadWhenQueued,
+                    onToggleAddToQueueWhenDownloaded = mainViewModel::setAddToQueueWhenDownloaded,
+                    onChangeAutoRemovePlayedDays = mainViewModel::setAutoRemovePlayedDays,
+                    onChangeTrashRetentionHours = mainViewModel::setTrashRetentionHours,
+                    onChangeMaxDownloadsPerPodcast = mainViewModel::setMaxDownloadsPerPodcast,
+                    onChangeSmartRewind = mainViewModel::setSmartRewind,
+                    onToggleAudioNormalization = mainViewModel::setAudioNormalization,
+                    onChangeBluetoothNextPrevSeeks = mainViewModel::setBluetoothNextPrevSeeks,
                     onChangeAppLanguage = { lang ->
                         if (settings.appLanguage != lang) {
                             app.preferences.setAppLanguage(lang)
-                            (context as? android.app.Activity)?.recreate()
+                            (context as? Activity)?.recreate()
                         }
                     },
-                    onExportBackupUri = { uri ->
-                        scope.launch {
-                            runCatching {
-                                val json = app.repository.exportBackupJson()
-                                withContext(Dispatchers.IO) {
-                                    context.contentResolver.openOutputStream(uri)?.use { out ->
-                                        out.write(json.toByteArray(Charsets.UTF_8))
-                                    } ?: error("Cannot open output")
-                                }
-                            }.onSuccess {
-                                backupStatus = context.getString(R.string.backup_exported)
-                            }.onFailure { err ->
-                                backupStatus = context.getString(R.string.backup_failed, err.javaClass.simpleName)
-                            }
-                        }
-                    },
-                    onImportBackupUri = { uri ->
-                        scope.launch {
-                            runCatching {
-                                val text = withContext(Dispatchers.IO) {
-                                    context.contentResolver.openInputStream(uri)?.use { input ->
-                                        val buffer = ByteArray(8192)
-                                        val out = ByteArrayOutputStream()
-                                        var total = 0
-                                        while (true) {
-                                            val read = input.read(buffer)
-                                            if (read <= 0) break
-                                            total += read
-                                            if (total > MAX_BACKUP_BYTES) {
-                                                error("Backup too large")
-                                            }
-                                            out.write(buffer, 0, read)
-                                        }
-                                        out.toString(Charsets.UTF_8.name())
-                                    }
-                                }?.takeIf { it.isNotBlank() }
-                                    ?: error(context.getString(R.string.backup_empty_file))
-                                app.repository.importBackupJson(text)
-                            }.onSuccess { count ->
-                                backupStatus = context.getString(R.string.backup_imported, count)
-                            }.onFailure { err ->
-                                backupStatus = context.getString(R.string.backup_failed, err.javaClass.simpleName)
-                            }
-                        }
-                    }
+                    onExportBackupUri = mainViewModel::exportBackup,
+                    onImportBackupUri = mainViewModel::importBackup
                 )
             }
 
             composable(
                 route = "detail/{podcastId}",
                 arguments = listOf(navArgument("podcastId") { type = NavType.LongType })
-            ) { entry ->
-                val podcastId = entry.arguments?.getLong("podcastId") ?: return@composable
-                val podcast by app.repository.observePodcast(podcastId)
-                    .collectAsStateWithLifecycle(initialValue = null)
-                val episodes by app.repository.observeEpisodes(
-                    podcastId = podcastId,
-                    ascending = podcast?.sortAscending ?: false
-                ).collectAsStateWithLifecycle(initialValue = emptyList())
+            ) {
+                val detailViewModel: PodcastDetailViewModel = viewModel()
+                val podcast by detailViewModel.podcast.collectAsStateWithLifecycle()
+                val episodes by detailViewModel.episodes.collectAsStateWithLifecycle()
+                val isRefreshingDetail by detailViewModel.isRefreshing.collectAsStateWithLifecycle()
 
                 PodcastDetailScreen(
                     podcast = podcast,
                     episodes = episodes,
-                    activeEpisodeId = playerState.currentEpisode?.id,
+                    activeEpisodeId = activeEpisodeId,
                     isRefreshing = isRefreshingDetail,
+                    textScale = settings.textScale,
+                    trashRetentionHours = settings.trashRetentionHours,
+                    onTextScaleChange = mainViewModel::setTextScale,
                     onBack = { navController.popBackStack() },
-                    onRefresh = {
-                        scope.launch {
-                            isRefreshingDetail = true
-                            try {
-                                runCatching { app.repository.refreshPodcast(podcastId) }
-                            } finally {
-                                isRefreshingDetail = false
-                            }
-                        }
-                    },
-                    onToggleSort = { asc -> scope.launch { app.repository.toggleSortAscending(podcastId, asc) } },
-                    onDisableAutoDownload = { scope.launch { app.repository.disableAutoDownload(podcastId) } },
+                    onRefresh = detailViewModel::refresh,
+                    onToggleSort = detailViewModel::toggleSort,
+                    onDisableAutoDownload = detailViewModel::disableAutoDownload,
                     onUnsubscribe = {
-                        scope.launch {
-                            app.repository.unsubscribePodcast(podcastId)
+                        detailViewModel.unsubscribe {
                             navController.popBackStack()
                         }
                     },
                     onPlayEpisode = { ep ->
                         podcast?.let { pod -> app.playerController.playEpisode(ep, pod) }
                     },
-                    onDownloadEpisode = { ep -> scope.launch { app.repository.enqueueDownload(ep.id) } },
-                    onDeleteDownload = { ep ->
-                        scope.launch {
-                            app.repository.deleteDownload(ep.id, playerState.currentEpisode?.id)
-                        }
-                    },
-                    onStopAndDeleteActive = { ep ->
-                        scope.launch {
-                            app.playerController.stopAndClear()
-                            app.repository.deleteDownload(ep.id, activeEpisodeId = null, immediate = false)
-                        }
-                    },
-                    onRestoreFromTrash = { ep ->
-                        scope.launch { app.repository.restoreFromTrash(ep.id) }
-                    },
-                    onDeletePermanently = { ep ->
-                        scope.launch {
-                            if (ep.id == playerState.currentEpisode?.id) {
-                                app.playerController.stopAndClear()
-                            }
-                            app.repository.deleteDownload(ep.id, activeEpisodeId = null, immediate = true)
-                        }
-                    },
+                    onPauseMainPlayer = { app.playerController.pauseIfPlaying() },
+                    onDownloadEpisode = { ep -> detailViewModel.downloadEpisode(ep.id) },
+                    onDeleteDownload = { ep -> detailViewModel.deleteDownload(ep.id) },
+                    onStopAndDeleteActive = { ep -> detailViewModel.stopAndDeleteActive(ep.id) },
+                    onRestoreFromTrash = { ep -> detailViewModel.restoreFromTrash(ep.id) },
+                    onDeletePermanently = { ep -> detailViewModel.deletePermanently(ep.id) },
+                    onEmptyTrash = detailViewModel::emptyTrash,
                     onAddToQueue = { ep ->
-                        scope.launch {
-                            app.repository.addToQueue(ep.id)
-                            snackbarHostState.showSnackbar(context.getString(R.string.snackbar_added_to_queue))
+                        detailViewModel.addToQueueEnd(ep.id) {
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                snackbarHostState.showSnackbar(context.getString(R.string.snackbar_added_to_queue))
+                            }
                         }
                     },
-                    onTogglePlayed = { ep ->
-                        scope.launch {
-                            app.repository.togglePlayed(ep.id, !ep.isPlayed, playerState.currentEpisode?.id)
+                    onAddToQueueFront = { ep ->
+                        detailViewModel.addToQueueFront(ep.id) {
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                snackbarHostState.showSnackbar(context.getString(R.string.snackbar_added_to_queue_front))
+                            }
                         }
                     },
+                    onTogglePlayed = { ep -> detailViewModel.togglePlayed(ep) },
                     onToggleHidden = { ep ->
-                        scope.launch {
-                            app.repository.toggleHidden(ep.id, !ep.isHidden, playerState.currentEpisode?.id)
+                        val nextHidden = !ep.isHidden
+                        detailViewModel.setHidden(ep.id, nextHidden) {
+                            if (nextHidden) {
+                                scope.launch {
+                                    snackbarHostState.currentSnackbarData?.dismiss()
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = context.getString(R.string.snackbar_episode_hidden),
+                                        actionLabel = context.getString(R.string.action_undo),
+                                        duration = SnackbarDuration.Short
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        mainViewModel.unhideEpisode(ep.id)
+                                    }
+                                }
+                            }
                         }
                     },
-                    onDownloadNewerFrom = { ep ->
-                        scope.launch { app.repository.downloadNewerFromEpisode(podcastId, ep.pubDateMs) }
-                    },
-                    onCleanupOlderThan = { ep ->
-                        scope.launch {
-                            app.repository.cleanupOlderThan(podcastId, ep.pubDateMs, playerState.currentEpisode?.id)
-                        }
-                    }
+                    onDownloadNewerFrom = { ep -> detailViewModel.downloadNewerFrom(ep.pubDateMs) },
+                    onCleanupOlderThan = { ep -> detailViewModel.cleanupOlderThan(ep.pubDateMs) }
                 )
             }
 
             composable("queue") {
+                val activePair by remember(app.playerController) {
+                    app.playerController.state
+                        .map { it.currentEpisode to it.currentPodcast }
+                        .distinctUntilChanged()
+                }.collectAsStateWithLifecycle(initialValue = null to null)
+
                 QueueScreen(
                     queue = queue,
-                    currentEpisode = playerState.currentEpisode,
-                    currentPodcast = playerState.currentPodcast,
+                    currentEpisode = activePair.first,
+                    currentPodcast = activePair.second,
                     onOpenNowPlaying = { showFullPlayer = true },
                     onPlay = { ep, pod -> app.playerController.playEpisode(ep, pod) },
-                    onRemove = { epId -> scope.launch { app.repository.removeFromQueue(epId) } },
-                    onClear = { scope.launch { app.repository.clearQueue() } }
+                    onRemove = mainViewModel::removeFromQueue,
+                    onClear = mainViewModel::clearQueue
                 )
             }
 
             composable("search") {
+                val searchViewModel: SearchViewModel = viewModel()
+                val searchQuery by searchViewModel.query.collectAsStateWithLifecycle()
+                val searchResults by searchViewModel.results.collectAsStateWithLifecycle()
+                val isSearching by searchViewModel.isSearching.collectAsStateWithLifecycle()
+                val searchStatus by searchViewModel.statusMessage.collectAsStateWithLifecycle()
                 val subscribedFeeds = remember(podcasts) {
                     podcasts.associate { it.podcast.feedUrl to it.podcast.id }
                 }
+
                 SearchScreen(
                     query = searchQuery,
-                    onQueryChange = { newQuery ->
-                        searchQuery = newQuery
-                        if (newQuery.trim().length < 2) {
-                            searchJob?.cancel()
-                            isSearching = false
-                            searchResults = emptyList()
-                        }
-                    },
+                    onQueryChange = searchViewModel::onQueryChange,
                     results = searchResults,
                     subscribedFeeds = subscribedFeeds,
                     isSearching = isSearching,
                     statusMessage = searchStatus,
-                    onSearch = { q ->
-                        searchJob?.cancel()
-                        searchJob = scope.launch {
-                            isSearching = true
-                            searchStatus = null
-                            try {
-                                searchResults = runCatching {
-                                    app.repository.searchPodcasts(q).distinctBy { it.feedUrl }
-                                }.getOrElse { err ->
-                                    searchStatus = context.getString(R.string.status_search_failed, err.javaClass.simpleName)
-                                    emptyList()
-                                }
-                            } finally {
-                                isSearching = false
-                            }
-                        }
-                    },
-                    onLoadFeedPreview = { url ->
-                        runCatching {
-                            com.lycoslane.purepodcast.core.network.RssFeedParser.fetchAndParse(url)
-                        }.getOrNull()
-                    },
+                    onSearch = searchViewModel::search,
+                    onLoadFeedPreview = searchViewModel::loadFeedPreview,
                     onSubscribeFeedUrl = { url ->
-                        scope.launch {
-                            searchStatus = context.getString(R.string.status_subscribing)
-                            runCatching { app.repository.subscribeByFeedUrl(url) }
-                                .onSuccess { podcastId ->
-                                    searchStatus = context.getString(R.string.status_subscribed)
-                                    navController.navigate("detail/$podcastId")
-                                }
-                                .onFailure { err ->
-                                    searchStatus = context.getString(R.string.status_search_failed, err.javaClass.simpleName)
-                                }
+                        searchViewModel.subscribeFeedUrl(url) { podcastId ->
+                            navController.navigate("detail/$podcastId")
                         }
                     },
-                    onUnsubscribeById = { podcastId, title ->
-                        scope.launch {
-                            app.repository.unsubscribePodcast(podcastId)
-                            searchStatus = context.getString(R.string.status_unsubscribed, title)
-                        }
-                    },
-                    onImportOpmlUri = { uri: Uri ->
-                        scope.launch {
-                            searchStatus = context.getString(R.string.status_opml_importing)
-                            runCatching {
-                                withContext(Dispatchers.IO) {
-                                    context.contentResolver.openInputStream(uri)?.use { stream ->
-                                        app.repository.importOpml(stream)
-                                    } ?: 0
-                                }
-                            }.onSuccess { count ->
-                                searchStatus = context.getString(R.string.status_opml_imported, count)
-                            }.onFailure { err ->
-                                searchStatus = context.getString(R.string.status_opml_failed, err.javaClass.simpleName)
-                            }
-                        }
-                    }
+                    onUnsubscribeById = searchViewModel::unsubscribeById,
+                    onImportOpmlUri = searchViewModel::importOpmlUri
                 )
             }
         }
     }
 
-    if (showFullPlayer && playerState.currentEpisode != null) {
-        val currentId = playerState.currentEpisode?.id
-        val canSkipQueue = queue.size > 1 || (queue.size == 1 && queue[0].episode.id != currentId)
-        FullPlayerSheet(
-            state = playerState,
-            hasQueue = canSkipQueue,
-            onDismiss = { showFullPlayer = false },
-            onTogglePlayPause = { app.playerController.togglePlayPause() },
-            onSeekTo = { app.playerController.seekTo(it) },
-            onSeekBy = { app.playerController.seekBy(it) },
-            onPrevEpisode = { app.playerController.skipToPreviousInQueue() },
-            onNextEpisode = { app.playerController.skipToNextInQueue() },
-            onSetSpeed = { app.playerController.setPlaybackSpeed(it) },
-            onToggleSkipSilence = { app.playerController.toggleSkipSilence() },
-            onSetSilenceIntensity = { app.playerController.setSilenceIntensity(it) },
-            onSetSleepTimer = { app.playerController.setSleepTimer(it) }
+    if (showFullPlayer) {
+        FullPlayerOverlay(
+            playerController = app.playerController,
+            queue = queue,
+            textScale = settings.textScale,
+            onTextScaleChange = mainViewModel::setTextScale,
+            onDismiss = { showFullPlayer = false }
         )
     }
+}
+
+@Composable
+private fun MiniPlayerBar(
+    playerController: PlayerController,
+    onExpand: () -> Unit
+) {
+    val playerState by playerController.state.collectAsStateWithLifecycle()
+    MiniPlayer(
+        state = playerState,
+        onTogglePlayPause = { playerController.togglePlayPause() },
+        onForward30 = { playerController.seekBy(30_000L) },
+        onExpand = onExpand
+    )
+}
+
+@Composable
+private fun FullPlayerOverlay(
+    playerController: PlayerController,
+    queue: List<EpisodeWithPodcast>,
+    textScale: Float,
+    onTextScaleChange: (Float) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val playerState by playerController.state.collectAsStateWithLifecycle()
+    if (playerState.currentEpisode == null) return
+    val currentId = playerState.currentEpisode?.id
+    val canSkipQueue = queue.size > 1 || (queue.size == 1 && queue[0].episode.id != currentId)
+    FullPlayerSheet(
+        state = playerState,
+        hasQueue = canSkipQueue,
+        textScale = textScale,
+        onTextScaleChange = onTextScaleChange,
+        onDismiss = onDismiss,
+        onTogglePlayPause = { playerController.togglePlayPause() },
+        onSeekTo = { playerController.seekTo(it) },
+        onSeekBy = { playerController.seekBy(it) },
+        onPrevEpisode = { playerController.skipToPreviousInQueue() },
+        onNextEpisode = { playerController.skipToNextInQueue() },
+        onSetSpeed = { playerController.setPlaybackSpeed(it) },
+        onToggleSkipSilence = { playerController.toggleSkipSilence() },
+        onSetSilenceIntensity = { playerController.setSilenceIntensity(it) },
+        onSetSleepTimer = { playerController.setSleepTimer(it) }
+    )
 }

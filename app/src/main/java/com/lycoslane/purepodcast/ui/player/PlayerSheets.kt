@@ -62,9 +62,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.PlayerUiState
+import com.lycoslane.purepodcast.ui.common.CoverLightboxDialog
+import com.lycoslane.purepodcast.ui.common.PinchZoomText
 import com.lycoslane.purepodcast.ui.common.PodcastImage
+import com.lycoslane.purepodcast.ui.common.TextReaderDialog
 import com.lycoslane.purepodcast.ui.common.formatDuration
 import com.lycoslane.purepodcast.ui.common.htmlToPlainText
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
@@ -150,6 +154,8 @@ fun MiniPlayer(
 fun FullPlayerSheet(
     state: PlayerUiState,
     hasQueue: Boolean,
+    textScale: Float,
+    onTextScaleChange: (Float) -> Unit,
     onDismiss: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onSeekTo: (Long) -> Unit,
@@ -164,13 +170,21 @@ fun FullPlayerSheet(
     val ep = state.currentEpisode ?: return
     val pod = state.currentPodcast ?: return
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     var showNotes by remember { mutableStateOf(false) }
     var showSpeedRow by remember { mutableStateOf(false) }
     var showSleepRow by remember { mutableStateOf(false) }
     var showSilenceIntensityRow by remember { mutableStateOf(false) }
+    var showCoverLightbox by remember { mutableStateOf(false) }
+    var showReaderDialog by remember { mutableStateOf(false) }
     var scrubPos by remember(ep.id) { mutableStateOf<Float?>(null) }
 
+    fun expandSheet() {
+        scope.launch { runCatching { sheetState.expand() } }
+    }
+
+    val artworkUrl = ep.artworkUrl.ifEmpty { pod.artworkUrl }
     val plainNotes = remember(ep.descriptionHtml) {
         htmlToPlainText(ep.descriptionHtml)
     }
@@ -189,16 +203,17 @@ fun FullPlayerSheet(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             PodcastImage(
-                url = ep.artworkUrl.ifEmpty { pod.artworkUrl },
-                contentDescription = null,
+                url = artworkUrl,
+                contentDescription = stringResource(R.string.cd_podcast_cover),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(210.dp)
+                    .size(180.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { showCoverLightbox = true }
             )
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(14.dp))
 
             Text(
                 text = ep.title,
@@ -317,6 +332,7 @@ fun FullPlayerSheet(
                         showSpeedRow = !showSpeedRow
                         showSleepRow = false
                         showSilenceIntensityRow = false
+                        if (showSpeedRow) expandSheet()
                     },
                     label = { Text(String.format(Locale.getDefault(), "%.1fx", state.playbackSpeed)) },
                     leadingIcon = { Icon(Icons.Default.Speed, null, modifier = Modifier.size(16.dp)) }
@@ -340,6 +356,7 @@ fun FullPlayerSheet(
                                 showSilenceIntensityRow = !showSilenceIntensityRow
                                 showSpeedRow = false
                                 showSleepRow = false
+                                if (showSilenceIntensityRow) expandSheet()
                             }
                         )
                 ) {
@@ -376,6 +393,7 @@ fun FullPlayerSheet(
                         showSleepRow = !showSleepRow
                         showSpeedRow = false
                         showSilenceIntensityRow = false
+                        if (showSleepRow) expandSheet()
                     },
                     label = {
                         Text(
@@ -387,7 +405,10 @@ fun FullPlayerSheet(
                 )
                 FilterChip(
                     selected = showNotes,
-                    onClick = { showNotes = !showNotes },
+                    onClick = {
+                        showNotes = !showNotes
+                        if (showNotes) expandSheet()
+                    },
                     label = { Text(stringResource(R.string.player_notes)) },
                     leadingIcon = { Icon(Icons.Default.Description, null, modifier = Modifier.size(16.dp)) }
                 )
@@ -464,14 +485,52 @@ fun FullPlayerSheet(
             if (showNotes) {
                 Spacer(Modifier.height(14.dp))
                 HorizontalDivider()
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = plainNotes.ifBlank { stringResource(R.string.no_show_notes) },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Spacer(Modifier.height(10.dp))
+                if (plainNotes.isNotBlank()) {
+                    Text(
+                        text = stringResource(R.string.hint_tap_to_read),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    PinchZoomText(
+                        text = plainNotes,
+                        textScale = textScale,
+                        onTextScaleChange = onTextScaleChange,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = { showReaderDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    Text(
+                        text = stringResource(R.string.no_show_notes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
+    }
+
+    if (showCoverLightbox) {
+        CoverLightboxDialog(
+            imageUrl = artworkUrl,
+            title = ep.title,
+            onDismiss = { showCoverLightbox = false }
+        )
+    }
+
+    if (showReaderDialog && plainNotes.isNotBlank()) {
+        TextReaderDialog(
+            title = ep.title,
+            subtitle = pod.title,
+            text = plainNotes,
+            textScale = textScale,
+            onTextScaleChange = onTextScaleChange,
+            onDismiss = { showReaderDialog = false }
+        )
     }
 }

@@ -142,7 +142,7 @@
 
     <!-- Auto-remove, Limits, Audio & Language -->
     <string name="settings_auto_remove_played">Gehörte Downloads entfernen</string>
-    <string name="settings_auto_remove_played_sub">Verschiebt gehörte Downloads in den Papierkorb (Löschung nach 24h).</string>
+    <string name="settings_auto_remove_played_sub">Verschiebt gehörte Downloads nach der Wartezeit in den Papierkorb.</string>
     <string name="auto_remove_never">Behalten</string>
     <string name="auto_remove_immediately">Sofort</string>
     <string name="auto_remove_days">%1$d Tage</string>
@@ -158,4 +158,31 @@
     <string name="settings_language">Sprache</string>
     <string name="settings_language_en">English</string>
     <string name="settings_language_de">Deutsch</string>
+
+    <!-- Phase 2: Vorschau, Gesten, Papierkorb & Einstellungen -->
+    <string name="settings_auto_remove_delay">Wartezeit nach dem Hören</string>
+    <string name="settings_trash_retention">Papierkorb-Aufbewahrung</string>
+    <string name="settings_trash_retention_sub">Wie lange gelöschte Downloads wiederhergestellt werden können</string>
+    <string name="trash_hint_hours">Gelöschte Downloads werden nach %1$d Stunden endgültig entfernt.</string>
+    <string name="trash_retention_immediate">Sofort löschen</string>
+    <string name="trash_retention_24h">24 Stunden</string>
+    <string name="trash_retention_48h">48 Stunden</string>
+    <string name="settings_max_downloads_unlimited_toggle">Unbegrenzte Downloads pro Podcast</string>
+    <string name="preview_listen">Reinhören</string>
+    <string name="preview_playing">Vorschau läuft</string>
+    <string name="preview_queue_next">Als Nächstes</string>
+    <string name="preview_queue_end">Ans Ende</string>
+    <string name="snackbar_added_to_queue_front">An den Anfang der Warteschlange gesetzt</string>
+    <string name="snackbar_episode_hidden">Episode ausgeblendet</string>
+    <string name="action_undo">Rückgängig</string>
+    <string name="swipe_queue">Warteschlange</string>
+    <string name="swipe_hide">Ausblenden</string>
+    <string name="swipe_unhide">Einblenden</string>
+    <string name="swipe_delete">Löschen</string>
+    <string name="action_empty_trash">Papierkorb leeren</string>
+    <string name="dialog_empty_trash_title">Papierkorb leeren?</string>
+    <string name="dialog_empty_trash_body">Alle Downloads im Papierkorb dieses Podcasts werden endgültig gelöscht.</string>
+    <string name="cd_podcast_cover">Podcast-Cover</string>
+    <string name="action_close">Schließen</string>
+    <string name="hint_tap_to_read">Tippen für Vollbild • Zweifinger-Zoom für Textgröße</string>
 </resources>

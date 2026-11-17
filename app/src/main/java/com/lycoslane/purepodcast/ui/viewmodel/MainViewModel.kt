@@ -1,0 +1,157 @@
+package com.lycoslane.purepodcast.ui.viewmodel
+
+import android.app.Application
+import android.net.Uri
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.lycoslane.purepodcast.PurePodcastApplication
+import com.lycoslane.purepodcast.R
+import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
+import com.lycoslane.purepodcast.core.database.PodcastWithStats
+import com.lycoslane.purepodcast.core.download.FeedRefreshWorker
+import com.lycoslane.purepodcast.core.preferences.AppSettings
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+
+private const val MAX_BACKUP_BYTES = 10 * 1024 * 1024
+
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val app: PurePodcastApplication
+        get() = getApplication()
+
+    val podcasts: StateFlow<List<PodcastWithStats>> = app.repository.observePodcasts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+
+    val queue: StateFlow<List<EpisodeWithPodcast>> = app.repository.observeQueue()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+
+    val settings: StateFlow<AppSettings> = app.preferences.settings
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    private val _backupStatus = MutableStateFlow<String?>(null)
+    val backupStatus: StateFlow<String?> = _backupStatus.asStateFlow()
+
+    fun refreshAll() {
+        if (_isRefreshing.value) return
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                app.repository.refreshAllPodcasts()
+            } finally {
+                _isRefreshing.value = false
+            }
+        }
+    }
+
+    fun setRefreshInterval(hours: Int) {
+        app.preferences.setRefreshIntervalHours(hours)
+        FeedRefreshWorker.schedulePeriodic(app, hours, replaceExisting = true)
+    }
+
+    fun setWifiOnly(wifiOnly: Boolean) = app.preferences.setWifiOnlyDownloads(wifiOnly)
+    fun setAutoDownloadDefault(enabled: Boolean) = app.preferences.setAutoDownloadNewByDefault(enabled)
+    fun setDownloadWhenQueued(enabled: Boolean) = app.preferences.setDownloadWhenQueued(enabled)
+    fun setAddToQueueWhenDownloaded(enabled: Boolean) = app.preferences.setAddToQueueWhenDownloaded(enabled)
+
+    fun setAutoRemovePlayedDays(days: Int) {
+        app.preferences.setAutoRemovePlayedDays(days)
+        viewModelScope.launch {
+            app.repository.cleanupPlayedDownloads(app.playerController.state.value.currentEpisode?.id)
+        }
+    }
+
+    fun setTrashRetentionHours(hours: Int) {
+        app.preferences.setTrashRetentionHours(hours)
+        viewModelScope.launch {
+            app.repository.cleanupPlayedDownloads(app.playerController.state.value.currentEpisode?.id)
+        }
+    }
+
+    fun setMaxDownloadsPerPodcast(limit: Int) {
+        app.preferences.setMaxDownloadsPerPodcast(limit)
+        viewModelScope.launch {
+            app.repository.cleanupPlayedDownloads(app.playerController.state.value.currentEpisode?.id)
+        }
+    }
+
+    fun setSmartRewind(secs: Int) = app.preferences.setSmartRewindSeconds(secs)
+
+    fun setAudioNormalization(enabled: Boolean) {
+        app.preferences.setAudioNormalizationEnabled(enabled)
+        app.playerController.setAudioNormalization(enabled)
+    }
+
+    fun setBluetoothNextPrevSeeks(seeks: Boolean) = app.preferences.setBluetoothNextPrevSeeks(seeks)
+    fun setTextScale(scale: Float) = app.preferences.setTextScale(scale)
+
+    fun unhideEpisode(episodeId: Long) {
+        viewModelScope.launch {
+            app.repository.toggleHidden(episodeId, false, app.playerController.state.value.currentEpisode?.id)
+        }
+    }
+
+    fun removeFromQueue(episodeId: Long) {
+        viewModelScope.launch { app.repository.removeFromQueue(episodeId) }
+    }
+
+    fun clearQueue() {
+        viewModelScope.launch { app.repository.clearQueue() }
+    }
+
+    fun exportBackup(uri: Uri) {
+        viewModelScope.launch {
+            runCatching {
+                val json = app.repository.exportBackupJson()
+                withContext(Dispatchers.IO) {
+                    app.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(json.toByteArray(Charsets.UTF_8))
+                    } ?: error("Cannot open output")
+                }
+            }.onSuccess {
+                _backupStatus.value = app.getString(R.string.backup_exported)
+            }.onFailure { err ->
+                _backupStatus.value = app.getString(R.string.backup_failed, err.javaClass.simpleName)
+            }
+        }
+    }
+
+    fun importBackup(uri: Uri) {
+        viewModelScope.launch {
+            runCatching {
+                val text = withContext(Dispatchers.IO) {
+                    app.contentResolver.openInputStream(uri)?.use { input ->
+                        val buffer = ByteArray(8192)
+                        val out = ByteArrayOutputStream()
+                        var total = 0
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            total += read
+                            if (total > MAX_BACKUP_BYTES) {
+                                error("Backup too large")
+                            }
+                            out.write(buffer, 0, read)
+                        }
+                        out.toString(Charsets.UTF_8.name())
+                    }
+                }?.takeIf { it.isNotBlank() }
+                    ?: error(app.getString(R.string.backup_empty_file))
+                app.repository.importBackupJson(text)
+            }.onSuccess { count ->
+                _backupStatus.value = app.getString(R.string.backup_imported, count)
+            }.onFailure { err ->
+                _backupStatus.value = app.getString(R.string.backup_failed, err.javaClass.simpleName)
+            }
+        }
+    }
+}

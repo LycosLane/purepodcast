@@ -246,6 +246,18 @@ interface PurePodcastDao {
     )
     suspend fun getQueueEpisodesOnce(): List<EpisodeWithPodcast>
 
+    @Query(
+        """
+        SELECT * FROM episodes
+        WHERE podcastId = :podcastId AND markedForDeletionAtMs > 0
+          AND downloadState = 'DOWNLOADED'
+        """
+    )
+    suspend fun getTrashedDownloadsForPodcast(podcastId: Long): List<EpisodeEntity>
+
+    @Query("SELECT COALESCE(MIN(sortOrder), 0) FROM queue_items")
+    suspend fun getMinQueueOrder(): Int
+
     @Query("SELECT COALESCE(MAX(sortOrder), -1) FROM queue_items")
     suspend fun getMaxQueueOrder(): Int
 
@@ -256,6 +268,13 @@ interface PurePodcastDao {
     suspend fun enqueueToQueue(episodeId: Long) {
         val nextOrder = getMaxQueueOrder() + 1
         insertQueueItem(QueueItemEntity(episodeId = episodeId, sortOrder = nextOrder))
+    }
+
+    @Transaction
+    suspend fun enqueueToQueueFront(episodeId: Long) {
+        removeFromQueue(episodeId)
+        val firstOrder = getMinQueueOrder() - 1
+        insertQueueItem(QueueItemEntity(episodeId = episodeId, sortOrder = firstOrder))
     }
 
     @Query("DELETE FROM queue_items WHERE episodeId = :episodeId")

@@ -218,6 +218,13 @@ class PlayerController(
         }
     }
 
+    fun pauseIfPlaying() {
+        val mc = controller ?: return
+        if (mc.playWhenReady && mc.playbackState != Player.STATE_ENDED) {
+            mc.pause()
+        }
+    }
+
     fun seekTo(positionMs: Long) {
         val mc = controller ?: return
         val clamped = positionMs.coerceAtLeast(0L)

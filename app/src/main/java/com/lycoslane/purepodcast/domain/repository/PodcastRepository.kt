@@ -161,20 +161,39 @@ class PodcastRepository(
         activeEpisodeId: Long? = null,
         immediate: Boolean = false
     ) = withContext(Dispatchers.IO) {
-        if (activeEpisodeId != null && episodeId == activeEpisodeId) return@withContext
-        EpisodeDownloadWorker.cancel(context, episodeId)
-        val episode = dao.getEpisode(episodeId) ?: return@withContext
-        if (immediate || episode.downloadState != DownloadState.DOWNLOADED) {
-            episode.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
-            dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
-            dao.setSkipAutoDownload(episodeId, true)
-        } else {
-            dao.markForDeletion(episodeId, System.currentTimeMillis())
+        cleanupMutex.withLock {
+            if (activeEpisodeId != null && episodeId == activeEpisodeId) return@withContext
+            EpisodeDownloadWorker.cancel(context, episodeId)
+            val episode = dao.getEpisode(episodeId) ?: return@withContext
+            val deleteNow = immediate ||
+                preferences.settings.value.trashRetentionHours == 0 ||
+                episode.downloadState != DownloadState.DOWNLOADED
+            if (deleteNow) {
+                episode.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
+                dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+                dao.setSkipAutoDownload(episodeId, true)
+            } else {
+                dao.markForDeletion(episodeId, System.currentTimeMillis())
+            }
+        }
+    }
+
+    suspend fun emptyTrash(podcastId: Long, activeEpisodeId: Long? = null) = withContext(Dispatchers.IO) {
+        cleanupMutex.withLock {
+            dao.getTrashedDownloadsForPodcast(podcastId).forEach { ep ->
+                if (activeEpisodeId == null || ep.id != activeEpisodeId) {
+                    ep.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
+                    dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+                    dao.setSkipAutoDownload(ep.id, true)
+                }
+            }
         }
     }
 
     suspend fun restoreFromTrash(episodeId: Long) = withContext(Dispatchers.IO) {
-        dao.markForDeletion(episodeId, 0L)
+        cleanupMutex.withLock {
+            dao.markForDeletion(episodeId, 0L)
+        }
     }
 
     suspend fun toggleHidden(
@@ -182,22 +201,31 @@ class PodcastRepository(
         isHidden: Boolean,
         activeEpisodeId: Long? = null
     ) = withContext(Dispatchers.IO) {
-        dao.setHidden(episodeId, isHidden)
-        if (isHidden) {
-            EpisodeDownloadWorker.cancel(context, episodeId)
-            dao.removeFromQueue(episodeId)
-            val ep = dao.getEpisode(episodeId)
-            if (ep != null && ep.downloadState == DownloadState.DOWNLOADED &&
-                (activeEpisodeId == null || ep.id != activeEpisodeId)
-            ) {
-                dao.markForDeletion(episodeId, System.currentTimeMillis())
-            } else if (ep != null && (ep.downloadState == DownloadState.QUEUED || ep.downloadState == DownloadState.DOWNLOADING)) {
-                dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
-            }
-        } else {
-            val ep = dao.getEpisode(episodeId)
-            if (ep != null && ep.markedForDeletionAtMs > 0L) {
-                dao.markForDeletion(episodeId, 0L)
+        cleanupMutex.withLock {
+            dao.setHidden(episodeId, isHidden)
+            if (isHidden) {
+                EpisodeDownloadWorker.cancel(context, episodeId)
+                dao.removeFromQueue(episodeId)
+                val ep = dao.getEpisode(episodeId)
+                if (ep != null && ep.downloadState == DownloadState.DOWNLOADED &&
+                    (activeEpisodeId == null || ep.id != activeEpisodeId)
+                ) {
+                    if (preferences.settings.value.trashRetentionHours == 0) {
+                        ep.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
+                        dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+                        dao.setSkipAutoDownload(episodeId, true)
+                    } else {
+                        dao.markForDeletion(episodeId, System.currentTimeMillis())
+                    }
+                } else if (ep != null && (ep.downloadState == DownloadState.QUEUED || ep.downloadState == DownloadState.DOWNLOADING)) {
+                    dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+                    dao.setSkipAutoDownload(episodeId, true)
+                }
+            } else {
+                val ep = dao.getEpisode(episodeId)
+                if (ep != null && ep.markedForDeletionAtMs > 0L) {
+                    dao.markForDeletion(episodeId, 0L)
+                }
             }
         }
     }
@@ -217,28 +245,32 @@ class PodcastRepository(
     }
 
     /**
-     * Marks local audio files for deletion (24h trash) and marks all episodes older than [beforePubDateMs] as played.
+     * Marks local audio files for deletion (or deletes immediately if retention == 0)
+     * and marks all episodes older than [beforePubDateMs] as played.
      */
     suspend fun cleanupOlderThan(
         podcastId: Long,
         beforePubDateMs: Long,
         activeEpisodeId: Long? = null
     ) = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        val olderDownloaded = dao.getDownloadedOlderThan(podcastId, beforePubDateMs)
-        olderDownloaded.forEach { ep ->
-            if (activeEpisodeId == null || ep.id != activeEpisodeId) {
-                EpisodeDownloadWorker.cancel(context, ep.id)
-                if (ep.downloadState == DownloadState.DOWNLOADED) {
-                    dao.markForDeletion(ep.id, now)
-                } else {
-                    ep.localFilePath?.let { safeDeleteEpisodeFile(it) }
-                    dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
-                    dao.setSkipAutoDownload(ep.id, true)
+        cleanupMutex.withLock {
+            val now = System.currentTimeMillis()
+            val immediate = preferences.settings.value.trashRetentionHours == 0
+            val olderDownloaded = dao.getDownloadedOlderThan(podcastId, beforePubDateMs)
+            olderDownloaded.forEach { ep ->
+                if (activeEpisodeId == null || ep.id != activeEpisodeId) {
+                    EpisodeDownloadWorker.cancel(context, ep.id)
+                    if (ep.downloadState == DownloadState.DOWNLOADED && !immediate) {
+                        dao.markForDeletion(ep.id, now)
+                    } else {
+                        ep.localFilePath?.let { safeDeleteEpisodeFile(it) }
+                        dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+                        dao.setSkipAutoDownload(ep.id, true)
+                    }
                 }
             }
+            dao.markOlderAsPlayed(podcastId, beforePubDateMs, now)
         }
-        dao.markOlderAsPlayed(podcastId, beforePubDateMs, now)
     }
 
     suspend fun togglePlayed(
@@ -256,7 +288,8 @@ class PodcastRepository(
     suspend fun cleanupPlayedDownloads(activeEpisodeId: Long? = null) = withContext(Dispatchers.IO) {
         cleanupMutex.withLock {
             val now = System.currentTimeMillis()
-            val trashCutoffMs = now - 86_400_000L // 24h grace period
+            val retentionHours = preferences.settings.value.trashRetentionHours
+            val trashCutoffMs = now - retentionHours * 3_600_000L
             dao.getTrashedDownloadsOlderThan(trashCutoffMs).forEach { ep ->
                 if (activeEpisodeId == null || ep.id != activeEpisodeId) {
                     ep.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
@@ -275,7 +308,13 @@ class PodcastRepository(
                 }
                 targets.forEach { ep ->
                     if (activeEpisodeId == null || ep.id != activeEpisodeId) {
-                        dao.markForDeletion(ep.id, now)
+                        if (retentionHours == 0) {
+                            ep.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
+                            dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+                            dao.setSkipAutoDownload(ep.id, true)
+                        } else {
+                            dao.markForDeletion(ep.id, now)
+                        }
                     }
                 }
             }
@@ -287,7 +326,13 @@ class PodcastRepository(
                     if (activeList.size > maxDownloads) {
                         activeList.drop(maxDownloads).forEach { ep ->
                             if (activeEpisodeId == null || ep.id != activeEpisodeId) {
-                                dao.markForDeletion(ep.id, now)
+                                if (retentionHours == 0) {
+                                    ep.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
+                                    dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+                                    dao.setSkipAutoDownload(ep.id, true)
+                                } else {
+                                    dao.markForDeletion(ep.id, now)
+                                }
                             }
                         }
                     }
@@ -325,6 +370,16 @@ class PodcastRepository(
         }
     }
 
+    suspend fun addToQueueFront(episodeId: Long) {
+        dao.enqueueToQueueFront(episodeId)
+        if (preferences.settings.value.downloadWhenQueued) {
+            val ep = dao.getEpisode(episodeId)
+            if (ep != null && ep.downloadState == DownloadState.NONE) {
+                enqueueDownload(episodeId)
+            }
+        }
+    }
+
     suspend fun removeFromQueue(episodeId: Long) {
         dao.removeFromQueue(episodeId)
     }
@@ -347,10 +402,12 @@ class PodcastRepository(
                     put("downloadWhenQueued", settings.downloadWhenQueued)
                     put("addToQueueWhenDownloaded", settings.addToQueueWhenDownloaded)
                     put("autoRemovePlayedDays", settings.autoRemovePlayedDays)
+                    put("trashRetentionHours", settings.trashRetentionHours)
                     put("maxDownloadsPerPodcast", settings.maxDownloadsPerPodcast)
                     put("smartRewindSeconds", settings.smartRewindSeconds)
                     put("audioNormalizationEnabled", settings.audioNormalizationEnabled)
                     put("bluetoothNextPrevSeeks", settings.bluetoothNextPrevSeeks)
+                    put("textScale", settings.textScale.toDouble())
                     put("appLanguage", settings.appLanguage)
                 }
             )
@@ -403,6 +460,10 @@ class PodcastRepository(
                 val days = s.optInt("autoRemovePlayedDays", 1).let { if (it in listOf(-1, 0, 1, 3, 7)) it else 1 }
                 preferences.setAutoRemovePlayedDays(days)
             }
+            if (s.has("trashRetentionHours")) {
+                val hours = s.optInt("trashRetentionHours", 24).let { if (it in listOf(0, 24, 48)) it else 24 }
+                preferences.setTrashRetentionHours(hours)
+            }
             if (s.has("maxDownloadsPerPodcast")) {
                 preferences.setMaxDownloadsPerPodcast(s.optInt("maxDownloadsPerPodcast", 0).coerceIn(0, 30))
             }
@@ -414,6 +475,10 @@ class PodcastRepository(
             }
             if (s.has("bluetoothNextPrevSeeks")) {
                 preferences.setBluetoothNextPrevSeeks(s.optBoolean("bluetoothNextPrevSeeks", true))
+            }
+            if (s.has("textScale")) {
+                val scale = s.optDouble("textScale", 1.0)
+                if (scale.isFinite()) preferences.setTextScale(scale.toFloat())
             }
             if (s.has("appLanguage")) {
                 val lang = s.optString("appLanguage", "en")

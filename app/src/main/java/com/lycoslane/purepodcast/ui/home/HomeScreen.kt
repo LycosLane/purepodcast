@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -98,6 +99,7 @@ fun HomeScreen(
     onToggleDownloadWhenQueued: (Boolean) -> Unit,
     onToggleAddToQueueWhenDownloaded: (Boolean) -> Unit,
     onChangeAutoRemovePlayedDays: (Int) -> Unit,
+    onChangeTrashRetentionHours: (Int) -> Unit,
     onChangeMaxDownloadsPerPodcast: (Int) -> Unit,
     onChangeSmartRewind: (Int) -> Unit,
     onToggleAudioNormalization: (Boolean) -> Unit,
@@ -224,6 +226,7 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navigationBarsPadding()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 28.dp)
@@ -264,13 +267,51 @@ fun HomeScreen(
                     onCheckedChange = onToggleDownloadWhenQueued
                 )
                 Spacer(Modifier.height(12.dp))
+                val autoRemoveEnabled = settings.autoRemovePlayedDays >= 0
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_auto_remove_played),
+                    subtitle = stringResource(R.string.settings_auto_remove_played_sub),
+                    checked = autoRemoveEnabled,
+                    onCheckedChange = { enabled ->
+                        onChangeAutoRemovePlayedDays(if (enabled) 1 else -1)
+                    }
+                )
+                if (autoRemoveEnabled) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.settings_auto_remove_delay),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(0, 1, 3, 7).forEach { days ->
+                            val label = if (days == 0) {
+                                stringResource(R.string.auto_remove_immediately)
+                            } else {
+                                stringResource(R.string.auto_remove_days, days)
+                            }
+                            FilterChip(
+                                selected = settings.autoRemovePlayedDays == days,
+                                onClick = { onChangeAutoRemovePlayedDays(days) },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
                 Text(
-                    text = stringResource(R.string.settings_auto_remove_played),
+                    text = stringResource(R.string.settings_trash_retention),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    text = stringResource(R.string.settings_auto_remove_played_sub),
+                    text = stringResource(R.string.settings_trash_retention_sub),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -279,15 +320,15 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf(-1, 0, 1, 3, 7).forEach { days ->
-                        val label = when (days) {
-                            -1 -> stringResource(R.string.auto_remove_never)
-                            0 -> stringResource(R.string.auto_remove_immediately)
-                            else -> stringResource(R.string.auto_remove_days, days)
+                    listOf(0, 24, 48).forEach { hours ->
+                        val label = when (hours) {
+                            0 -> stringResource(R.string.trash_retention_immediate)
+                            24 -> stringResource(R.string.trash_retention_24h)
+                            else -> stringResource(R.string.trash_retention_48h)
                         }
                         FilterChip(
-                            selected = settings.autoRemovePlayedDays == days,
-                            onClick = { onChangeAutoRemovePlayedDays(days) },
+                            selected = settings.trashRetentionHours == hours,
+                            onClick = { onChangeTrashRetentionHours(hours) },
                             label = { Text(label) }
                         )
                     }
@@ -295,47 +336,49 @@ fun HomeScreen(
 
                 Spacer(Modifier.height(14.dp))
 
-                var sliderLimit by remember(settings.maxDownloadsPerPodcast) {
-                    mutableFloatStateOf(settings.maxDownloadsPerPodcast.toFloat())
-                }
-                val displayLimit = sliderLimit.roundToInt()
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                val isUnlimitedDownloads = settings.maxDownloadsPerPodcast == 0
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_max_downloads_unlimited_toggle),
+                    subtitle = stringResource(R.string.settings_max_downloads_sub),
+                    checked = isUnlimitedDownloads,
+                    onCheckedChange = { unlimited ->
+                        onChangeMaxDownloadsPerPodcast(if (unlimited) 0 else 5)
+                    }
+                )
+                if (!isUnlimitedDownloads) {
+                    var sliderLimit by remember(settings.maxDownloadsPerPodcast) {
+                        mutableFloatStateOf(settings.maxDownloadsPerPodcast.coerceIn(1, 30).toFloat())
+                    }
+                    val displayLimit = sliderLimit.roundToInt().coerceIn(1, 30)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             text = stringResource(R.string.settings_max_downloads),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = stringResource(R.string.settings_max_downloads_sub),
                             style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Text(
+                            text = stringResource(R.string.max_downloads_count, displayLimit),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
-                    Text(
-                        text = if (displayLimit == 0) {
-                            stringResource(R.string.max_downloads_unlimited)
-                        } else {
-                            stringResource(R.string.max_downloads_count, displayLimit)
+                    Slider(
+                        value = sliderLimit,
+                        onValueChange = { sliderLimit = it },
+                        onValueChangeFinished = {
+                            onChangeMaxDownloadsPerPodcast(sliderLimit.roundToInt().coerceIn(1, 30))
                         },
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
+                        valueRange = 1f..30f,
+                        steps = 28,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
-                Slider(
-                    value = sliderLimit,
-                    onValueChange = { sliderLimit = it },
-                    onValueChangeFinished = {
-                        onChangeMaxDownloadsPerPodcast(sliderLimit.roundToInt())
-                    },
-                    valueRange = 0f..30f,
-                    steps = 29,
-                    modifier = Modifier.fillMaxWidth()
-                )
 
                 Spacer(Modifier.height(14.dp))
                 HorizontalDivider()
