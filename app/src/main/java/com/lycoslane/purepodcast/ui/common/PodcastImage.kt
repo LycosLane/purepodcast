@@ -23,67 +23,137 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import com.lycoslane.purepodcast.core.network.BoundedInputStream
+import com.lycoslane.purepodcast.core.network.NetworkSecurity
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import java.io.File
 import java.net.HttpURLConnection
-import java.net.URL
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 private object NativeImageCache {
-    private val memoryCache = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+    private const val MAX_IMAGE_BYTES = 10L * 1024 * 1024
+    private const val MAX_DISK_CACHE_BYTES = 64L * 1024 * 1024
+    private const val FAILED_TTL_MS = 5 * 60_000L
+
+    private val cacheScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val inFlight = ConcurrentHashMap<String, Deferred<ImageBitmap?>>()
+    private val failedUrls = ConcurrentHashMap<String, Long>()
+
+    private val memoryCache = object : LruCache<String, ImageBitmap>(24 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: ImageBitmap): Int =
+            value.width * value.height * 4
     }
 
     suspend fun load(context: Context, url: String): ImageBitmap? {
-        if (url.isBlank()) return null
-        memoryCache.get(url)?.let { return it.asImageBitmap() }
+        if (url.isBlank() || !NetworkSecurity.isValidHttpUrl(url)) return null
+        memoryCache.get(url)?.let { return it }
 
-        return withContext(Dispatchers.IO) {
-            val cacheDir = File(context.cacheDir, "artwork").apply { mkdirs() }
-            val file = File(cacheDir, sha256(url))
+        val failedAt = failedUrls[url]
+        if (failedAt != null && System.currentTimeMillis() - failedAt < FAILED_TTL_MS) {
+            return null
+        }
 
-            val bitmap = if (file.exists() && file.length() > 0L) {
-                BitmapFactory.decodeFile(file.absolutePath)
-            } else {
-                downloadAndCache(url, file)
+        val deferred = inFlight.computeIfAbsent(url) {
+            cacheScope.async {
+                try {
+                    loadInternal(context.applicationContext, url)
+                } finally {
+                    inFlight.remove(url)
+                }
             }
+        }
+        return deferred.await()
+    }
 
-            if (bitmap != null) {
-                memoryCache.put(url, bitmap)
-                bitmap.asImageBitmap()
-            } else {
-                null
+    private fun loadInternal(appContext: Context, url: String): ImageBitmap? {
+        memoryCache.get(url)?.let { return it }
+        val cacheDir = File(appContext.cacheDir, "artwork").apply { mkdirs() }
+        val file = File(cacheDir, sha256(url))
+
+        val bitmap = if (file.exists() && file.length() > 0L) {
+            decodeSampledFile(file) ?: run {
+                file.delete()
+                downloadAndCache(url, cacheDir, file)
             }
+        } else {
+            downloadAndCache(url, cacheDir, file)
+        }
+
+        return if (bitmap != null) {
+            failedUrls.remove(url)
+            val imageBitmap = bitmap.asImageBitmap()
+            memoryCache.put(url, imageBitmap)
+            imageBitmap
+        } else {
+            failedUrls[url] = System.currentTimeMillis()
+            null
         }
     }
 
-    private fun downloadAndCache(url: String, target: File): Bitmap? {
+    private fun downloadAndCache(url: String, cacheDir: File, target: File): Bitmap? {
         var conn: HttpURLConnection? = null
+        val rawTemp = File(cacheDir, "${target.name}.${System.nanoTime()}.raw.tmp")
+        val compressedTemp = File(cacheDir, "${target.name}.${System.nanoTime()}.jpg.tmp")
         return try {
-            conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 8_000
-                readTimeout = 10_000
-                instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "PurePodcast/0.1 (Android)")
-            }
+            conn = NetworkSecurity.openValidatedConnection(
+                rawUrl = url,
+                connectTimeoutMs = 8_000,
+                readTimeoutMs = 10_000
+            )
             if (conn.responseCode !in 200..299) return null
-            val bytes = conn.inputStream.use { it.readBytes() }
-            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-            opts.inSampleSize = calculateInSampleSize(opts.outWidth, opts.outHeight, 512, 512)
-            opts.inJustDecodeBounds = false
-            val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+
+            BoundedInputStream(conn.inputStream, MAX_IMAGE_BYTES).use { input ->
+                rawTemp.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+
+            val decoded = decodeSampledFile(rawTemp) ?: return null
             runCatching {
-                target.outputStream().use { out ->
+                compressedTemp.outputStream().use { out ->
                     decoded.compress(Bitmap.CompressFormat.JPEG, 88, out)
+                }
+                if (compressedTemp.exists() && compressedTemp.length() > 0L) {
+                    compressedTemp.renameTo(target)
+                    trimDiskCacheIfNeeded(cacheDir)
                 }
             }
             decoded
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             null
         } finally {
+            rawTemp.delete()
+            compressedTemp.delete()
             conn?.disconnect()
+        }
+    }
+
+    private fun decodeSampledFile(file: File): Bitmap? {
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, opts)
+        if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
+        opts.inSampleSize = calculateInSampleSize(opts.outWidth, opts.outHeight, 512, 512)
+        opts.inJustDecodeBounds = false
+        return BitmapFactory.decodeFile(file.absolutePath, opts)
+    }
+
+    private fun trimDiskCacheIfNeeded(cacheDir: File) {
+        val files = cacheDir.listFiles()?.filter { it.isFile && !it.name.endsWith(".tmp") } ?: return
+        var total = files.sumOf { it.length() }
+        if (total <= MAX_DISK_CACHE_BYTES) return
+        val sorted = files.sortedBy { it.lastModified() }
+        for (f in sorted) {
+            if (total <= MAX_DISK_CACHE_BYTES * 3 / 4) break
+            val len = f.length()
+            if (f.delete()) total -= len
         }
     }
 

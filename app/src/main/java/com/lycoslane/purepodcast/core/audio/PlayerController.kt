@@ -4,23 +4,26 @@ import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.PodcastEntity
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
+import com.lycoslane.purepodcast.core.network.NetworkSecurity
 import com.lycoslane.purepodcast.core.preferences.AppPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 data class PlayerUiState(
@@ -45,7 +49,6 @@ class PlayerController(
     private val context: Context,
     private val preferences: AppPreferences
 ) {
-
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val dao = PurePodcastDatabase.getInstance(context).dao()
 
@@ -56,97 +59,154 @@ class PlayerController(
     private var controller: MediaController? = null
     private var progressJob: Job? = null
     private var sleepTimerJob: Job? = null
-    private var lastPausedAtMs: Long = 0L
+    private var pendingPlay: Pair<EpisodeEntity, PodcastEntity>? = null
+
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _state.update { it.copy(isPlaying = isPlaying) }
+            if (isPlaying) {
+                startProgressTicker()
+            } else {
+                progressJob?.cancel()
+                syncTiming()
+            }
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            syncTiming()
+            if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
+                progressJob?.cancel()
+            }
+        }
+
+        override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+            _state.update { it.copy(playbackSpeed = playbackParameters.speed) }
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val epId = mediaItem?.mediaId?.toLongOrNull() ?: return
+            syncFromEpisodeId(epId)
+        }
+    }
 
     fun connect() {
-        if (controllerFuture != null) return
+        if (controller != null || controllerFuture != null) return
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
         val future = MediaController.Builder(context, token).buildAsync()
         controllerFuture = future
         future.addListener({
-            val mc = runCatching { future.get() }.getOrNull() ?: return@addListener
+            val mc = runCatching { future.get() }.getOrNull()
+            if (mc == null) {
+                controllerFuture = null
+                return@addListener
+            }
             controller = mc
-            mc.addListener(object : Player.Listener {
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    if (!isPlaying) {
-                        lastPausedAtMs = System.currentTimeMillis()
-                    }
-                    _state.update { it.copy(isPlaying = isPlaying) }
-                }
-
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    syncTiming()
-                }
-            })
-            startProgressTicker()
+            mc.addListener(playerListener)
+            syncTiming()
+            mc.currentMediaItem?.mediaId?.toLongOrNull()?.let { syncFromEpisodeId(it) }
+            if (mc.isPlaying) {
+                startProgressTicker()
+            }
+            pendingPlay?.let { (ep, pod) ->
+                pendingPlay = null
+                playEpisode(ep, pod)
+            }
         }, ContextCompat.getMainExecutor(context))
     }
 
+    private fun syncFromEpisodeId(episodeId: Long) {
+        scope.launch(Dispatchers.IO) {
+            val withPodcast = dao.getEpisodeWithPodcast(episodeId) ?: return@launch
+            _state.update {
+                it.copy(
+                    currentEpisode = withPodcast.episode,
+                    currentPodcast = withPodcast.podcast
+                )
+            }
+        }
+    }
+
     fun playEpisode(episode: EpisodeEntity, podcast: PodcastEntity) {
-        val mc = controller ?: return
-        val localFile = episode.localFilePath?.let { File(it) }?.takeIf { it.exists() }
-        val mediaUri = if (localFile != null) Uri.fromFile(localFile) else Uri.parse(episode.audioUrl)
-
-        val artworkUri = (episode.artworkUrl.ifEmpty { podcast.artworkUrl }).takeIf { it.isNotEmpty() }
-            ?.let { Uri.parse(it) }
-
-        val metadata = MediaMetadata.Builder()
-            .setTitle(episode.title)
-            .setArtist(podcast.title)
-            .setArtworkUri(artworkUri)
-            .setExtras(Bundle().apply { putLong("podcastId", podcast.id) })
-            .build()
-
-        val mediaItem = MediaItem.Builder()
-            .setMediaId(episode.id.toString())
-            .setUri(mediaUri)
-            .setMediaMetadata(metadata)
-            .build()
-
-        val rewindMs = preferences.settings.value.smartRewindSeconds * 1000L
-        val startPos = if (episode.positionMs > 0L) {
-            (episode.positionMs - rewindMs).coerceAtLeast(0L)
-        } else {
-            0L
+        val mc = controller
+        if (mc == null) {
+            pendingPlay = episode to podcast
+            connect()
+            return
         }
 
-        mc.setMediaItem(mediaItem, startPos)
-        mc.playbackParameters = PlaybackParameters(podcast.playbackSpeed)
-        sendSkipSilenceCommand(mc, podcast.skipSilence)
-        mc.prepare()
-        mc.play()
+        scope.launch {
+            val freshEpisode = withContext(Dispatchers.IO) {
+                dao.getEpisode(episode.id) ?: episode
+            }
+            val localUri = withContext(Dispatchers.IO) {
+                freshEpisode.localFilePath?.let { path ->
+                    val f = File(path)
+                    if (f.exists()) Uri.fromFile(f) else null
+                }
+            }
+            val mediaUri = localUri ?: run {
+                if (!NetworkSecurity.isValidHttpUrl(freshEpisode.audioUrl)) return@launch
+                Uri.parse(freshEpisode.audioUrl)
+            }
 
-        _state.update {
-            it.copy(
-                currentEpisode = episode,
-                currentPodcast = podcast,
-                isPlaying = true,
-                positionMs = startPos,
-                durationMs = episode.durationMs,
-                playbackSpeed = podcast.playbackSpeed,
-                skipSilence = podcast.skipSilence
-            )
+            val artworkUri = freshEpisode.artworkUrl.ifEmpty { podcast.artworkUrl }
+                .takeIf { NetworkSecurity.isValidHttpUrl(it) }
+                ?.let { Uri.parse(it) }
+
+            val metadata = MediaMetadata.Builder()
+                .setTitle(freshEpisode.title)
+                .setArtist(podcast.title)
+                .setArtworkUri(artworkUri)
+                .build()
+
+            val mediaItem = MediaItem.Builder()
+                .setMediaId(freshEpisode.id.toString())
+                .setUri(mediaUri)
+                .setMediaMetadata(metadata)
+                .build()
+
+            val speed = podcast.playbackSpeed.coerceIn(0.75f, 3.0f)
+            val rewindMs = preferences.settings.value.smartRewindSeconds * 1000L
+            val startPos = if (freshEpisode.positionMs > 0L) {
+                (freshEpisode.positionMs - rewindMs).coerceAtLeast(0L)
+            } else {
+                0L
+            }
+
+            mc.setMediaItem(mediaItem, startPos)
+            mc.playbackParameters = PlaybackParameters(speed)
+            sendSkipSilenceCommand(mc, podcast.skipSilence)
+            mc.prepare()
+            mc.play()
+
+            _state.update {
+                it.copy(
+                    currentEpisode = freshEpisode,
+                    currentPodcast = podcast,
+                    playbackSpeed = speed,
+                    skipSilence = podcast.skipSilence,
+                    durationMs = freshEpisode.durationMs,
+                    positionMs = startPos,
+                    isPlaying = true
+                )
+            }
         }
     }
 
     fun togglePlayPause() {
         val mc = controller ?: return
-        if (mc.isPlaying) {
+        if (mc.playWhenReady && mc.playbackState != Player.STATE_ENDED) {
             mc.pause()
         } else {
-            val pausedDuration = System.currentTimeMillis() - lastPausedAtMs
-            val rewindMs = preferences.settings.value.smartRewindSeconds * 1000L
-            if (lastPausedAtMs > 0L && pausedDuration >= 30_000L && rewindMs > 0L) {
-                val target = (mc.currentPosition - rewindMs).coerceAtLeast(0L)
-                mc.seekTo(target)
-            }
             mc.play()
         }
     }
 
     fun seekTo(positionMs: Long) {
-        controller?.seekTo(positionMs.coerceAtLeast(0L))
-        _state.update { it.copy(positionMs = positionMs.coerceAtLeast(0L)) }
+        val mc = controller ?: return
+        val clamped = positionMs.coerceAtLeast(0L)
+        mc.seekTo(clamped)
+        _state.update { it.copy(positionMs = clamped) }
     }
 
     fun seekBy(deltaMs: Long) {
@@ -173,10 +233,7 @@ class PlayerController(
     }
 
     private fun sendSkipSilenceCommand(mc: MediaController, enabled: Boolean) {
-        val cmd = androidx.media3.session.SessionCommand(
-            PlaybackService.CMD_SET_SKIP_SILENCE,
-            Bundle.EMPTY
-        )
+        val cmd = SessionCommand(PlaybackService.CMD_SET_SKIP_SILENCE, Bundle.EMPTY)
         val args = Bundle().apply { putBoolean(PlaybackService.ARG_SKIP_SILENCE, enabled) }
         mc.sendCustomCommand(cmd, args)
     }
@@ -187,13 +244,14 @@ class PlayerController(
             _state.update { it.copy(sleepTimerRemainingMs = 0L) }
             return
         }
-        var remaining = minutes * 60_000L
-        _state.update { it.copy(sleepTimerRemainingMs = remaining) }
+        val endElapsed = SystemClock.elapsedRealtime() + minutes * 60_000L
+        _state.update { it.copy(sleepTimerRemainingMs = minutes * 60_000L) }
         sleepTimerJob = scope.launch {
-            while (remaining > 0L && isActive) {
-                delay(1_000L)
-                remaining = (remaining - 1_000L).coerceAtLeast(0L)
+            while (isActive) {
+                val remaining = (endElapsed - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
                 _state.update { it.copy(sleepTimerRemainingMs = remaining) }
+                if (remaining == 0L) break
+                delay(1_000L)
             }
             if (isActive) {
                 controller?.pause()
@@ -227,8 +285,10 @@ class PlayerController(
     fun release() {
         progressJob?.cancel()
         sleepTimerJob?.cancel()
+        controller?.removeListener(playerListener)
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controllerFuture = null
         controller = null
+        scope.cancel()
     }
 }

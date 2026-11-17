@@ -1,6 +1,5 @@
 package com.lycoslane.purepodcast.core.network
 
-import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
 import java.io.InputStream
 import java.util.Locale
@@ -11,25 +10,28 @@ data class OpmlFeedEntry(
 )
 
 object OpmlParser {
+    private const val MAX_OPML_BYTES = 2L * 1024 * 1024
+    private const val MAX_ENTRIES = 500
+
     fun parse(input: InputStream): List<OpmlFeedEntry> {
-        val parser = Xml.newPullParser().apply {
-            setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-            setInput(input, null)
+        val bounded = BoundedInputStream(input, MAX_OPML_BYTES)
+        val parser = NetworkSecurity.newSafeXmlPullParser().apply {
+            setInput(bounded, null)
         }
         val feeds = mutableListOf<OpmlFeedEntry>()
         var eventType = parser.eventType
-        while (eventType != XmlPullParser.END_DOCUMENT) {
+        while (eventType != XmlPullParser.END_DOCUMENT && feeds.size < MAX_ENTRIES) {
             if (eventType == XmlPullParser.START_TAG &&
                 parser.name.lowercase(Locale.ROOT) == "outline"
             ) {
-                val xmlUrl = parser.getAttributeValue(null, "xmlUrl")
+                val xmlUrl = (parser.getAttributeValue(null, "xmlUrl")
                     ?: parser.getAttributeValue(null, "xmlurl")
-                    ?: ""
-                if (xmlUrl.isNotBlank()) {
+                    ?: "").trim()
+                if (NetworkSecurity.isValidHttpUrl(xmlUrl)) {
                     val title = parser.getAttributeValue(null, "text")
                         ?: parser.getAttributeValue(null, "title")
                         ?: xmlUrl
-                    feeds += OpmlFeedEntry(title = title.trim(), feedUrl = xmlUrl.trim())
+                    feeds += OpmlFeedEntry(title = title.trim().take(512), feedUrl = xmlUrl)
                 }
             }
             eventType = parser.next()

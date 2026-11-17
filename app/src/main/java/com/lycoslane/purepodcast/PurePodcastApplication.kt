@@ -27,10 +27,14 @@ class PurePodcastApplication : Application() {
         super.onCreate()
         preferences = AppPreferences(this)
         repository = PodcastRepository(this, preferences)
-        playerController = PlayerController(this, preferences).apply { connect() }
-        FeedRefreshWorker.schedulePeriodic(this, preferences.settings.value.refreshIntervalHours)
+        playerController = PlayerController(this, preferences)
+        FeedRefreshWorker.schedulePeriodic(
+            context = this,
+            intervalHours = preferences.settings.value.refreshIntervalHours,
+            replaceExisting = false
+        )
         appScope.launch {
-            runCatching { repository.cleanupPlayedDownloads() }
+            runCatching { repository.cleanupPlayedDownloads(playerController.state.value.currentEpisode?.id) }
         }
     }
 

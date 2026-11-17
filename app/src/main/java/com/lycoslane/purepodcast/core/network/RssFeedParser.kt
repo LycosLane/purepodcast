@@ -1,15 +1,16 @@
 package com.lycoslane.purepodcast.core.network
 
-import android.util.Xml
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
+import java.io.IOException
 import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
-import java.util.TimeZone
 
 data class ParsedEpisode(
     val guid: String,
@@ -33,28 +34,32 @@ data class ParsedPodcastFeed(
 
 object RssFeedParser {
 
-    private val dateFormats = listOf(
-        "EEE, dd MMM yyyy HH:mm:ss Z",
-        "EEE, dd MMM yyyy HH:mm:ss zzz",
-        "EEE, d MMM yyyy HH:mm:ss Z",
-        "yyyy-MM-dd'T'HH:mm:ssXXX",
-        "yyyy-MM-dd'T'HH:mm:ss'Z'",
-        "yyyy-MM-dd HH:mm:ss"
+    private const val MAX_FEED_BYTES = 10L * 1024 * 1024
+    private const val MAX_EPISODES = 2_000
+    private const val MAX_TITLE_CHARS = 512
+    private const val MAX_DESC_CHARS = 65_536
+
+    private val zonedFormatters = listOf(
+        DateTimeFormatter.RFC_1123_DATE_TIME,
+        DateTimeFormatter.ISO_OFFSET_DATE_TIME,
+        DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm:ss Z", Locale.ENGLISH)
     )
+    private val localDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
 
     suspend fun fetchAndParse(feedUrl: String): ParsedPodcastFeed = withContext(Dispatchers.IO) {
-        val conn = (URL(feedUrl).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 20_000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "PurePodcast/0.1 (Android)")
-        }
+        val conn = NetworkSecurity.openValidatedConnection(
+            rawUrl = feedUrl,
+            connectTimeoutMs = 15_000,
+            readTimeoutMs = 20_000
+        )
         try {
             if (conn.responseCode !in 200..299) {
-                error("HTTP ${conn.responseCode} beim Laden des Feeds")
+                throw IOException("HTTP ${conn.responseCode}")
             }
-            conn.inputStream.use { stream ->
-                parseStream(feedUrl, stream)
+            val finalUrl = conn.url?.toString()?.takeIf { NetworkSecurity.isValidHttpUrl(it) } ?: feedUrl
+            BoundedInputStream(conn.inputStream, MAX_FEED_BYTES).use { stream ->
+                parseStream(finalUrl, stream)
             }
         } finally {
             conn.disconnect()
@@ -62,8 +67,7 @@ object RssFeedParser {
     }
 
     fun parseStream(feedUrl: String, input: InputStream): ParsedPodcastFeed {
-        val parser = Xml.newPullParser().apply {
-            setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+        val parser = NetworkSecurity.newSafeXmlPullParser().apply {
             setInput(input, null)
         }
 
@@ -87,7 +91,7 @@ object RssFeedParser {
         var epDurationMs = 0L
 
         var eventType = parser.eventType
-        while (eventType != XmlPullParser.END_DOCUMENT) {
+        while (eventType != XmlPullParser.END_DOCUMENT && episodes.size < MAX_EPISODES) {
             when (eventType) {
                 XmlPullParser.START_TAG -> {
                     val tag = parser.name.lowercase(Locale.ROOT)
@@ -106,38 +110,45 @@ object RssFeedParser {
                         }
                         !inItem && tag == "image" -> inImage = true
                         !inItem && tag == "itunes:image" -> {
-                            val href = parser.getAttributeValue(null, "href").orEmpty()
-                            if (href.isNotEmpty() && channelArtwork.isEmpty()) channelArtwork = href
+                            val href = parser.getAttributeValue(null, "href").orEmpty().trim()
+                            if (channelArtwork.isEmpty() && NetworkSecurity.isValidHttpUrl(href)) {
+                                channelArtwork = href
+                            }
                         }
                         inItem -> when (tag) {
-                            "title" -> epTitle = parser.nextText().trim()
-                            "guid" -> epGuid = parser.nextText().trim()
+                            "title" -> epTitle = safeNextText(parser).take(MAX_TITLE_CHARS)
+                            "guid" -> epGuid = safeNextText(parser).take(1024)
                             "description", "itunes:summary" -> {
-                                val txt = parser.nextText().trim()
+                                val txt = safeNextText(parser).take(MAX_DESC_CHARS)
                                 if (epDescription.isEmpty()) epDescription = txt
                             }
-                            "content:encoded" -> epContentEncoded = parser.nextText().trim()
-                            "pubdate" -> epPubDateMs = parseDateMs(parser.nextText().trim())
-                            "itunes:duration" -> epDurationMs = parseDurationMs(parser.nextText().trim())
+                            "content:encoded" -> epContentEncoded = safeNextText(parser).take(MAX_DESC_CHARS)
+                            "pubdate" -> epPubDateMs = parseDateMs(safeNextText(parser))
+                            "itunes:duration" -> epDurationMs = parseDurationMs(safeNextText(parser))
                             "itunes:image" -> {
-                                val href = parser.getAttributeValue(null, "href").orEmpty()
-                                if (href.isNotEmpty()) epArtwork = href
+                                val href = parser.getAttributeValue(null, "href").orEmpty().trim()
+                                if (NetworkSecurity.isValidHttpUrl(href)) epArtwork = href
                             }
                             "enclosure" -> {
-                                val urlAttr = parser.getAttributeValue(null, "url").orEmpty()
+                                val urlAttr = parser.getAttributeValue(null, "url").orEmpty().trim()
                                 val typeAttr = parser.getAttributeValue(null, "type").orEmpty()
                                 val lenAttr = parser.getAttributeValue(null, "length").orEmpty()
-                                if (urlAttr.isNotEmpty() && (typeAttr.isEmpty() || typeAttr.startsWith("audio") || typeAttr.contains("octet-stream"))) {
+                                if (NetworkSecurity.isValidHttpUrl(urlAttr) &&
+                                    (typeAttr.isEmpty() || typeAttr.startsWith("audio") || typeAttr.contains("octet-stream"))
+                                ) {
                                     epAudioUrl = urlAttr
-                                    epAudioSize = lenAttr.toLongOrNull() ?: 0L
+                                    epAudioSize = (lenAttr.toLongOrNull() ?: 0L).coerceAtLeast(0L)
                                 }
                             }
                         }
                         !inItem -> when (tag) {
-                            "title" -> if (!inImage && channelTitle.isEmpty()) channelTitle = parser.nextText().trim()
-                            "itunes:author", "managingeditor" -> if (channelAuthor.isEmpty()) channelAuthor = parser.nextText().trim()
-                            "description", "itunes:summary" -> if (channelDescription.isEmpty()) channelDescription = parser.nextText().trim()
-                            "url" -> if (inImage && channelArtwork.isEmpty()) channelArtwork = parser.nextText().trim()
+                            "title" -> if (!inImage && channelTitle.isEmpty()) channelTitle = safeNextText(parser).take(MAX_TITLE_CHARS)
+                            "itunes:author", "managingeditor" -> if (channelAuthor.isEmpty()) channelAuthor = safeNextText(parser).take(256)
+                            "description", "itunes:summary" -> if (channelDescription.isEmpty()) channelDescription = safeNextText(parser).take(MAX_DESC_CHARS)
+                            "url" -> if (inImage && channelArtwork.isEmpty()) {
+                                val u = safeNextText(parser)
+                                if (NetworkSecurity.isValidHttpUrl(u)) channelArtwork = u
+                            }
                         }
                     }
                 }
@@ -148,7 +159,7 @@ object RssFeedParser {
                         if (epAudioUrl.isNotEmpty()) {
                             episodes += ParsedEpisode(
                                 guid = epGuid.ifEmpty { epAudioUrl },
-                                title = epTitle.ifEmpty { "Unbenannte Episode" },
+                                title = epTitle.ifEmpty { "Episode" },
                                 descriptionHtml = epContentEncoded.ifEmpty { epDescription },
                                 audioUrl = epAudioUrl,
                                 artworkUrl = epArtwork.ifEmpty { channelArtwork },
@@ -175,29 +186,31 @@ object RssFeedParser {
         )
     }
 
+    private fun safeNextText(parser: XmlPullParser): String {
+        return runCatching { parser.nextText().trim() }.getOrDefault("")
+    }
+
     private fun parseDateMs(raw: String): Long {
         if (raw.isEmpty()) return 0L
-        for (pattern in dateFormats) {
-            try {
-                val sdf = SimpleDateFormat(pattern, Locale.ENGLISH).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }
-                val parsed = sdf.parse(raw)
-                if (parsed != null) return parsed.time
-            } catch (_: Exception) {
-            }
+        for (formatter in zonedFormatters) {
+            val ms = runCatching { ZonedDateTime.parse(raw, formatter).toInstant().toEpochMilli() }.getOrNull()
+            if (ms != null) return ms
         }
-        return 0L
+        val instantMs = runCatching { Instant.parse(raw).toEpochMilli() }.getOrNull()
+        if (instantMs != null) return instantMs
+        return runCatching {
+            LocalDateTime.parse(raw, localDateTimeFormatter).toInstant(ZoneOffset.UTC).toEpochMilli()
+        }.getOrDefault(0L)
     }
 
     private fun parseDurationMs(raw: String): Long {
         if (raw.isEmpty()) return 0L
-        raw.toLongOrNull()?.let { seconds -> return seconds * 1000L }
+        raw.toLongOrNull()?.let { seconds -> return (seconds * 1000L).coerceAtLeast(0L) }
         val parts = raw.split(":").mapNotNull { it.trim().toLongOrNull() }
         return when (parts.size) {
             3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000L
             2 -> (parts[0] * 60 + parts[1]) * 1000L
             else -> 0L
-        }
+        }.coerceAtLeast(0L)
     }
 }

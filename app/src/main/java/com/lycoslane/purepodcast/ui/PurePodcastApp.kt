@@ -2,17 +2,23 @@ package com.lycoslane.purepodcast.ui
 
 import android.net.Uri
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,7 +26,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -28,6 +36,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.lycoslane.purepodcast.PurePodcastApplication
+import com.lycoslane.purepodcast.R
+import com.lycoslane.purepodcast.core.download.FeedRefreshWorker
 import com.lycoslane.purepodcast.core.network.PodcastSearchResult
 import com.lycoslane.purepodcast.ui.detail.PodcastDetailScreen
 import com.lycoslane.purepodcast.ui.home.HomeScreen
@@ -35,13 +45,23 @@ import com.lycoslane.purepodcast.ui.player.FullPlayerSheet
 import com.lycoslane.purepodcast.ui.player.MiniPlayer
 import com.lycoslane.purepodcast.ui.queue.QueueScreen
 import com.lycoslane.purepodcast.ui.search.SearchScreen
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+
+private const val MAX_BACKUP_BYTES = 10 * 1024 * 1024
 
 @Composable
 fun PurePodcastApp(app: PurePodcastApplication) {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        app.playerController.connect()
+    }
 
     val podcasts by app.repository.observePodcasts().collectAsStateWithLifecycle(initialValue = emptyList())
     val queue by app.repository.observeQueue().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -59,8 +79,19 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    fun navigateTopLevel(route: String) {
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     Scaffold(
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             Column {
                 MiniPlayer(
@@ -72,33 +103,31 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = currentRoute == "home",
-                        onClick = {
-                            navController.navigate("home") {
-                                popUpTo("home") { inclusive = true }
-                            }
-                        },
+                        onClick = { navigateTopLevel("home") },
                         icon = { Icon(Icons.Default.Podcasts, null) },
-                        label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.nav_podcasts)) }
+                        label = { Text(stringResource(R.string.nav_podcasts)) }
                     )
                     NavigationBarItem(
                         selected = currentRoute == "queue",
-                        onClick = {
-                            navController.navigate("queue") {
-                                popUpTo("home")
+                        onClick = { navigateTopLevel("queue") },
+                        icon = {
+                            BadgedBox(
+                                badge = {
+                                    if (queue.isNotEmpty()) {
+                                        Badge { Text(queue.size.toString()) }
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.QueueMusic, null)
                             }
                         },
-                        icon = { Icon(Icons.Default.QueueMusic, null) },
-                        label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.nav_queue)) }
+                        label = { Text(stringResource(R.string.nav_queue)) }
                     )
                     NavigationBarItem(
                         selected = currentRoute == "search",
-                        onClick = {
-                            navController.navigate("search") {
-                                popUpTo("home")
-                            }
-                        },
+                        onClick = { navigateTopLevel("search") },
                         icon = { Icon(Icons.Default.Explore, null) },
-                        label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.nav_discover)) }
+                        label = { Text(stringResource(R.string.nav_discover)) }
                     )
                 }
             }
@@ -118,22 +147,20 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onRefreshAll = {
                         scope.launch {
                             isRefreshing = true
-                            app.repository.refreshAllPodcasts()
-                            isRefreshing = false
+                            try {
+                                app.repository.refreshAllPodcasts()
+                            } finally {
+                                isRefreshing = false
+                            }
                         }
                     },
                     onPodcastClick = { podcastId ->
                         navController.navigate("detail/$podcastId")
                     },
-                    onAddClick = {
-                        navController.navigate("search") {
-                            popUpTo("home")
-                        }
-                    },
+                    onAddClick = { navigateTopLevel("search") },
                     onChangeRefreshInterval = { hours ->
                         app.preferences.setRefreshIntervalHours(hours)
-                        com.lycoslane.purepodcast.core.download.FeedRefreshWorker
-                            .schedulePeriodic(context, hours)
+                        FeedRefreshWorker.schedulePeriodic(context, hours, replaceExisting = true)
                     },
                     onToggleWifiOnly = { wifiOnly ->
                         app.preferences.setWifiOnlyDownloads(wifiOnly)
@@ -149,7 +176,9 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     },
                     onChangeAutoRemovePlayedDays = { days ->
                         app.preferences.setAutoRemovePlayedDays(days)
-                        scope.launch { app.repository.cleanupPlayedDownloads() }
+                        scope.launch {
+                            app.repository.cleanupPlayedDownloads(playerState.currentEpisode?.id)
+                        }
                     },
                     onChangeSmartRewind = { secs ->
                         app.preferences.setSmartRewindSeconds(secs)
@@ -164,26 +193,44 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         scope.launch {
                             runCatching {
                                 val json = app.repository.exportBackupJson()
-                                context.contentResolver.openOutputStream(uri)?.use { out ->
-                                    out.write(json.toByteArray(Charsets.UTF_8))
+                                withContext(Dispatchers.IO) {
+                                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                                        out.write(json.toByteArray(Charsets.UTF_8))
+                                    } ?: error("Cannot open output")
                                 }
                             }.onSuccess {
-                                backupStatus = context.getString(com.lycoslane.purepodcast.R.string.backup_exported)
-                            }.onFailure {
-                                backupStatus = context.getString(com.lycoslane.purepodcast.R.string.backup_failed, it.localizedMessage ?: "")
+                                backupStatus = context.getString(R.string.backup_exported)
+                            }.onFailure { err ->
+                                backupStatus = context.getString(R.string.backup_failed, err.javaClass.simpleName)
                             }
                         }
                     },
                     onImportBackupUri = { uri ->
                         scope.launch {
                             runCatching {
-                                val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                                    ?: error("Empty file")
+                                val text = withContext(Dispatchers.IO) {
+                                    context.contentResolver.openInputStream(uri)?.use { input ->
+                                        val buffer = ByteArray(8192)
+                                        val out = ByteArrayOutputStream()
+                                        var total = 0
+                                        while (true) {
+                                            val read = input.read(buffer)
+                                            if (read <= 0) break
+                                            total += read
+                                            if (total > MAX_BACKUP_BYTES) {
+                                                error("Backup too large")
+                                            }
+                                            out.write(buffer, 0, read)
+                                        }
+                                        out.toString(Charsets.UTF_8.name())
+                                    }
+                                }?.takeIf { it.isNotBlank() }
+                                    ?: error(context.getString(R.string.backup_empty_file))
                                 app.repository.importBackupJson(text)
                             }.onSuccess { count ->
-                                backupStatus = context.getString(com.lycoslane.purepodcast.R.string.backup_imported, count)
-                            }.onFailure {
-                                backupStatus = context.getString(com.lycoslane.purepodcast.R.string.backup_failed, it.localizedMessage ?: "")
+                                backupStatus = context.getString(R.string.backup_imported, count)
+                            }.onFailure { err ->
+                                backupStatus = context.getString(R.string.backup_failed, err.javaClass.simpleName)
                             }
                         }
                     }
@@ -210,8 +257,11 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onRefresh = {
                         scope.launch {
                             isRefreshingDetail = true
-                            runCatching { app.repository.refreshPodcast(podcastId) }
-                            isRefreshingDetail = false
+                            try {
+                                runCatching { app.repository.refreshPodcast(podcastId) }
+                            } finally {
+                                isRefreshingDetail = false
+                            }
                         }
                     },
                     onToggleSort = { asc -> scope.launch { app.repository.toggleSortAscending(podcastId, asc) } },
@@ -226,14 +276,29 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         podcast?.let { pod -> app.playerController.playEpisode(ep, pod) }
                     },
                     onDownloadEpisode = { ep -> scope.launch { app.repository.enqueueDownload(ep.id) } },
-                    onDeleteDownload = { ep -> scope.launch { app.repository.deleteDownload(ep.id) } },
-                    onAddToQueue = { ep -> scope.launch { app.repository.addToQueue(ep.id) } },
-                    onTogglePlayed = { ep -> scope.launch { app.repository.togglePlayed(ep.id, !ep.isPlayed) } },
+                    onDeleteDownload = { ep ->
+                        scope.launch {
+                            app.repository.deleteDownload(ep.id, playerState.currentEpisode?.id)
+                        }
+                    },
+                    onAddToQueue = { ep ->
+                        scope.launch {
+                            app.repository.addToQueue(ep.id)
+                            snackbarHostState.showSnackbar(context.getString(R.string.snackbar_added_to_queue))
+                        }
+                    },
+                    onTogglePlayed = { ep ->
+                        scope.launch {
+                            app.repository.togglePlayed(ep.id, !ep.isPlayed, playerState.currentEpisode?.id)
+                        }
+                    },
                     onDownloadNewerFrom = { ep ->
                         scope.launch { app.repository.downloadNewerFromEpisode(podcastId, ep.pubDateMs) }
                     },
                     onCleanupOlderThan = { ep ->
-                        scope.launch { app.repository.cleanupOlderThan(podcastId, ep.pubDateMs) }
+                        scope.launch {
+                            app.repository.cleanupOlderThan(podcastId, ep.pubDateMs, playerState.currentEpisode?.id)
+                        }
                     }
                 )
             }
@@ -260,44 +325,49 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         scope.launch {
                             isSearching = true
                             searchStatus = null
-                            searchResults = runCatching { app.repository.searchPodcasts(q) }
-                                .getOrElse {
-                                    searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_search_failed, it.localizedMessage ?: "")
-                                    emptyList()
-                                }
-                            isSearching = false
+                            try {
+                                searchResults = runCatching { app.repository.searchPodcasts(q) }
+                                    .getOrElse { err ->
+                                        searchStatus = context.getString(R.string.status_search_failed, err.javaClass.simpleName)
+                                        emptyList()
+                                    }
+                            } finally {
+                                isSearching = false
+                            }
                         }
                     },
                     onSubscribeFeedUrl = { url ->
                         scope.launch {
-                            searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_subscribing)
+                            searchStatus = context.getString(R.string.status_subscribing)
                             runCatching { app.repository.subscribeByFeedUrl(url) }
                                 .onSuccess { podcastId ->
-                                    searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_subscribed)
+                                    searchStatus = context.getString(R.string.status_subscribed)
                                     navController.navigate("detail/$podcastId")
                                 }
-                                .onFailure {
-                                    searchStatus = it.localizedMessage
+                                .onFailure { err ->
+                                    searchStatus = context.getString(R.string.status_search_failed, err.javaClass.simpleName)
                                 }
                         }
                     },
                     onUnsubscribeById = { podcastId, title ->
                         scope.launch {
                             app.repository.unsubscribePodcast(podcastId)
-                            searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_unsubscribed, title)
+                            searchStatus = context.getString(R.string.status_unsubscribed, title)
                         }
                     },
                     onImportOpmlUri = { uri: Uri ->
                         scope.launch {
-                            searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_opml_importing)
+                            searchStatus = context.getString(R.string.status_opml_importing)
                             runCatching {
-                                context.contentResolver.openInputStream(uri)?.use { stream ->
-                                    app.repository.importOpml(stream)
-                                } ?: 0
+                                withContext(Dispatchers.IO) {
+                                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                                        app.repository.importOpml(stream)
+                                    } ?: 0
+                                }
                             }.onSuccess { count ->
-                                searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_opml_imported, count)
-                            }.onFailure {
-                                searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_opml_failed, it.localizedMessage ?: "")
+                                searchStatus = context.getString(R.string.status_opml_imported, count)
+                            }.onFailure { err ->
+                                searchStatus = context.getString(R.string.status_opml_failed, err.javaClass.simpleName)
                             }
                         }
                     }

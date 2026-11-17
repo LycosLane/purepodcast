@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Relation
+import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
@@ -56,6 +57,22 @@ interface PurePodcastDao {
     @Update
     suspend fun updatePodcast(podcast: PodcastEntity)
 
+    @Query(
+        """
+        UPDATE podcasts
+        SET title = :title, author = :author, description = :description, artworkUrl = :artworkUrl, lastRefreshedMs = :lastRefreshedMs
+        WHERE id = :podcastId
+        """
+    )
+    suspend fun updatePodcastMetadata(
+        podcastId: Long,
+        title: String,
+        author: String,
+        description: String,
+        artworkUrl: String,
+        lastRefreshedMs: Long
+    )
+
     @Query("DELETE FROM podcasts WHERE id = :podcastId")
     suspend fun deletePodcast(podcastId: Long)
 
@@ -79,6 +96,9 @@ interface PurePodcastDao {
     @Query("SELECT * FROM episodes WHERE podcastId = :podcastId ORDER BY pubDateMs ASC")
     fun observeEpisodesAsc(podcastId: Long): Flow<List<EpisodeEntity>>
 
+    @Query("SELECT id FROM episodes WHERE podcastId = :podcastId")
+    suspend fun getEpisodeIdsForPodcast(podcastId: Long): List<Long>
+
     @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND (isPlayed = 1 OR positionMs > 0)")
     suspend fun getEpisodesWithProgress(podcastId: Long): List<EpisodeEntity>
 
@@ -88,6 +108,7 @@ interface PurePodcastDao {
     @Query("SELECT * FROM episodes WHERE id = :episodeId")
     suspend fun getEpisode(episodeId: Long): EpisodeEntity?
 
+    @Transaction
     @Query("SELECT * FROM episodes WHERE id = :episodeId")
     suspend fun getEpisodeWithPodcast(episodeId: Long): EpisodeWithPodcast?
 
@@ -100,13 +121,21 @@ interface PurePodcastDao {
     @Query("UPDATE episodes SET isPlayed = :isPlayed, playedAtMs = :playedAtMs WHERE id = :episodeId")
     suspend fun setPlayed(episodeId: Long, isPlayed: Boolean, playedAtMs: Long)
 
-    @Query("SELECT * FROM episodes WHERE isPlayed = 1 AND localFilePath IS NOT NULL")
+    @Query(
+        """
+        SELECT * FROM episodes
+        WHERE isPlayed = 1 AND downloadState = 'DOWNLOADED' AND localFilePath IS NOT NULL
+          AND id NOT IN (SELECT episodeId FROM queue_items)
+        """
+    )
     suspend fun getAllPlayedDownloads(): List<EpisodeEntity>
 
     @Query(
         """
         SELECT * FROM episodes
-        WHERE isPlayed = 1 AND localFilePath IS NOT NULL AND playedAtMs > 0 AND playedAtMs <= :cutoffMs
+        WHERE isPlayed = 1 AND downloadState = 'DOWNLOADED' AND localFilePath IS NOT NULL
+          AND playedAtMs > 0 AND playedAtMs <= :cutoffMs
+          AND id NOT IN (SELECT episodeId FROM queue_items)
         """
     )
     suspend fun getPlayedDownloadsOlderThan(cutoffMs: Long): List<EpisodeEntity>
@@ -144,14 +173,15 @@ interface PurePodcastDao {
     @Query(
         """
         UPDATE episodes
-        SET isPlayed = 1
+        SET isPlayed = 1, playedAtMs = :playedAtMs
         WHERE podcastId = :podcastId AND pubDateMs < :beforePubDateMs
         """
     )
-    suspend fun markOlderAsPlayed(podcastId: Long, beforePubDateMs: Long)
+    suspend fun markOlderAsPlayed(podcastId: Long, beforePubDateMs: Long, playedAtMs: Long)
 
     // --- Queue ---
 
+    @Transaction
     @Query(
         """
         SELECT e.* FROM episodes e
@@ -166,6 +196,12 @@ interface PurePodcastDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertQueueItem(item: QueueItemEntity): Long
+
+    @Transaction
+    suspend fun enqueueToQueue(episodeId: Long) {
+        val nextOrder = getMaxQueueOrder() + 1
+        insertQueueItem(QueueItemEntity(episodeId = episodeId, sortOrder = nextOrder))
+    }
 
     @Query("DELETE FROM queue_items WHERE episodeId = :episodeId")
     suspend fun removeFromQueue(episodeId: Long)

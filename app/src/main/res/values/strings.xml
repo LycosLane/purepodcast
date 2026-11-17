@@ -99,13 +99,26 @@
     <string name="player_sleep">Sleep</string>
     <string name="player_notes">Notes</string>
     <string name="sleep_off">Off</string>
+    <string name="sleep_minutes_short">%1$dm</string>
+    <string name="cd_rewind_10">Rewind 10 seconds</string>
+    <string name="cd_forward_30">Forward 30 seconds</string>
+
+    <!-- Download & Action Feedback -->
+    <string name="cd_downloaded">Downloaded</string>
+    <string name="cd_download">Download</string>
+    <string name="cd_download_failed">Download failed, tap to retry</string>
+    <string name="snackbar_added_to_queue">Added to queue</string>
+    <string name="dialog_clear_queue_title">Clear queue?</string>
+    <string name="dialog_clear_queue_body">All episodes will be removed from your queue.</string>
+    <string name="backup_empty_file">Empty file</string>
+    <string name="search_no_results">No podcasts found</string>
 
     <!-- Auto-remove & Language -->
     <string name="settings_auto_remove_played">Auto-remove listened downloads</string>
     <string name="settings_auto_remove_played_sub">Delete downloaded audio after finishing an episode.</string>
     <string name="auto_remove_never">Keep</string>
     <string name="auto_remove_immediately">Immediately</string>
-    <string name="auto_remove_days">%dd</string>
+    <string name="auto_remove_days">%1$dd</string>
     <string name="settings_language">Language</string>
     <string name="settings_language_en">English</string>
     <string name="settings_language_de">Deutsch</string>

@@ -1,6 +1,7 @@
 package com.lycoslane.purepodcast.core.download
 
 import android.content.Context
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -9,13 +10,17 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.lycoslane.purepodcast.PurePodcastApplication
 import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
+import com.lycoslane.purepodcast.core.network.BoundedInputStream
+import com.lycoslane.purepodcast.core.network.NetworkSecurity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
-import java.net.URL
+import java.util.concurrent.TimeUnit
 
 class EpisodeDownloadWorker(
     appContext: Context,
@@ -38,22 +43,27 @@ class EpisodeDownloadWorker(
 
         var conn: HttpURLConnection? = null
         try {
-            conn = (URL(episode.audioUrl).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 15_000
-                readTimeout = 30_000
-                instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "PurePodcast/0.1 (Android)")
-            }
-            if (conn.responseCode !in 200..299) {
+            conn = NetworkSecurity.openValidatedConnection(
+                rawUrl = episode.audioUrl,
+                connectTimeoutMs = 15_000,
+                readTimeoutMs = 30_000
+            )
+            val code = conn.responseCode
+            if (code !in 200..299) {
                 dao.updateDownloadState(episodeId, DownloadState.FAILED, 0, null)
-                return@withContext Result.retry()
+                val isPermanent4xx = code in 400..499 && code != 408 && code != 429
+                return@withContext if (isPermanent4xx || runAttemptCount >= 3) Result.failure() else Result.retry()
             }
 
             val totalBytes = conn.contentLengthLong.takeIf { it > 0 } ?: episode.fileSizeBytes
+            if (totalBytes > MAX_EPISODE_BYTES) {
+                dao.updateDownloadState(episodeId, DownloadState.FAILED, 0, null)
+                return@withContext Result.failure()
+            }
             var downloaded = 0L
             var lastReportedPct = -1
 
-            conn.inputStream.use { input ->
+            BoundedInputStream(conn.inputStream, MAX_EPISODE_BYTES).use { input ->
                 tempFile.outputStream().use { output ->
                     val buffer = ByteArray(16 * 1024)
                     while (true) {
@@ -89,22 +99,18 @@ class EpisodeDownloadWorker(
                 progress = 100,
                 localPath = targetFile.absolutePath
             )
-            if (com.lycoslane.purepodcast.core.preferences.AppPreferences(applicationContext)
-                    .settings.value.addToQueueWhenDownloaded
-            ) {
-                val nextOrder = dao.getMaxQueueOrder() + 1
-                dao.insertQueueItem(
-                    com.lycoslane.purepodcast.core.database.QueueItemEntity(
-                        episodeId = episodeId,
-                        sortOrder = nextOrder
-                    )
-                )
+            val prefs = (applicationContext as PurePodcastApplication).preferences
+            if (prefs.settings.value.addToQueueWhenDownloaded) {
+                dao.enqueueToQueue(episodeId)
             }
             Result.success()
+        } catch (e: CancellationException) {
+            tempFile.delete()
+            throw e
         } catch (_: Exception) {
             tempFile.delete()
             dao.updateDownloadState(episodeId, DownloadState.FAILED, 0, null)
-            Result.retry()
+            if (runAttemptCount >= 3) Result.failure() else Result.retry()
         } finally {
             conn?.disconnect()
         }
@@ -112,6 +118,9 @@ class EpisodeDownloadWorker(
 
     companion object {
         private const val KEY_EPISODE_ID = "episode_id"
+        private const val MAX_EPISODE_BYTES = 1536L * 1024 * 1024 // 1.5 GiB
+
+        fun uniqueName(episodeId: Long) = "episode_download_$episodeId"
 
         fun enqueue(context: Context, episodeId: Long, wifiOnly: Boolean = false) {
             val constraints = Constraints.Builder()
@@ -121,15 +130,20 @@ class EpisodeDownloadWorker(
 
             val request = OneTimeWorkRequestBuilder<EpisodeDownloadWorker>()
                 .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .setInputData(Data.Builder().putLong(KEY_EPISODE_ID, episodeId).build())
                 .addTag("download_$episodeId")
                 .build()
 
             WorkManager.getInstance(context).enqueueUniqueWork(
-                "episode_download_$episodeId",
+                uniqueName(episodeId),
                 ExistingWorkPolicy.KEEP,
                 request
             )
+        }
+
+        fun cancel(context: Context, episodeId: Long) {
+            WorkManager.getInstance(context).cancelUniqueWork(uniqueName(episodeId))
         }
     }
 }

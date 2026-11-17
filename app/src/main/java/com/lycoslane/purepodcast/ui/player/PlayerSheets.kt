@@ -4,10 +4,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +38,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,13 +48,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.PlayerUiState
 import com.lycoslane.purepodcast.ui.common.PodcastImage
 import com.lycoslane.purepodcast.ui.common.formatDuration
 import com.lycoslane.purepodcast.ui.common.htmlToPlainText
+import java.util.Locale
 
 @Composable
 fun MiniPlayer(
@@ -87,7 +97,7 @@ fun MiniPlayer(
             ) {
                 PodcastImage(
                     url = ep.artworkUrl.ifEmpty { pod.artworkUrl },
-                    contentDescription = ep.title,
+                    contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(44.dp)
@@ -114,18 +124,23 @@ fun MiniPlayer(
                 IconButton(onClick = onTogglePlayPause) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.isPlaying) "Pause" else "Play"
+                        contentDescription = stringResource(
+                            if (state.isPlaying) R.string.player_pause else R.string.player_play
+                        )
                     )
                 }
                 IconButton(onClick = onForward30) {
-                    Icon(Icons.Default.Forward30, contentDescription = "+30s")
+                    Icon(
+                        Icons.Default.Forward30,
+                        contentDescription = stringResource(R.string.cd_forward_30)
+                    )
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun FullPlayerSheet(
     state: PlayerUiState,
@@ -140,22 +155,32 @@ fun FullPlayerSheet(
     val ep = state.currentEpisode ?: return
     val pod = state.currentPodcast ?: return
 
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showNotes by remember { mutableStateOf(false) }
     var showSpeedRow by remember { mutableStateOf(false) }
     var showSleepRow by remember { mutableStateOf(false) }
+    var scrubPos by remember(ep.id) { mutableStateOf<Float?>(null) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    val plainNotes = remember(ep.descriptionHtml) {
+        htmlToPlainText(ep.descriptionHtml)
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
+                .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             PodcastImage(
                 url = ep.artworkUrl.ifEmpty { pod.artworkUrl },
-                contentDescription = ep.title,
+                contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(210.dp)
@@ -169,6 +194,7 @@ fun FullPlayerSheet(
                 text = ep.title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -176,24 +202,40 @@ fun FullPlayerSheet(
             Text(
                 text = pod.title,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
 
             Spacer(Modifier.height(16.dp))
 
             val maxDur = state.durationMs.coerceAtLeast(1L).toFloat()
+            val displayPosMs = scrubPos?.toLong()
+                ?: state.positionMs.coerceIn(0L, state.durationMs.coerceAtLeast(0L))
+            val posFormatted = formatDuration(displayPosMs)
+            val durFormatted = formatDuration(state.durationMs)
+
             Slider(
-                value = state.positionMs.coerceIn(0L, state.durationMs.coerceAtLeast(0L)).toFloat(),
-                onValueChange = { onSeekTo(it.toLong()) },
+                value = displayPosMs.toFloat(),
+                onValueChange = { scrubPos = it },
+                onValueChangeFinished = {
+                    scrubPos?.let { target ->
+                        onSeekTo(target.toLong())
+                        scrubPos = null
+                    }
+                },
                 valueRange = 0f..maxDur,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { stateDescription = "$posFormatted / $durFormatted" }
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(formatDuration(state.positionMs), style = MaterialTheme.typography.labelSmall)
-                Text(formatDuration(state.durationMs), style = MaterialTheme.typography.labelSmall)
+                Text(posFormatted, style = MaterialTheme.typography.labelSmall)
+                Text(durFormatted, style = MaterialTheme.typography.labelSmall)
             }
 
             Spacer(Modifier.height(12.dp))
@@ -203,7 +245,11 @@ fun FullPlayerSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = { onSeekBy(-10_000L) }, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Default.Replay10, contentDescription = "-10s", modifier = Modifier.size(32.dp))
+                    Icon(
+                        Icons.Default.Replay10,
+                        contentDescription = stringResource(R.string.cd_rewind_10),
+                        modifier = Modifier.size(32.dp)
+                    )
                 }
                 FilledIconButton(
                     onClick = onTogglePlayPause,
@@ -211,32 +257,38 @@ fun FullPlayerSheet(
                 ) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.isPlaying) "Pause" else "Play",
+                        contentDescription = stringResource(
+                            if (state.isPlaying) R.string.player_pause else R.string.player_play
+                        ),
                         modifier = Modifier.size(34.dp)
                     )
                 }
                 IconButton(onClick = { onSeekBy(30_000L) }, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Default.Forward30, contentDescription = "+30s", modifier = Modifier.size(32.dp))
+                    Icon(
+                        Icons.Default.Forward30,
+                        contentDescription = stringResource(R.string.cd_forward_30),
+                        modifier = Modifier.size(32.dp)
+                    )
                 }
             }
 
             Spacer(Modifier.height(18.dp))
 
-            // Quick feature toggles (Speed, Silence-Skip, Sleep Timer, Show Notes)
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 FilterChip(
                     selected = showSpeedRow,
                     onClick = { showSpeedRow = !showSpeedRow; showSleepRow = false },
-                    label = { Text("${state.playbackSpeed}x") },
+                    label = { Text(String.format(Locale.getDefault(), "%.1fx", state.playbackSpeed)) },
                     leadingIcon = { Icon(Icons.Default.Speed, null, modifier = Modifier.size(16.dp)) }
                 )
                 FilterChip(
                     selected = state.skipSilence,
                     onClick = onToggleSkipSilence,
-                    label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.player_silence)) },
+                    label = { Text(stringResource(R.string.player_silence)) },
                     leadingIcon = { Icon(Icons.Default.GraphicEq, null, modifier = Modifier.size(16.dp)) }
                 )
                 FilterChip(
@@ -245,7 +297,7 @@ fun FullPlayerSheet(
                     label = {
                         Text(
                             if (state.sleepTimerRemainingMs > 0L) formatDuration(state.sleepTimerRemainingMs)
-                            else androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.player_sleep)
+                            else stringResource(R.string.player_sleep)
                         )
                     },
                     leadingIcon = { Icon(Icons.Default.Bedtime, null, modifier = Modifier.size(16.dp)) }
@@ -253,22 +305,23 @@ fun FullPlayerSheet(
                 FilterChip(
                     selected = showNotes,
                     onClick = { showNotes = !showNotes },
-                    label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.player_notes)) },
+                    label = { Text(stringResource(R.string.player_notes)) },
                     leadingIcon = { Icon(Icons.Default.Description, null, modifier = Modifier.size(16.dp)) }
                 )
             }
 
             if (showSpeedRow) {
                 Spacer(Modifier.height(8.dp))
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     listOf(1.0f, 1.2f, 1.5f, 1.8f, 2.0f).forEach { speed ->
                         FilterChip(
                             selected = state.playbackSpeed == speed,
                             onClick = { onSetSpeed(speed) },
-                            label = { Text("${speed}x") }
+                            label = { Text(String.format(Locale.getDefault(), "%.1fx", speed)) }
                         )
                     }
                 }
@@ -276,12 +329,14 @@ fun FullPlayerSheet(
 
             if (showSleepRow) {
                 Spacer(Modifier.height(8.dp))
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val offLabel = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.sleep_off)
-                    listOf(0 to offLabel, 15 to "15m", 30 to "30m", 45 to "45m", 60 to "60m").forEach { (mins, label) ->
+                    val offLabel = stringResource(R.string.sleep_off)
+                    listOf(0, 15, 30, 45, 60).forEach { mins ->
+                        val label = if (mins == 0) offLabel else stringResource(R.string.sleep_minutes_short, mins)
                         FilterChip(
                             selected = false,
                             onClick = { onSetSleepTimer(mins); showSleepRow = false },
@@ -296,9 +351,7 @@ fun FullPlayerSheet(
                 HorizontalDivider()
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = htmlToPlainText(ep.descriptionHtml).ifBlank {
-                        androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.no_show_notes)
-                    },
+                    text = plainNotes.ifBlank { stringResource(R.string.no_show_notes) },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth()

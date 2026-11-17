@@ -7,9 +7,9 @@ import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
 import com.lycoslane.purepodcast.core.database.PodcastEntity
 import com.lycoslane.purepodcast.core.database.PodcastWithStats
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
-import com.lycoslane.purepodcast.core.database.QueueItemEntity
 import com.lycoslane.purepodcast.core.download.EpisodeDownloadWorker
 import com.lycoslane.purepodcast.core.network.ItunesSearchClient
+import com.lycoslane.purepodcast.core.network.NetworkSecurity
 import com.lycoslane.purepodcast.core.network.OpmlParser
 import com.lycoslane.purepodcast.core.network.PodcastSearchResult
 import com.lycoslane.purepodcast.core.network.RssFeedParser
@@ -40,13 +40,21 @@ class PodcastRepository(
         ItunesSearchClient.search(query)
 
     suspend fun subscribeByFeedUrl(feedUrl: String): Long {
-        val existing = dao.getPodcastByFeedUrl(feedUrl)
+        val trimmed = feedUrl.trim()
+        require(NetworkSecurity.isValidHttpUrl(trimmed)) { "Invalid feed URL" }
+        val existing = dao.getPodcastByFeedUrl(trimmed)
         if (existing != null) {
             refreshPodcast(existing.id)
             return existing.id
         }
 
-        val parsed = RssFeedParser.fetchAndParse(feedUrl)
+        val parsed = RssFeedParser.fetchAndParse(trimmed)
+        val existingParsed = dao.getPodcastByFeedUrl(parsed.feedUrl)
+        if (existingParsed != null) {
+            refreshPodcast(existingParsed.id)
+            return existingParsed.id
+        }
+
         val autoFrom = if (preferences.settings.value.autoDownloadNewByDefault) {
             System.currentTimeMillis()
         } else {
@@ -63,7 +71,13 @@ class PodcastRepository(
                 lastRefreshedMs = System.currentTimeMillis()
             )
         )
-        val resolvedId = if (podcastId > 0) podcastId else dao.getPodcastByFeedUrl(feedUrl)!!.id
+        val resolvedId = if (podcastId > 0) {
+            podcastId
+        } else {
+            dao.getPodcastByFeedUrl(parsed.feedUrl)?.id
+                ?: dao.getPodcastByFeedUrl(trimmed)?.id
+                ?: error("Failed to insert podcast")
+        }
         insertParsedEpisodes(resolvedId, parsed.episodes)
         return resolvedId
     }
@@ -72,9 +86,12 @@ class PodcastRepository(
         val entries = OpmlParser.parse(input)
         var imported = 0
         for (entry in entries) {
-            runCatching {
+            try {
                 subscribeByFeedUrl(entry.feedUrl)
                 imported++
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
             }
         }
         imported
@@ -84,17 +101,17 @@ class PodcastRepository(
         val podcast = dao.getPodcast(podcastId) ?: return
         val parsed = RssFeedParser.fetchAndParse(podcast.feedUrl)
         insertParsedEpisodes(podcastId, parsed.episodes)
-        dao.updatePodcast(
-            podcast.copy(
-                title = parsed.title.ifEmpty { podcast.title },
-                author = parsed.author.ifEmpty { podcast.author },
-                description = parsed.description.ifEmpty { podcast.description },
-                artworkUrl = parsed.artworkUrl.ifEmpty { podcast.artworkUrl },
-                lastRefreshedMs = System.currentTimeMillis()
-            )
+        dao.updatePodcastMetadata(
+            podcastId = podcast.id,
+            title = parsed.title.ifEmpty { podcast.title },
+            author = parsed.author.ifEmpty { podcast.author },
+            description = parsed.description.ifEmpty { podcast.description },
+            artworkUrl = parsed.artworkUrl.ifEmpty { podcast.artworkUrl },
+            lastRefreshedMs = System.currentTimeMillis()
         )
-        if (podcast.autoDownloadFromPubDateMs > 0L) {
-            val missing = dao.getNotDownloadedNewerThan(podcastId, podcast.autoDownloadFromPubDateMs)
+        val latest = dao.getPodcast(podcastId) ?: return
+        if (latest.autoDownloadFromPubDateMs > 0L) {
+            val missing = dao.getNotDownloadedNewerThan(podcastId, latest.autoDownloadFromPubDateMs)
             val wifiOnly = preferences.settings.value.wifiOnlyDownloads
             missing.forEach { ep ->
                 dao.updateDownloadState(ep.id, DownloadState.QUEUED, 0, null)
@@ -105,11 +122,19 @@ class PodcastRepository(
 
     suspend fun refreshAllPodcasts() {
         dao.getAllPodcasts().forEach { podcast ->
-            runCatching { refreshPodcast(podcast.id) }
+            try {
+                refreshPodcast(podcast.id)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
         }
     }
 
     suspend fun unsubscribePodcast(podcastId: Long) = withContext(Dispatchers.IO) {
+        dao.getEpisodeIdsForPodcast(podcastId).forEach { epId ->
+            EpisodeDownloadWorker.cancel(context, epId)
+        }
         File(context.filesDir, "episodes/$podcastId").deleteRecursively()
         dao.deletePodcast(podcastId)
     }
@@ -123,9 +148,11 @@ class PodcastRepository(
         )
     }
 
-    suspend fun deleteDownload(episodeId: Long) = withContext(Dispatchers.IO) {
+    suspend fun deleteDownload(episodeId: Long, activeEpisodeId: Long? = null) = withContext(Dispatchers.IO) {
+        EpisodeDownloadWorker.cancel(context, episodeId)
+        if (activeEpisodeId != null && episodeId == activeEpisodeId) return@withContext
         val episode = dao.getEpisode(episodeId) ?: return@withContext
-        episode.localFilePath?.let { path -> File(path).delete() }
+        episode.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
         dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
     }
 
@@ -146,24 +173,36 @@ class PodcastRepository(
     /**
      * Deletes local audio files and marks all episodes older than [beforePubDateMs] as played.
      */
-    suspend fun cleanupOlderThan(podcastId: Long, beforePubDateMs: Long) = withContext(Dispatchers.IO) {
+    suspend fun cleanupOlderThan(
+        podcastId: Long,
+        beforePubDateMs: Long,
+        activeEpisodeId: Long? = null
+    ) = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
         val olderDownloaded = dao.getDownloadedOlderThan(podcastId, beforePubDateMs)
         olderDownloaded.forEach { ep ->
-            ep.localFilePath?.let { File(it).delete() }
-            dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+            if (activeEpisodeId == null || ep.id != activeEpisodeId) {
+                EpisodeDownloadWorker.cancel(context, ep.id)
+                ep.localFilePath?.let { safeDeleteEpisodeFile(it) }
+                dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+            }
         }
-        dao.markOlderAsPlayed(podcastId, beforePubDateMs)
+        dao.markOlderAsPlayed(podcastId, beforePubDateMs, now)
     }
 
-    suspend fun togglePlayed(episodeId: Long, isPlayed: Boolean) {
+    suspend fun togglePlayed(
+        episodeId: Long,
+        isPlayed: Boolean,
+        activeEpisodeId: Long? = null
+    ) {
         val playedAt = if (isPlayed) System.currentTimeMillis() else 0L
         dao.setPlayed(episodeId, isPlayed, playedAt)
         if (isPlayed && preferences.settings.value.autoRemovePlayedDays == 0) {
-            deleteDownload(episodeId)
+            deleteDownload(episodeId, activeEpisodeId)
         }
     }
 
-    suspend fun cleanupPlayedDownloads() = withContext(Dispatchers.IO) {
+    suspend fun cleanupPlayedDownloads(activeEpisodeId: Long? = null) = withContext(Dispatchers.IO) {
         val days = preferences.settings.value.autoRemovePlayedDays
         if (days < 0) return@withContext
         val targets = if (days == 0) {
@@ -173,8 +212,20 @@ class PodcastRepository(
             dao.getPlayedDownloadsOlderThan(cutoffMs)
         }
         targets.forEach { ep ->
-            ep.localFilePath?.let { path -> File(path).delete() }
-            dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+            if (activeEpisodeId == null || ep.id != activeEpisodeId) {
+                ep.localFilePath?.let { path -> safeDeleteEpisodeFile(path) }
+                dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+            }
+        }
+    }
+
+    private fun safeDeleteEpisodeFile(path: String) {
+        runCatching {
+            val episodesRoot = File(context.filesDir, "episodes").canonicalFile
+            val target = File(path).canonicalFile
+            if (target.path.startsWith(episodesRoot.path + File.separator)) {
+                target.delete()
+            }
         }
     }
 
@@ -183,13 +234,12 @@ class PodcastRepository(
     }
 
     suspend fun updatePodcastAudioPrefs(podcastId: Long, speed: Float, skipSilence: Boolean) {
-        dao.setPlaybackSpeed(podcastId, speed)
+        dao.setPlaybackSpeed(podcastId, speed.coerceIn(0.75f, 3.0f))
         dao.setSkipSilence(podcastId, skipSilence)
     }
 
     suspend fun addToQueue(episodeId: Long) {
-        val nextOrder = dao.getMaxQueueOrder() + 1
-        dao.insertQueueItem(QueueItemEntity(episodeId = episodeId, sortOrder = nextOrder))
+        dao.enqueueToQueue(episodeId)
         if (preferences.settings.value.downloadWhenQueued) {
             val ep = dao.getEpisode(episodeId)
             if (ep != null && ep.downloadState == DownloadState.NONE) {
@@ -254,32 +304,46 @@ class PodcastRepository(
 
     suspend fun importBackupJson(jsonText: String): Int = withContext(Dispatchers.IO) {
         val root = org.json.JSONObject(jsonText)
+        val version = root.optInt("version", 1)
+        if (version < 1 || version > 1) error("Unsupported backup version")
+
         root.optJSONObject("settings")?.let { s ->
-            if (s.has("refreshIntervalHours")) preferences.setRefreshIntervalHours(s.getInt("refreshIntervalHours"))
+            if (s.has("refreshIntervalHours")) {
+                val hours = s.getInt("refreshIntervalHours").let { if (it in listOf(0, 1, 3, 6, 12, 24)) it else 6 }
+                preferences.setRefreshIntervalHours(hours)
+            }
             if (s.has("wifiOnlyDownloads")) preferences.setWifiOnlyDownloads(s.getBoolean("wifiOnlyDownloads"))
             if (s.has("autoDownloadNewByDefault")) preferences.setAutoDownloadNewByDefault(s.getBoolean("autoDownloadNewByDefault"))
             if (s.has("downloadWhenQueued")) preferences.setDownloadWhenQueued(s.getBoolean("downloadWhenQueued"))
             if (s.has("addToQueueWhenDownloaded")) preferences.setAddToQueueWhenDownloaded(s.getBoolean("addToQueueWhenDownloaded"))
-            if (s.has("autoRemovePlayedDays")) preferences.setAutoRemovePlayedDays(s.getInt("autoRemovePlayedDays"))
-            if (s.has("smartRewindSeconds")) preferences.setSmartRewindSeconds(s.getInt("smartRewindSeconds"))
+            if (s.has("autoRemovePlayedDays")) {
+                val days = s.getInt("autoRemovePlayedDays").let { if (it in listOf(-1, 0, 1, 3, 7)) it else 1 }
+                preferences.setAutoRemovePlayedDays(days)
+            }
+            if (s.has("smartRewindSeconds")) {
+                preferences.setSmartRewindSeconds(s.getInt("smartRewindSeconds").coerceIn(0, 60))
+            }
             if (s.has("appLanguage")) preferences.setAppLanguage(s.getString("appLanguage"))
         }
 
         val podcastsArr = root.optJSONArray("podcasts") ?: return@withContext 0
         var restored = 0
-        for (i in 0 until podcastsArr.length()) {
+        val maxPodcasts = minOf(podcastsArr.length(), 500)
+        for (i in 0 until maxPodcasts) {
             val pObj = podcastsArr.optJSONObject(i) ?: continue
             val feedUrl = pObj.optString("feedUrl", "").trim()
-            if (feedUrl.isEmpty()) continue
-            runCatching {
+            if (!NetworkSecurity.isValidHttpUrl(feedUrl)) continue
+            try {
                 val podcastId = subscribeByFeedUrl(feedUrl)
                 val existing = dao.getPodcast(podcastId)
                 if (existing != null) {
+                    val rawSpeed = pObj.optDouble("playbackSpeed", existing.playbackSpeed.toDouble())
+                    val safeSpeed = if (rawSpeed.isFinite()) rawSpeed.toFloat().coerceIn(0.75f, 3.0f) else 1.0f
                     dao.updatePodcast(
                         existing.copy(
-                            autoDownloadFromPubDateMs = pObj.optLong("autoDownloadFromPubDateMs", existing.autoDownloadFromPubDateMs),
+                            autoDownloadFromPubDateMs = pObj.optLong("autoDownloadFromPubDateMs", existing.autoDownloadFromPubDateMs).coerceAtLeast(0L),
                             sortAscending = pObj.optBoolean("sortAscending", existing.sortAscending),
-                            playbackSpeed = pObj.optDouble("playbackSpeed", existing.playbackSpeed.toDouble()).toFloat(),
+                            playbackSpeed = safeSpeed,
                             skipSilence = pObj.optBoolean("skipSilence", existing.skipSilence)
                         )
                     )
@@ -291,13 +355,16 @@ class PodcastRepository(
                         val guid = eObj.optString("guid", "")
                         if (guid.isEmpty()) continue
                         val ep = dao.getEpisodeByGuid(podcastId, guid) ?: continue
-                        dao.updatePosition(ep.id, eObj.optLong("positionMs", ep.positionMs))
+                        dao.updatePosition(ep.id, eObj.optLong("positionMs", ep.positionMs).coerceAtLeast(0L))
                         val restoredPlayed = eObj.optBoolean("isPlayed", ep.isPlayed)
                         val restoredPlayedAt = if (restoredPlayed) ep.playedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis() else 0L
                         dao.setPlayed(ep.id, restoredPlayed, restoredPlayedAt)
                     }
                 }
                 restored++
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
             }
         }
         restored

@@ -83,25 +83,23 @@ fun SearchScreen(
     var pendingUnsubscribe by remember { mutableStateOf<Pair<Long, String>?>(null) }
 
     val listState = rememberLazyListState()
-    var prevIndex by remember { mutableIntStateOf(0) }
-    var prevOffset by remember { mutableIntStateOf(0) }
     var showSearchControls by remember { mutableStateOf(true) }
 
-    val scrollPosition by remember {
-        derivedStateOf { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-    }
-
-    LaunchedEffect(scrollPosition) {
-        val (idx, offset) = scrollPosition
-        if (idx == 0 && offset == 0) {
-            showSearchControls = true
-        } else if (idx > prevIndex || (idx == prevIndex && offset > prevOffset + 20)) {
-            showSearchControls = false
-        } else if (idx < prevIndex || (idx == prevIndex && offset < prevOffset - 20)) {
-            showSearchControls = true
-        }
-        prevIndex = idx
-        prevOffset = offset
+    LaunchedEffect(listState) {
+        var prevIndex = 0
+        var prevOffset = 0
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (idx, offset) ->
+                if (idx == 0 && offset == 0) {
+                    showSearchControls = true
+                } else if (idx > prevIndex || (idx == prevIndex && offset > prevOffset + 24)) {
+                    showSearchControls = false
+                } else if (idx < prevIndex || (idx == prevIndex && offset < prevOffset - 24)) {
+                    showSearchControls = true
+                }
+                prevIndex = idx
+                prevOffset = offset
+            }
     }
 
     LaunchedEffect(query) {
@@ -119,6 +117,7 @@ fun SearchScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         topBar = {
             TopAppBar(title = { Text(stringResource(R.string.search_title), fontWeight = FontWeight.SemiBold) })
         }
@@ -145,9 +144,9 @@ fun SearchScreen(
                         trailingIcon = {
                             if (isSearching) {
                                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                            } else if (query.isNotBlank()) {
-                                IconButton(onClick = { onSearch(query) }) {
-                                    Icon(Icons.Default.Search, contentDescription = stringResource(R.string.action_search))
+                            } else if (query.isNotEmpty()) {
+                                IconButton(onClick = { query = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.action_cancel))
                                 }
                             }
                         },
@@ -192,9 +191,18 @@ fun SearchScreen(
                 }
             }
 
+            if (!isSearching && results.isEmpty() && query.trim().length >= 2) {
+                Text(
+                    text = stringResource(R.string.search_no_results),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+            }
+
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(bottom = 96.dp),
+                contentPadding = PaddingValues(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(results, key = { it.feedUrl }) { item ->
@@ -208,7 +216,7 @@ fun SearchScreen(
                     ) {
                         PodcastImage(
                             url = item.artworkUrl,
-                            contentDescription = item.title,
+                            contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .size(56.dp)

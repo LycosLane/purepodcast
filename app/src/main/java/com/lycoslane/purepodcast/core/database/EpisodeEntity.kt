@@ -25,7 +25,11 @@ enum class DownloadState {
     ],
     indices = [
         Index(value = ["podcastId"]),
-        Index(value = ["podcastId", "guid"], unique = true)
+        Index(value = ["podcastId", "guid"], unique = true),
+        Index(value = ["podcastId", "pubDateMs"]),
+        Index(value = ["podcastId", "isPlayed"]),
+        Index(value = ["podcastId", "downloadState"]),
+        Index(value = ["isPlayed", "downloadState"])
     ]
 )
 data class EpisodeEntity(

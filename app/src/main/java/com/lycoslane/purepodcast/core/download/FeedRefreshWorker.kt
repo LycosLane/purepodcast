@@ -8,11 +8,14 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.lycoslane.purepodcast.PurePodcastApplication
 import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
 import com.lycoslane.purepodcast.core.network.RssFeedParser
-import com.lycoslane.purepodcast.core.preferences.AppPreferences
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 class FeedRefreshWorker(
@@ -20,11 +23,13 @@ class FeedRefreshWorker(
     params: WorkerParameters
 ) : CoroutineWorker(appContext, params) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val app = applicationContext as PurePodcastApplication
         val dao = PurePodcastDatabase.getInstance(applicationContext).dao()
-        val settings = AppPreferences(applicationContext).settings.value
+        val settings = app.preferences.settings.value
         val podcasts = dao.getAllPodcasts()
 
+        var anySucceeded = podcasts.isEmpty()
         for (podcast in podcasts) {
             try {
                 val parsed = RssFeedParser.fetchAndParse(podcast.feedUrl)
@@ -42,7 +47,14 @@ class FeedRefreshWorker(
                     )
                 }
                 dao.insertEpisodes(newEntities)
-                dao.updatePodcast(podcast.copy(lastRefreshedMs = System.currentTimeMillis()))
+                dao.updatePodcastMetadata(
+                    podcastId = podcast.id,
+                    title = parsed.title.ifEmpty { podcast.title },
+                    author = parsed.author.ifEmpty { podcast.author },
+                    description = parsed.description.ifEmpty { podcast.description },
+                    artworkUrl = parsed.artworkUrl.ifEmpty { podcast.artworkUrl },
+                    lastRefreshedMs = System.currentTimeMillis()
+                )
 
                 if (podcast.autoDownloadFromPubDateMs > 0L) {
                     val toDownload = dao.getNotDownloadedNewerThan(
@@ -58,33 +70,31 @@ class FeedRefreshWorker(
                         )
                     }
                 }
+                anySucceeded = true
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Keep refreshing remaining feeds even if one fails
             }
         }
 
-        // Clean up played downloads according to user retention setting
-        val removeDays = settings.autoRemovePlayedDays
-        if (removeDays >= 0) {
-            val targets = if (removeDays == 0) {
-                dao.getAllPlayedDownloads()
-            } else {
-                val cutoffMs = System.currentTimeMillis() - removeDays * 86_400_000L
-                dao.getPlayedDownloadsOlderThan(cutoffMs)
-            }
-            targets.forEach { ep ->
-                ep.localFilePath?.let { path -> java.io.File(path).delete() }
-                dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
-            }
-        }
+        runCatching { app.repository.cleanupPlayedDownloads() }
 
-        return Result.success()
+        if (!anySucceeded && runAttemptCount < 3) {
+            Result.retry()
+        } else {
+            Result.success()
+        }
     }
 
     companion object {
         private const val UNIQUE_NAME = "purepodcast_periodic_feed_refresh"
 
-        fun schedulePeriodic(context: Context, intervalHours: Int) {
+        fun schedulePeriodic(
+            context: Context,
+            intervalHours: Int,
+            replaceExisting: Boolean = true
+        ) {
             val wm = WorkManager.getInstance(context)
             if (intervalHours <= 0) {
                 wm.cancelUniqueWork(UNIQUE_NAME)
@@ -105,7 +115,7 @@ class FeedRefreshWorker(
 
             wm.enqueueUniquePeriodicWork(
                 UNIQUE_NAME,
-                ExistingPeriodicWorkPolicy.UPDATE,
+                if (replaceExisting) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP,
                 request
             )
         }

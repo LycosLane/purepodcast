@@ -94,18 +94,31 @@
 
     <!-- Player -->
     <string name="player_pause">Pause</string>
-    <string name="player_play">Play</string>
+    <string name="player_play">Abspielen</string>
     <string name="player_silence">Stille</string>
-    <string name="player_sleep">Sleep</string>
-    <string name="player_notes">Notes</string>
+    <string name="player_sleep">Timer</string>
+    <string name="player_notes">Shownotes</string>
     <string name="sleep_off">Aus</string>
+    <string name="sleep_minutes_short">%1$d Min.</string>
+    <string name="cd_rewind_10">10 Sekunden zurück</string>
+    <string name="cd_forward_30">30 Sekunden vor</string>
+
+    <!-- Download & Action Feedback -->
+    <string name="cd_downloaded">Heruntergeladen</string>
+    <string name="cd_download">Herunterladen</string>
+    <string name="cd_download_failed">Download fehlgeschlagen, tippen zum Wiederholen</string>
+    <string name="snackbar_added_to_queue">Zur Warteschlange hinzugefügt</string>
+    <string name="dialog_clear_queue_title">Warteschlange leeren?</string>
+    <string name="dialog_clear_queue_body">Alle Episoden werden aus der Warteschlange entfernt.</string>
+    <string name="backup_empty_file">Leere Datei</string>
+    <string name="search_no_results">Keine Podcasts gefunden</string>
 
     <!-- Auto-remove & Language -->
     <string name="settings_auto_remove_played">Gehörte Downloads entfernen</string>
     <string name="settings_auto_remove_played_sub">Heruntergeladene Audiodatei nach dem Anhören löschen.</string>
     <string name="auto_remove_never">Behalten</string>
     <string name="auto_remove_immediately">Sofort</string>
-    <string name="auto_remove_days">%dT</string>
+    <string name="auto_remove_days">%1$dT</string>
     <string name="settings_language">Sprache</string>
     <string name="settings_language_en">English</string>
     <string name="settings_language_de">Deutsch</string>

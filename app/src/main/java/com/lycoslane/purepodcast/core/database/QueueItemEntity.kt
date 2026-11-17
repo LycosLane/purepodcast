@@ -15,7 +15,10 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index(value = ["episodeId"], unique = true)]
+    indices = [
+        Index(value = ["episodeId"], unique = true),
+        Index(value = ["sortOrder"])
+    ]
 )
 data class QueueItemEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
