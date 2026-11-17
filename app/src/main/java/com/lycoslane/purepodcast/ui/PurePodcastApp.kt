@@ -46,8 +46,10 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     val podcasts by app.repository.observePodcasts().collectAsStateWithLifecycle(initialValue = emptyList())
     val queue by app.repository.observeQueue().collectAsStateWithLifecycle(initialValue = emptyList())
     val playerState by app.playerController.state.collectAsStateWithLifecycle()
+    val settings by app.preferences.settings.collectAsStateWithLifecycle()
 
     var isRefreshing by remember { mutableStateOf(false) }
+    var isRefreshingDetail by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<PodcastSearchResult>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var searchStatus by remember { mutableStateOf<String?>(null) }
@@ -109,6 +111,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                 HomeScreen(
                     podcasts = podcasts,
                     isRefreshing = isRefreshing,
+                    settings = settings,
                     onRefreshAll = {
                         scope.launch {
                             isRefreshing = true
@@ -123,6 +126,17 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         navController.navigate("search") {
                             popUpTo("home")
                         }
+                    },
+                    onChangeRefreshInterval = { hours ->
+                        app.preferences.setRefreshIntervalHours(hours)
+                        com.lycoslane.purepodcast.core.download.FeedRefreshWorker
+                            .schedulePeriodic(context, hours)
+                    },
+                    onToggleWifiOnly = { wifiOnly ->
+                        app.preferences.setWifiOnlyDownloads(wifiOnly)
+                    },
+                    onToggleAutoDownloadDefault = { enabled ->
+                        app.preferences.setAutoDownloadNewByDefault(enabled)
                     }
                 )
             }
@@ -142,8 +156,15 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                 PodcastDetailScreen(
                     podcast = podcast,
                     episodes = episodes,
+                    isRefreshing = isRefreshingDetail,
                     onBack = { navController.popBackStack() },
-                    onRefresh = { scope.launch { app.repository.refreshPodcast(podcastId) } },
+                    onRefresh = {
+                        scope.launch {
+                            isRefreshingDetail = true
+                            runCatching { app.repository.refreshPodcast(podcastId) }
+                            isRefreshingDetail = false
+                        }
+                    },
                     onToggleSort = { asc -> scope.launch { app.repository.toggleSortAscending(podcastId, asc) } },
                     onDisableAutoDownload = { scope.launch { app.repository.disableAutoDownload(podcastId) } },
                     onUnsubscribe = {

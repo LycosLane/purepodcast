@@ -49,6 +49,7 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -76,6 +77,7 @@ import com.lycoslane.purepodcast.ui.common.htmlToPlainText
 fun PodcastDetailScreen(
     podcast: PodcastEntity?,
     episodes: List<EpisodeEntity>,
+    isRefreshing: Boolean,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onToggleSort: (Boolean) -> Unit,
@@ -126,10 +128,15 @@ fun PodcastDetailScreen(
     ) { innerPadding ->
         if (podcast == null) return@Scaffold
 
-        LazyColumn(
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+        ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 96.dp)
         ) {
             item(key = "header") {
@@ -222,6 +229,7 @@ fun PodcastDetailScreen(
                 )
                 HorizontalDivider(modifier = Modifier.alpha(0.4f))
             }
+        }
         }
     }
 

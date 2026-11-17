@@ -13,13 +13,17 @@ import com.lycoslane.purepodcast.core.network.ItunesSearchClient
 import com.lycoslane.purepodcast.core.network.OpmlParser
 import com.lycoslane.purepodcast.core.network.PodcastSearchResult
 import com.lycoslane.purepodcast.core.network.RssFeedParser
+import com.lycoslane.purepodcast.core.preferences.AppPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
 
-class PodcastRepository(private val context: Context) {
+class PodcastRepository(
+    private val context: Context,
+    private val preferences: AppPreferences
+) {
 
     private val dao = PurePodcastDatabase.getInstance(context).dao()
 
@@ -43,6 +47,11 @@ class PodcastRepository(private val context: Context) {
         }
 
         val parsed = RssFeedParser.fetchAndParse(feedUrl)
+        val autoFrom = if (preferences.settings.value.autoDownloadNewByDefault) {
+            System.currentTimeMillis()
+        } else {
+            0L
+        }
         val podcastId = dao.insertPodcast(
             PodcastEntity(
                 feedUrl = parsed.feedUrl,
@@ -50,6 +59,7 @@ class PodcastRepository(private val context: Context) {
                 author = parsed.author,
                 description = parsed.description,
                 artworkUrl = parsed.artworkUrl,
+                autoDownloadFromPubDateMs = autoFrom,
                 lastRefreshedMs = System.currentTimeMillis()
             )
         )
@@ -85,7 +95,11 @@ class PodcastRepository(private val context: Context) {
         )
         if (podcast.autoDownloadFromPubDateMs > 0L) {
             val missing = dao.getNotDownloadedNewerThan(podcastId, podcast.autoDownloadFromPubDateMs)
-            missing.forEach { enqueueDownload(it.id) }
+            val wifiOnly = preferences.settings.value.wifiOnlyDownloads
+            missing.forEach { ep ->
+                dao.updateDownloadState(ep.id, DownloadState.QUEUED, 0, null)
+                EpisodeDownloadWorker.enqueue(context, ep.id, wifiOnly = wifiOnly)
+            }
         }
     }
 

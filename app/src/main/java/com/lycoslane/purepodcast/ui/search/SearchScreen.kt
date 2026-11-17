@@ -39,10 +39,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +69,14 @@ fun SearchScreen(
     var query by remember { mutableStateOf("") }
     var showRssDialog by remember { mutableStateOf(false) }
     var rssInput by remember { mutableStateOf("") }
+
+    LaunchedEffect(query) {
+        val trimmed = query.trim()
+        if (trimmed.length >= 2) {
+            delay(350L)
+            onSearch(trimmed)
+        }
+    }
 
     val opmlPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
