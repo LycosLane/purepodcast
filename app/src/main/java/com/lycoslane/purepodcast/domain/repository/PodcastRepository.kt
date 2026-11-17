@@ -16,6 +16,8 @@ import com.lycoslane.purepodcast.core.network.RssFeedParser
 import com.lycoslane.purepodcast.core.preferences.AppPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
@@ -26,6 +28,7 @@ class PodcastRepository(
 ) {
 
     private val dao = PurePodcastDatabase.getInstance(context).dao()
+    private val cleanupMutex = Mutex()
 
     fun observePodcasts(): Flow<List<PodcastWithStats>> = dao.observePodcastsWithStats()
 

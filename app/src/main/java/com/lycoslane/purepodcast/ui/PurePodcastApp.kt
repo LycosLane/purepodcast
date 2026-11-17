@@ -70,11 +70,19 @@ fun PurePodcastApp(app: PurePodcastApplication) {
 
     var isRefreshing by remember { mutableStateOf(false) }
     var isRefreshingDetail by remember { mutableStateOf(false) }
+    var searchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<PodcastSearchResult>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var searchStatus by remember { mutableStateOf<String?>(null) }
+    var searchJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
-    var showFullPlayer by remember { mutableStateOf(false) }
+    var showFullPlayer by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(playerState.currentEpisode) {
+        if (playerState.currentEpisode == null) {
+            showFullPlayer = false
+        }
+    }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
