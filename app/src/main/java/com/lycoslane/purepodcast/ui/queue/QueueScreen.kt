@@ -1,5 +1,6 @@
 package com.lycoslane.purepodcast.ui.queue
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -101,7 +103,7 @@ fun QueueScreen(
             )
         }
     ) { innerPadding ->
-        if (queue.isEmpty() && currentEpisode == null) {
+        if (queue.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -140,66 +142,21 @@ fun QueueScreen(
                     .padding(innerPadding),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                if (currentEpisode != null && currentPodcast != null) {
-                    item(key = "now_playing") {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(onClick = onOpenNowPlaying)
-                                .padding(horizontal = 16.dp, vertical = 10.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.queue_now_playing),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                PodcastImage(
-                                    url = currentEpisode.artworkUrl.ifEmpty { currentPodcast.artworkUrl },
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                )
-                                Spacer(Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = currentEpisode.title,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    val sub = buildString {
-                                        append(currentPodcast.title)
-                                        if (currentEpisode.durationMs > 0L) {
-                                            append(" • ")
-                                            append(formatDuration(currentEpisode.durationMs))
-                                        }
-                                    }
-                                    Text(
-                                        text = sub,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
-                        HorizontalDivider(modifier = Modifier.alpha(0.5f))
-                    }
-                }
                 items(queue, key = { it.episode.id }) { item ->
                     val isActive = item.episode.id == currentEpisode?.id
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onPlay(item.episode, item.podcast) }
+                            .then(
+                                if (isActive) {
+                                    Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f))
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .clickable {
+                                if (isActive) onOpenNowPlaying() else onPlay(item.episode, item.podcast)
+                            }
                             .padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -213,6 +170,23 @@ fun QueueScreen(
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
+                            if (isActive) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.GraphicEq,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = stringResource(R.string.queue_now_playing),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
                             Text(
                                 text = item.episode.title,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -231,7 +205,11 @@ fun QueueScreen(
                             Text(
                                 text = sub,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (isActive) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
