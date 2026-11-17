@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 
 class PurePodcastApplication : Application() {
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     lateinit var preferences: AppPreferences
         private set

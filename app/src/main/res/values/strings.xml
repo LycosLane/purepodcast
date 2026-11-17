@@ -89,7 +89,8 @@
     <string name="queue_title">Queue</string>
     <string name="queue_clear">Clear queue</string>
     <string name="queue_empty">Queue is empty</string>
-    <string name="queue_empty_sub">Swipe an episode right to add it to the queue.</string>
+    <string name="queue_empty_sub">Long-press any episode and choose \"Add to queue\".</string>
+    <string name="queue_now_playing">Now playing</string>
     <string name="action_remove">Remove</string>
 
     <!-- Player -->
@@ -119,17 +120,22 @@
     <string name="backup_empty_file">Empty file</string>
     <string name="search_no_results">No podcasts found</string>
     <string name="search_preview_swipe_hint">Swipe left or right to browse</string>
+    <string name="search_preview_failed">Could not load podcast details.</string>
+    <string name="action_retry">Retry</string>
 
     <!-- Detail Filters, Hide & Trash -->
     <string name="filter_all">All</string>
     <string name="filter_unplayed">Unplayed</string>
     <string name="filter_hidden">Hidden</string>
     <string name="filter_trash">Trash</string>
+    <string name="filter_empty_unplayed">All episodes played.</string>
+    <string name="filter_empty_hidden">No hidden episodes.</string>
+    <string name="filter_empty_trash">Trash is empty.</string>
     <string name="action_hide">Hide episode</string>
     <string name="action_unhide">Show episode</string>
     <string name="action_restore_trash">Restore download</string>
     <string name="action_delete_now">Delete permanently</string>
-    <string name="trash_hint">Deletes after 24h</string>
+    <string name="trash_hint">Deleted downloads are permanently removed after 24 hours.</string>
     <string name="dialog_delete_active_title">Delete playing episode?</string>
     <string name="dialog_delete_active_body">This episode is currently loaded in the player. Stop playback and delete the download?</string>
     <string name="action_stop_and_delete">Stop &amp; Delete</string>

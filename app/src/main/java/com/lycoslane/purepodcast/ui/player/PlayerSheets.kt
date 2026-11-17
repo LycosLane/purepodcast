@@ -453,7 +453,7 @@ fun FullPlayerSheet(
                     listOf(0, 15, 30, 45, 60).forEach { mins ->
                         val label = if (mins == 0) offLabel else stringResource(R.string.sleep_minutes_short, mins)
                         FilterChip(
-                            selected = false,
+                            selected = mins == 0 && state.sleepTimerRemainingMs <= 0L,
                             onClick = { onSetSleepTimer(mins); showSleepRow = false },
                             label = { Text(label) }
                         )

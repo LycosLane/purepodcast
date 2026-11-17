@@ -74,8 +74,14 @@ class PlayerController(
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED) {
+                progressJob?.cancel()
+                sleepTimerJob?.cancel()
+                _state.value = PlayerUiState()
+                return
+            }
             syncTiming()
-            if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
+            if (playbackState == Player.STATE_IDLE) {
                 progressJob?.cancel()
             }
         }
@@ -122,6 +128,7 @@ class PlayerController(
                 it.copy(
                     currentEpisode = withPodcast.episode,
                     currentPodcast = withPodcast.podcast,
+                    durationMs = withPodcast.episode.durationMs,
                     playbackSpeed = withPodcast.podcast.playbackSpeed.coerceIn(0.75f, 3.0f),
                     skipSilence = withPodcast.podcast.skipSilence,
                     silenceIntensity = withPodcast.podcast.silenceIntensity.coerceIn(0, 2)

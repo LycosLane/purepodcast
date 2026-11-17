@@ -70,7 +70,7 @@
     <string name="sort_desc">Sortierung: Neu → Alt</string>
     <string name="show_less">Weniger anzeigen</string>
     <string name="show_more">Mehr anzeigen</string>
-    <string name="auto_download_active">Auto-Download aktiv ab %1$s (tippen zum Aus)</string>
+    <string name="auto_download_active">Auto-Download ab %1$s (tippen zum Ausschalten)</string>
     <string name="action_play">Abspielen</string>
     <string name="action_show_notes">Show Notes lesen</string>
     <string name="action_add_queue">In Warteschlange</string>
@@ -79,7 +79,7 @@
     <string name="action_mark_unplayed">Als ungehört markieren</string>
     <string name="action_mark_played">Als gehört markieren</string>
     <string name="action_auto_download_newer">Ab hier alle neueren automatisch laden</string>
-    <string name="action_auto_download_newer_sub">Lädt diese + alle neueren Episoden herunter</string>
+    <string name="action_auto_download_newer_sub">Lädt diese und alle neueren Episoden herunter</string>
     <string name="action_cleanup_older">Alle älteren löschen &amp; als gehört markieren</string>
     <string name="action_cleanup_older_sub">Gibt Speicherplatz frei und räumt die Liste auf</string>
     <string name="no_show_notes">Keine Show Notes vorhanden.</string>
@@ -89,7 +89,8 @@
     <string name="queue_title">Warteschlange</string>
     <string name="queue_clear">Warteschlange leeren</string>
     <string name="queue_empty">Warteschlange ist leer</string>
-    <string name="queue_empty_sub">Wische eine Episode nach rechts, um sie hinzuzufügen.</string>
+    <string name="queue_empty_sub">Lange auf eine Episode tippen und „In Warteschlange“ wählen.</string>
+    <string name="queue_now_playing">Läuft gerade</string>
     <string name="action_remove">Entfernen</string>
 
     <!-- Player -->
@@ -104,7 +105,7 @@
     <string name="cd_forward_30">30 Sekunden vor</string>
     <string name="cd_prev_episode">Vorherige Episode in Warteschlange</string>
     <string name="cd_next_episode">Nächste Episode in Warteschlange</string>
-    <string name="silence_intensity_title">Intensität Pausen-Kürzung</string>
+    <string name="silence_intensity_title">Pausen-Kürzung: Intensität</string>
     <string name="silence_soft">Sanft</string>
     <string name="silence_medium">Mittel</string>
     <string name="silence_strong">Stark</string>
@@ -119,17 +120,22 @@
     <string name="backup_empty_file">Leere Datei</string>
     <string name="search_no_results">Keine Podcasts gefunden</string>
     <string name="search_preview_swipe_hint">Nach links/rechts wischen zum Stöbern</string>
+    <string name="search_preview_failed">Podcast-Details konnten nicht geladen werden.</string>
+    <string name="action_retry">Erneut versuchen</string>
 
     <!-- Detail Filters, Hide & Trash -->
     <string name="filter_all">Alle</string>
-    <string name="filter_unplayed">Offen</string>
+    <string name="filter_unplayed">Ungehört</string>
     <string name="filter_hidden">Ausgeblendet</string>
     <string name="filter_trash">Papierkorb</string>
+    <string name="filter_empty_unplayed">Alle Episoden gehört.</string>
+    <string name="filter_empty_hidden">Keine ausgeblendeten Episoden.</string>
+    <string name="filter_empty_trash">Der Papierkorb ist leer.</string>
     <string name="action_hide">Episode ausblenden</string>
     <string name="action_unhide">Episode einblenden</string>
     <string name="action_restore_trash">Download wiederherstellen</string>
     <string name="action_delete_now">Endgültig löschen</string>
-    <string name="trash_hint">Löschung in 24h</string>
+    <string name="trash_hint">Gelöschte Downloads werden nach 24 Stunden endgültig entfernt.</string>
     <string name="dialog_delete_active_title">Aktuelle Episode löschen?</string>
     <string name="dialog_delete_active_body">Diese Episode ist gerade im Player geladen. Wiedergabe stoppen und Download löschen?</string>
     <string name="action_stop_and_delete">Stoppen &amp; Löschen</string>
@@ -139,7 +145,7 @@
     <string name="settings_auto_remove_played_sub">Verschiebt gehörte Downloads in den Papierkorb (Löschung nach 24h).</string>
     <string name="auto_remove_never">Behalten</string>
     <string name="auto_remove_immediately">Sofort</string>
-    <string name="auto_remove_days">%1$dT</string>
+    <string name="auto_remove_days">%1$d Tage</string>
     <string name="settings_max_downloads">Max. Downloads pro Podcast</string>
     <string name="settings_max_downloads_sub">Episoden in der Warteschlange sind ausgenommen</string>
     <string name="max_downloads_unlimited">Unbegrenzt</string>
@@ -148,7 +154,7 @@
     <string name="settings_audio_normalization_sub">Gleicht leise Stimmen und Lautstärkesprünge an</string>
     <string name="settings_bluetooth_skip">Bluetooth-Skip-Tasten</string>
     <string name="settings_bluetooth_skip_seek">10s zurück / 30s vor</string>
-    <string name="settings_bluetooth_skip_episode">Vorherige / Nächste Episode</string>
+    <string name="settings_bluetooth_skip_episode">Vorherige / Nächste Episode in Warteschlange</string>
     <string name="settings_language">Sprache</string>
     <string name="settings_language_en">English</string>
     <string name="settings_language_de">Deutsch</string>

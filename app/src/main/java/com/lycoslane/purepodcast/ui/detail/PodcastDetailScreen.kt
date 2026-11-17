@@ -123,7 +123,7 @@ fun PodcastDetailScreen(
     var expandDescription by remember { mutableStateOf(false) }
     var showUnsubscribeDialog by remember { mutableStateOf(false) }
     var deleteActiveTarget by remember { mutableStateOf<EpisodeEntity?>(null) }
-    var activeFilter by remember { mutableStateOf(EpisodeFilter.ALL) }
+    var activeFilter by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(EpisodeFilter.ALL) }
 
     fun requestDeleteDownload(ep: EpisodeEntity) {
         if (ep.id == activeEpisodeId) {
@@ -311,9 +311,38 @@ fun PodcastDetailScreen(
                 HorizontalDivider()
             }
 
+            if (activeFilter == EpisodeFilter.TRASH && filteredEpisodes.isNotEmpty()) {
+                item(key = "trash_hint") {
+                    Text(
+                        text = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.trash_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
+            if (filteredEpisodes.isEmpty() && activeFilter != EpisodeFilter.ALL) {
+                item(key = "filter_empty") {
+                    val emptyMsg = when (activeFilter) {
+                        EpisodeFilter.UNPLAYED -> androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_empty_unplayed)
+                        EpisodeFilter.HIDDEN -> androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_empty_hidden)
+                        EpisodeFilter.TRASH -> androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_empty_trash)
+                        EpisodeFilter.ALL -> ""
+                    }
+                    Text(
+                        text = emptyMsg,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp)
+                    )
+                }
+            }
+
             items(filteredEpisodes, key = { it.id }) { episode ->
                 EpisodeSwipeRow(
                     episode = episode,
+                    isActive = episode.id == activeEpisodeId,
                     onClick = { onPlayEpisode(episode) },
                     onLongClick = { selectedEpisodeForMenu = episode },
                     onSwipeRightPlayed = { onTogglePlayed(episode) },
@@ -558,21 +587,25 @@ fun PodcastDetailScreen(
 @Composable
 private fun EpisodeSwipeRow(
     episode: EpisodeEntity,
+    isActive: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSwipeRightPlayed: () -> Unit,
     onSwipeLeftHidden: () -> Unit,
     onDownloadClick: () -> Unit
 ) {
+    val latestRight by androidx.compose.runtime.rememberUpdatedState(onSwipeRightPlayed)
+    val latestLeft by androidx.compose.runtime.rememberUpdatedState(onSwipeLeftHidden)
+
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             when (value) {
                 SwipeToDismissBoxValue.StartToEnd -> {
-                    onSwipeRightPlayed()
+                    latestRight()
                     false
                 }
                 SwipeToDismissBoxValue.EndToStart -> {
-                    onSwipeLeftHidden()
+                    latestLeft()
                     false
                 }
                 SwipeToDismissBoxValue.Settled -> false
@@ -625,12 +658,13 @@ private fun EpisodeSwipeRow(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .alpha(if (episode.isPlayed) 0.6f else 1f)
+                    .alpha(if (episode.isPlayed && !isActive) 0.6f else 1f)
             ) {
                 Text(
                     text = episode.title,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Search
@@ -60,12 +61,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -83,11 +85,15 @@ import com.lycoslane.purepodcast.core.network.ParsedPodcastFeed
 import com.lycoslane.purepodcast.core.network.PodcastSearchResult
 import com.lycoslane.purepodcast.ui.common.PodcastImage
 import com.lycoslane.purepodcast.ui.common.htmlToPlainText
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
+    query: String,
+    onQueryChange: (String) -> Unit,
     results: List<PodcastSearchResult>,
     subscribedFeeds: Map<String, Long>,
     isSearching: Boolean,
@@ -98,11 +104,10 @@ fun SearchScreen(
     onUnsubscribeById: (Long, String) -> Unit,
     onImportOpmlUri: (Uri) -> Unit
 ) {
-    var query by remember { mutableStateOf("") }
-    var showRssDialog by remember { mutableStateOf(false) }
-    var rssInput by remember { mutableStateOf("") }
+    var showRssDialog by rememberSaveable { mutableStateOf(false) }
+    var rssInput by rememberSaveable { mutableStateOf("") }
     var pendingUnsubscribe by remember { mutableStateOf<Pair<Long, String>?>(null) }
-    var previewIndex by remember { mutableStateOf<Int?>(null) }
+    var previewIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     val previewCache = remember { mutableStateMapOf<String, ParsedPodcastFeed>() }
 
     val listState = rememberLazyListState()
@@ -159,7 +164,7 @@ fun SearchScreen(
                 Column {
                     OutlinedTextField(
                         value = query,
-                        onValueChange = { query = it },
+                        onValueChange = onQueryChange,
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text(stringResource(R.string.search_hint)) },
                         singleLine = true,
@@ -168,13 +173,16 @@ fun SearchScreen(
                             if (isSearching) {
                                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                             } else if (query.isNotEmpty()) {
-                                IconButton(onClick = { query = "" }) {
+                                IconButton(onClick = { onQueryChange("") }) {
                                     Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.action_cancel))
                                 }
                             }
                         },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { onSearch(query) })
+                        keyboardActions = KeyboardActions(onSearch = {
+                            val trimmed = query.trim()
+                            if (trimmed.isNotEmpty()) onSearch(trimmed)
+                        })
                     )
 
                     Spacer(Modifier.height(10.dp))
@@ -189,7 +197,11 @@ fun SearchScreen(
                         ) {
                             Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.action_rss_url))
+                            Text(
+                                text = stringResource(R.string.action_rss_url),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                         OutlinedButton(
                             onClick = { opmlPicker.launch(arrayOf("*/*")) },
@@ -197,21 +209,25 @@ fun SearchScreen(
                         ) {
                             Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.action_opml_import))
+                            Text(
+                                text = stringResource(R.string.action_opml_import),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
 
-                    if (!statusMessage.isNullOrBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = statusMessage,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(10.dp))
                 }
+            }
+
+            if (!statusMessage.isNullOrBlank()) {
+                Text(
+                    text = statusMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
             }
 
             if (!isSearching && results.isEmpty() && query.trim().length >= 2) {
@@ -228,7 +244,7 @@ fun SearchScreen(
                 contentPadding = PaddingValues(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                itemsIndexed(results, key = { _, item -> item.feedUrl }) { index, item ->
+                itemsIndexed(results, key = { index, item -> "${item.feedUrl}#$index" }) { index, item ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -309,30 +325,45 @@ fun SearchScreen(
                         Text(
                             text = stringResource(R.string.search_preview_swipe_hint),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
                         )
                         Text(
                             text = "${pagerState.currentPage + 1} / ${results.size}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        IconButton(onClick = { previewIndex = null }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = stringResource(R.string.action_cancel),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
-                    Spacer(Modifier.height(8.dp))
 
                     HorizontalPager(
                         state = pagerState,
                         modifier = Modifier.fillMaxWidth()
                     ) { page ->
-                        val item = results[page]
+                        val item = results.getOrNull(page) ?: return@HorizontalPager
                         val feed = previewCache[item.feedUrl]
                         var isLoadingPreview by remember(item.feedUrl) { mutableStateOf(feed == null) }
+                        var previewFailed by remember(item.feedUrl) { mutableStateOf(false) }
+                        var retryToken by remember(item.feedUrl) { mutableIntStateOf(0) }
 
-                        LaunchedEffect(item.feedUrl) {
+                        LaunchedEffect(item.feedUrl, retryToken) {
                             if (previewCache[item.feedUrl] == null) {
                                 isLoadingPreview = true
+                                previewFailed = false
                                 val parsed = onLoadFeedPreview(item.feedUrl)
                                 if (parsed != null) {
+                                    if (previewCache.size >= 20) {
+                                        previewCache.keys.firstOrNull()?.let { previewCache.remove(it) }
+                                    }
                                     previewCache[item.feedUrl] = parsed
+                                } else {
+                                    previewFailed = true
                                 }
                                 isLoadingPreview = false
                             }
@@ -341,6 +372,7 @@ fun SearchScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
                                 .padding(horizontal = 24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
@@ -349,11 +381,11 @@ fun SearchScreen(
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
-                                    .size(180.dp)
+                                    .size(168.dp)
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(MaterialTheme.colorScheme.surfaceVariant)
                             )
-                            Spacer(Modifier.height(14.dp))
+                            Spacer(Modifier.height(12.dp))
                             Text(
                                 text = item.title,
                                 style = MaterialTheme.typography.titleMedium,
@@ -385,7 +417,7 @@ fun SearchScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(180.dp)
+                                    .height(160.dp)
                                     .verticalScroll(rememberScrollState())
                             ) {
                                 if (isLoadingPreview && feed == null) {
@@ -394,11 +426,29 @@ fun SearchScreen(
                                             .size(28.dp)
                                             .align(Alignment.Center)
                                     )
-                                } else {
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        val desc = remember(feed?.description) {
-                                            htmlToPlainText(feed?.description ?: "")
+                                } else if (previewFailed && feed == null) {
+                                    Column(
+                                        modifier = Modifier.align(Alignment.Center),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.search_preview_failed),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        TextButton(onClick = { retryToken++ }) {
+                                            Text(stringResource(R.string.action_retry))
                                         }
+                                    }
+                                } else {
+                                    val rawDesc = feed?.description ?: ""
+                                    val desc by produceState(initialValue = "", key1 = rawDesc) {
+                                        value = if (rawDesc.isBlank()) "" else {
+                                            withContext(Dispatchers.Default) { htmlToPlainText(rawDesc) }
+                                        }
+                                    }
+                                    Column(modifier = Modifier.fillMaxWidth()) {
                                         if (desc.isNotBlank()) {
                                             Text(
                                                 text = desc,

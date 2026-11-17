@@ -7,23 +7,50 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 
+@Volatile
+private var cachedLocale: Locale? = null
+@Volatile
+private var cachedDateFormatter: DateTimeFormatter? = null
+
+private fun appendTwoDigits(sb: StringBuilder, value: Long) {
+    if (value < 10L) sb.append('0')
+    sb.append(value)
+}
+
 fun formatDuration(ms: Long): String {
-    if (ms <= 0L) return String.format(Locale.getDefault(), "%d:%02d", 0, 0)
+    if (ms <= 0L) return "0:00"
     val totalSec = ms / 1000L
     val hours = totalSec / 3600L
     val minutes = (totalSec % 3600L) / 60L
     val seconds = totalSec % 60L
-    return if (hours > 0L) {
-        String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
+    return buildString(8) {
+        if (hours > 0L) {
+            append(hours)
+            append(':')
+            appendTwoDigits(this, minutes)
+            append(':')
+            appendTwoDigits(this, seconds)
+        } else {
+            append(minutes)
+            append(':')
+            appendTwoDigits(this, seconds)
+        }
     }
 }
 
 fun formatPubDate(ms: Long): String {
     if (ms <= 0L) return ""
-    val formatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
-        .withLocale(Locale.getDefault())
+    val locale = Locale.getDefault()
+    val formatter = if (cachedLocale == locale && cachedDateFormatter != null) {
+        cachedDateFormatter!!
+    } else {
+        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+            .withLocale(locale)
+            .also {
+                cachedLocale = locale
+                cachedDateFormatter = it
+            }
+    }
     return Instant.ofEpochMilli(ms)
         .atZone(ZoneId.systemDefault())
         .toLocalDate()

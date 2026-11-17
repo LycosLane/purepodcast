@@ -9,10 +9,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.lycoslane.purepodcast.PurePodcastApplication
-import com.lycoslane.purepodcast.core.database.DownloadState
-import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
-import com.lycoslane.purepodcast.core.network.RssFeedParser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,50 +23,13 @@ class FeedRefreshWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val app = applicationContext as PurePodcastApplication
         val dao = PurePodcastDatabase.getInstance(applicationContext).dao()
-        val settings = app.preferences.settings.value
         val podcasts = dao.getAllPodcasts()
 
         var anySucceeded = podcasts.isEmpty()
         for (podcast in podcasts) {
+            if (isStopped) break
             try {
-                val parsed = RssFeedParser.fetchAndParse(podcast.feedUrl)
-                val newEntities = parsed.episodes.map { ep ->
-                    EpisodeEntity(
-                        podcastId = podcast.id,
-                        guid = ep.guid,
-                        title = ep.title,
-                        descriptionHtml = ep.descriptionHtml,
-                        audioUrl = ep.audioUrl,
-                        artworkUrl = ep.artworkUrl,
-                        pubDateMs = ep.pubDateMs,
-                        durationMs = ep.durationMs,
-                        fileSizeBytes = ep.fileSizeBytes
-                    )
-                }
-                dao.insertEpisodes(newEntities)
-                dao.updatePodcastMetadata(
-                    podcastId = podcast.id,
-                    title = parsed.title.ifEmpty { podcast.title },
-                    author = parsed.author.ifEmpty { podcast.author },
-                    description = parsed.description.ifEmpty { podcast.description },
-                    artworkUrl = parsed.artworkUrl.ifEmpty { podcast.artworkUrl },
-                    lastRefreshedMs = System.currentTimeMillis()
-                )
-
-                if (podcast.autoDownloadFromPubDateMs > 0L) {
-                    val toDownload = dao.getNotDownloadedNewerThan(
-                        podcastId = podcast.id,
-                        fromPubDateMs = podcast.autoDownloadFromPubDateMs
-                    )
-                    for (ep in toDownload) {
-                        dao.updateDownloadState(ep.id, DownloadState.QUEUED, 0, null)
-                        EpisodeDownloadWorker.enqueue(
-                            context = applicationContext,
-                            episodeId = ep.id,
-                            wifiOnly = settings.wifiOnlyDownloads
-                        )
-                    }
-                }
+                app.repository.refreshPodcast(podcast.id)
                 anySucceeded = true
             } catch (e: CancellationException) {
                 throw e
@@ -78,7 +38,9 @@ class FeedRefreshWorker(
             }
         }
 
-        runCatching { app.repository.cleanupPlayedDownloads() }
+        runCatching {
+            app.repository.cleanupPlayedDownloads(app.playerController.state.value.currentEpisode?.id)
+        }
 
         if (!anySucceeded && runAttemptCount < 3) {
             Result.retry()

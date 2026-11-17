@@ -19,7 +19,6 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
-import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
@@ -38,11 +37,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 class PlaybackService : MediaSessionService() {
@@ -51,26 +50,21 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private lateinit var player: ExoPlayer
     private var positionSaveJob: Job? = null
+    private var skipQueueJob: Job? = null
     private var lastPausedElapsedMs: Long = 0L
 
     private var dynamicsProcessing: DynamicsProcessing? = null
     private var currentAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
+    private var attachedAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
 
     @OptIn(UnstableApi::class)
-    private lateinit var silenceProcessors: List<SilenceSkippingAudioProcessor>
+    private lateinit var silenceProcessor: DelegatingSilenceAudioProcessor
 
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
 
-        silenceProcessors = listOf(
-            // 0: Soft
-            SilenceSkippingAudioProcessor(1_600_000L, 0.35f, 1_600_000L, 10, 1024),
-            // 1: Medium
-            SilenceSkippingAudioProcessor(850_000L, 0.20f, 850_000L, 5, 1024),
-            // 2: Strong
-            SilenceSkippingAudioProcessor(400_000L, 0.10f, 400_000L, 2, 1280)
-        )
+        silenceProcessor = DelegatingSilenceAudioProcessor()
 
         val renderersFactory = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
@@ -81,7 +75,7 @@ class PlaybackService : MediaSessionService() {
                 return DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .setAudioProcessors(silenceProcessors.toTypedArray())
+                    .setAudioProcessors(arrayOf(silenceProcessor))
                     .build()
             }
         }
@@ -94,10 +88,20 @@ class PlaybackService : MediaSessionService() {
         player = ExoPlayer.Builder(this, renderersFactory)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
-            .setWakeMode(C.WAKE_MODE_NETWORK)
+            .setWakeMode(C.WAKE_MODE_LOCAL)
             .setSeekBackIncrementMs(10_000L)
             .setSeekForwardIncrementMs(30_000L)
             .build()
+
+        val app = applicationContext as PurePodcastApplication
+        serviceScope.launch {
+            app.preferences.settings
+                .map { it.audioNormalizationEnabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    applyAudioNormalization(enabled)
+                }
+        }
 
         val smartRewindPlayer = object : ForwardingPlayer(player) {
             override fun getAvailableCommands(): Player.Commands {
@@ -121,15 +125,23 @@ class PlaybackService : MediaSessionService() {
                 }
             }
 
+            override fun setMediaItem(mediaItem: MediaItem, startPositionMs: Long) {
+                lastPausedElapsedMs = 0L
+                val isLocal = mediaItem.localConfiguration?.uri?.scheme == "file"
+                player.setWakeMode(if (isLocal) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
+                super.setMediaItem(mediaItem, startPositionMs)
+            }
+
+            override fun stop() {
+                lastPausedElapsedMs = 0L
+                super.stop()
+            }
+
             override fun play() {
-                if (!player.playWhenReady && player.playbackState != STATE_ENDED) {
-                    val pausedDuration = if (lastPausedElapsedMs > 0L) {
-                        SystemClock.elapsedRealtime() - lastPausedElapsedMs
-                    } else {
-                        0L
-                    }
-                    val rewindSecs = (applicationContext as PurePodcastApplication)
-                        .preferences.settings.value.smartRewindSeconds
+                if (!player.playWhenReady && player.playbackState != STATE_ENDED && lastPausedElapsedMs > 0L) {
+                    val pausedDuration = SystemClock.elapsedRealtime() - lastPausedElapsedMs
+                    lastPausedElapsedMs = 0L
+                    val rewindSecs = app.preferences.settings.value.smartRewindSeconds
                     if (rewindSecs > 0 && pausedDuration >= 30_000L) {
                         val target = (player.currentPosition - rewindSecs * 1000L).coerceAtLeast(0L)
                         player.seekTo(target)
@@ -165,13 +177,13 @@ class PlaybackService : MediaSessionService() {
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 currentAudioSessionId = audioSessionId
-                val enabled = (applicationContext as PurePodcastApplication)
-                    .preferences.settings.value.audioNormalizationEnabled
+                val enabled = app.preferences.settings.value.audioNormalizationEnabled
                 applyAudioNormalization(enabled)
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) {
+                    lastPausedElapsedMs = 0L
                     startPositionSaver()
                 } else {
                     if (player.playbackState != Player.STATE_ENDED &&
@@ -196,10 +208,12 @@ class PlaybackService : MediaSessionService() {
                         dao.setPlayed(episodeId, true, now)
                         dao.updatePosition(episodeId, 0L)
                         dao.removeFromQueue(episodeId)
-                        val autoRemoveDays = (applicationContext as PurePodcastApplication)
-                            .preferences.settings.value.autoRemovePlayedDays
+                        val autoRemoveDays = app.preferences.settings.value.autoRemovePlayedDays
                         if (autoRemoveDays == 0) {
-                            dao.markForDeletion(episodeId, now)
+                            val ep = dao.getEpisode(episodeId)
+                            if (ep != null && ep.downloadState == DownloadState.DOWNLOADED && ep.localFilePath != null) {
+                                dao.markForDeletion(episodeId, now)
+                            }
                         }
                     }
                 }
@@ -293,23 +307,33 @@ class PlaybackService : MediaSessionService() {
 
     @OptIn(UnstableApi::class)
     private fun updateSilenceProcessors(enabled: Boolean, intensity: Int) {
-        silenceProcessors.forEachIndexed { index, processor ->
-            processor.setEnabled(enabled && index == intensity)
+        silenceProcessor.setMode(enabled, intensity)
+    }
+
+    private fun releaseDynamicsProcessing() {
+        val dp = dynamicsProcessing ?: return
+        try {
+            runCatching { dp.enabled = false }
+        } finally {
+            runCatching { dp.release() }
+            dynamicsProcessing = null
+            attachedAudioSessionId = C.AUDIO_SESSION_ID_UNSET
         }
     }
 
     private fun applyAudioNormalization(enabled: Boolean) {
         runCatching {
             if (!enabled || currentAudioSessionId == C.AUDIO_SESSION_ID_UNSET || currentAudioSessionId == 0) {
-                dynamicsProcessing?.enabled = false
-                dynamicsProcessing?.release()
-                dynamicsProcessing = null
+                releaseDynamicsProcessing()
                 return
+            }
+            if (dynamicsProcessing != null && attachedAudioSessionId != currentAudioSessionId) {
+                releaseDynamicsProcessing()
             }
             if (dynamicsProcessing == null) {
                 val config = DynamicsProcessing.Config.Builder(
                     DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
-                    1,
+                    2,
                     false, 0,
                     true, 1,
                     false, 0,
@@ -347,8 +371,11 @@ class PlaybackService : MediaSessionService() {
                     setLimiterAllChannelsTo(limiter)
                 }.build()
                 dynamicsProcessing = DynamicsProcessing(0, currentAudioSessionId, config)
+                attachedAudioSessionId = currentAudioSessionId
             }
             dynamicsProcessing?.enabled = true
+        }.onFailure {
+            releaseDynamicsProcessing()
         }
     }
 
@@ -363,8 +390,10 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun skipQueueEpisode(forward: Boolean) {
+        saveCurrentPosition()
         val currentId = player.currentMediaItem?.mediaId?.toLongOrNull()
-        serviceScope.launch {
+        skipQueueJob?.cancel()
+        skipQueueJob = serviceScope.launch {
             val queue = withContext(Dispatchers.IO) {
                 PurePodcastDatabase.getInstance(applicationContext).dao().getQueueEpisodesOnce()
             }
@@ -412,6 +441,8 @@ class PlaybackService : MediaSessionService() {
                 .preferences.settings.value.smartRewindSeconds * 1000L
             val startPos = if (ep.positionMs > 0L) (ep.positionMs - rewindMs).coerceAtLeast(0L) else 0L
 
+            lastPausedElapsedMs = 0L
+            player.setWakeMode(if (mediaUri.scheme == "file") C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
             player.setMediaItem(mediaItem, startPos)
             player.playbackParameters = PlaybackParameters(speed)
             updateSilenceProcessors(pod.skipSilence, pod.silenceIntensity.coerceIn(0, 2))
@@ -455,6 +486,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         positionSaveJob?.cancel()
+        skipQueueJob?.cancel()
         val episodeId = if (player.playbackState != Player.STATE_ENDED) {
             player.currentMediaItem?.mediaId?.toLongOrNull()
         } else {
@@ -462,21 +494,17 @@ class PlaybackService : MediaSessionService() {
         }
         val pos = player.currentPosition.coerceAtLeast(0L)
 
-        runCatching {
-            dynamicsProcessing?.enabled = false
-            dynamicsProcessing?.release()
-            dynamicsProcessing = null
-        }
-
         mediaSession?.run {
             player.release()
             release()
             mediaSession = null
         }
 
+        releaseDynamicsProcessing()
+
         if (episodeId != null) {
-            runBlocking(Dispatchers.IO) {
-                withTimeoutOrNull(1_500L) {
+            (applicationContext as PurePodcastApplication).appScope.launch(Dispatchers.IO) {
+                runCatching {
                     PurePodcastDatabase.getInstance(applicationContext).dao()
                         .updatePosition(episodeId, pos)
                 }

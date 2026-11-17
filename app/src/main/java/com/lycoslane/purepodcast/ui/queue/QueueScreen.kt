@@ -59,6 +59,9 @@ import com.lycoslane.purepodcast.ui.common.formatDuration
 @Composable
 fun QueueScreen(
     queue: List<EpisodeWithPodcast>,
+    currentEpisode: EpisodeEntity?,
+    currentPodcast: PodcastEntity?,
+    onOpenNowPlaying: () -> Unit,
     onPlay: (EpisodeEntity, PodcastEntity) -> Unit,
     onRemove: (Long) -> Unit,
     onClear: () -> Unit
@@ -80,7 +83,7 @@ fun QueueScreen(
             )
         }
     ) { innerPadding ->
-        if (queue.isEmpty()) {
+        if (queue.isEmpty() && currentEpisode == null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -118,7 +121,62 @@ fun QueueScreen(
                     .padding(innerPadding),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
+                if (currentEpisode != null && currentPodcast != null) {
+                    item(key = "now_playing") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(onClick = onOpenNowPlaying)
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.queue_now_playing),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                PodcastImage(
+                                    url = currentEpisode.artworkUrl.ifEmpty { currentPodcast.artworkUrl },
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = currentEpisode.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    val sub = buildString {
+                                        append(currentPodcast.title)
+                                        if (currentEpisode.durationMs > 0L) {
+                                            append(" • ")
+                                            append(formatDuration(currentEpisode.durationMs))
+                                        }
+                                    }
+                                    Text(
+                                        text = sub,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                        HorizontalDivider(modifier = Modifier.alpha(0.5f))
+                    }
+                }
                 items(queue, key = { it.episode.id }) { item ->
+                    val isActive = item.episode.id == currentEpisode?.id
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -139,12 +197,20 @@ fun QueueScreen(
                             Text(
                                 text = item.episode.title,
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
+                                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            val sub = buildString {
+                                append(item.podcast.title)
+                                if (item.episode.durationMs > 0L) {
+                                    append(" • ")
+                                    append(formatDuration(item.episode.durationMs))
+                                }
+                            }
                             Text(
-                                text = "${item.podcast.title} • ${formatDuration(item.episode.durationMs)}",
+                                text = sub,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,

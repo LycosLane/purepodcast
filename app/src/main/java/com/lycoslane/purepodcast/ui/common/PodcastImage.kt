@@ -50,6 +50,9 @@ private object NativeImageCache {
             value.width * value.height * 4
     }
 
+    fun getCached(url: String): ImageBitmap? =
+        if (url.isBlank()) null else memoryCache.get(url)
+
     suspend fun load(context: Context, url: String): ImageBitmap? {
         if (url.isBlank() || !NetworkSecurity.isValidHttpUrl(url)) return null
         memoryCache.get(url)?.let { return it }

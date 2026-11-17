@@ -52,5 +52,6 @@ data class EpisodeEntity(
     val localFilePath: String? = null,
     val downloadState: DownloadState = DownloadState.NONE,
     val downloadProgress: Int = 0,
-    val fileSizeBytes: Long = 0L
+    val fileSizeBytes: Long = 0L,
+    val skipAutoDownload: Boolean = false
 )

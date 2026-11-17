@@ -17,6 +17,7 @@ import com.lycoslane.purepodcast.core.network.BoundedInputStream
 import com.lycoslane.purepodcast.core.network.NetworkSecurity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
@@ -33,6 +34,10 @@ class EpisodeDownloadWorker(
 
         val dao = PurePodcastDatabase.getInstance(applicationContext).dao()
         val episode = dao.getEpisode(episodeId) ?: return@withContext Result.failure()
+        if (episode.isHidden) {
+            dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+            return@withContext Result.failure()
+        }
 
         val dir = File(applicationContext.filesDir, "episodes/${episode.podcastId}")
         if (!dir.exists()) dir.mkdirs()
@@ -87,6 +92,15 @@ class EpisodeDownloadWorker(
                 }
             }
 
+            val latest = dao.getEpisode(episodeId)
+            if (isStopped || latest == null || latest.isHidden) {
+                tempFile.delete()
+                if (latest != null) {
+                    dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+                }
+                return@withContext Result.failure()
+            }
+
             if (targetFile.exists()) targetFile.delete()
             if (!tempFile.renameTo(targetFile)) {
                 tempFile.copyTo(targetFile, overwrite = true)
@@ -99,13 +113,22 @@ class EpisodeDownloadWorker(
                 progress = 100,
                 localPath = targetFile.absolutePath
             )
-            val prefs = (applicationContext as PurePodcastApplication).preferences
-            if (prefs.settings.value.addToQueueWhenDownloaded) {
+            val app = applicationContext as PurePodcastApplication
+            if (app.preferences.settings.value.addToQueueWhenDownloaded && !latest.isHidden) {
                 dao.enqueueToQueue(episodeId)
+            }
+            runCatching {
+                app.repository.cleanupPlayedDownloads(app.playerController.state.value.currentEpisode?.id)
             }
             Result.success()
         } catch (e: CancellationException) {
             tempFile.delete()
+            withContext(NonCancellable) {
+                val current = dao.getEpisode(episodeId)
+                if (current != null && current.downloadState == DownloadState.DOWNLOADING) {
+                    dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+                }
+            }
             throw e
         } catch (_: Exception) {
             tempFile.delete()
@@ -122,7 +145,12 @@ class EpisodeDownloadWorker(
 
         fun uniqueName(episodeId: Long) = "episode_download_$episodeId"
 
-        fun enqueue(context: Context, episodeId: Long, wifiOnly: Boolean = false) {
+        fun enqueue(
+            context: Context,
+            episodeId: Long,
+            wifiOnly: Boolean = false,
+            replaceExisting: Boolean = false
+        ) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
                 .setRequiresStorageNotLow(true)
@@ -137,7 +165,7 @@ class EpisodeDownloadWorker(
 
             WorkManager.getInstance(context).enqueueUniqueWork(
                 uniqueName(episodeId),
-                ExistingWorkPolicy.KEEP,
+                if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
                 request
             )
         }

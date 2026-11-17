@@ -342,6 +342,9 @@ fun PurePodcastApp(app: PurePodcastApplication) {
             composable("queue") {
                 QueueScreen(
                     queue = queue,
+                    currentEpisode = playerState.currentEpisode,
+                    currentPodcast = playerState.currentPodcast,
+                    onOpenNowPlaying = { showFullPlayer = true },
                     onPlay = { ep, pod -> app.playerController.playEpisode(ep, pod) },
                     onRemove = { epId -> scope.launch { app.repository.removeFromQueue(epId) } },
                     onClear = { scope.launch { app.repository.clearQueue() } }
@@ -353,20 +356,31 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     podcasts.associate { it.podcast.feedUrl to it.podcast.id }
                 }
                 SearchScreen(
+                    query = searchQuery,
+                    onQueryChange = { newQuery ->
+                        searchQuery = newQuery
+                        if (newQuery.trim().length < 2) {
+                            searchJob?.cancel()
+                            isSearching = false
+                            searchResults = emptyList()
+                        }
+                    },
                     results = searchResults,
                     subscribedFeeds = subscribedFeeds,
                     isSearching = isSearching,
                     statusMessage = searchStatus,
                     onSearch = { q ->
-                        scope.launch {
+                        searchJob?.cancel()
+                        searchJob = scope.launch {
                             isSearching = true
                             searchStatus = null
                             try {
-                                searchResults = runCatching { app.repository.searchPodcasts(q) }
-                                    .getOrElse { err ->
-                                        searchStatus = context.getString(R.string.status_search_failed, err.javaClass.simpleName)
-                                        emptyList()
-                                    }
+                                searchResults = runCatching {
+                                    app.repository.searchPodcasts(q).distinctBy { it.feedUrl }
+                                }.getOrElse { err ->
+                                    searchStatus = context.getString(R.string.status_search_failed, err.javaClass.simpleName)
+                                    emptyList()
+                                }
                             } finally {
                                 isSearching = false
                             }
@@ -417,10 +431,12 @@ fun PurePodcastApp(app: PurePodcastApplication) {
         }
     }
 
-    if (showFullPlayer) {
+    if (showFullPlayer && playerState.currentEpisode != null) {
+        val currentId = playerState.currentEpisode?.id
+        val canSkipQueue = queue.size > 1 || (queue.size == 1 && queue[0].episode.id != currentId)
         FullPlayerSheet(
             state = playerState,
-            hasQueue = queue.isNotEmpty(),
+            hasQueue = canSkipQueue,
             onDismiss = { showFullPlayer = false },
             onTogglePlayPause = { app.playerController.togglePlayPause() },
             onSeekTo = { app.playerController.seekTo(it) },

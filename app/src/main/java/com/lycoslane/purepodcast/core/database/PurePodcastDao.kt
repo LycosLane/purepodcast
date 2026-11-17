@@ -127,8 +127,18 @@ interface PurePodcastDao {
     @Query("UPDATE episodes SET isHidden = :isHidden WHERE id = :episodeId")
     suspend fun setHidden(episodeId: Long, isHidden: Boolean)
 
-    @Query("UPDATE episodes SET markedForDeletionAtMs = :markedAtMs WHERE id = :episodeId")
+    @Query(
+        """
+        UPDATE episodes
+        SET markedForDeletionAtMs = :markedAtMs,
+            skipAutoDownload = CASE WHEN :markedAtMs > 0 THEN 1 ELSE skipAutoDownload END
+        WHERE id = :episodeId
+        """
+    )
     suspend fun markForDeletion(episodeId: Long, markedAtMs: Long)
+
+    @Query("UPDATE episodes SET skipAutoDownload = :skip WHERE id = :episodeId")
+    suspend fun setSkipAutoDownload(episodeId: Long, skip: Boolean)
 
     @Query(
         """
@@ -145,7 +155,7 @@ interface PurePodcastDao {
         WHERE podcastId = :podcastId AND downloadState = 'DOWNLOADED'
           AND markedForDeletionAtMs = 0 AND localFilePath IS NOT NULL
           AND id NOT IN (SELECT episodeId FROM queue_items)
-        ORDER BY pubDateMs DESC
+        ORDER BY pubDateMs DESC, id DESC
         """
     )
     suspend fun getActiveDownloadsForPodcastNotInQueue(podcastId: Long): List<EpisodeEntity>
@@ -188,7 +198,8 @@ interface PurePodcastDao {
     @Query(
         """
         SELECT * FROM episodes
-        WHERE podcastId = :podcastId AND pubDateMs >= :fromPubDateMs AND downloadState = 'NONE' AND isHidden = 0
+        WHERE podcastId = :podcastId AND pubDateMs >= :fromPubDateMs
+          AND downloadState = 'NONE' AND isHidden = 0 AND skipAutoDownload = 0
         """
     )
     suspend fun getNotDownloadedNewerThan(podcastId: Long, fromPubDateMs: Long): List<EpisodeEntity>
@@ -196,7 +207,10 @@ interface PurePodcastDao {
     @Query(
         """
         SELECT * FROM episodes
-        WHERE podcastId = :podcastId AND pubDateMs < :beforePubDateMs AND localFilePath IS NOT NULL
+        WHERE podcastId = :podcastId AND pubDateMs < :beforePubDateMs
+          AND markedForDeletionAtMs = 0
+          AND downloadState IN ('QUEUED', 'DOWNLOADING', 'DOWNLOADED')
+          AND id NOT IN (SELECT episodeId FROM queue_items)
         """
     )
     suspend fun getDownloadedOlderThan(podcastId: Long, beforePubDateMs: Long): List<EpisodeEntity>
@@ -205,7 +219,7 @@ interface PurePodcastDao {
         """
         UPDATE episodes
         SET isPlayed = 1, playedAtMs = :playedAtMs
-        WHERE podcastId = :podcastId AND pubDateMs < :beforePubDateMs
+        WHERE podcastId = :podcastId AND pubDateMs < :beforePubDateMs AND isPlayed = 0
         """
     )
     suspend fun markOlderAsPlayed(podcastId: Long, beforePubDateMs: Long, playedAtMs: Long)
