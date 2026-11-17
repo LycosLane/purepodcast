@@ -199,8 +199,12 @@ fun PurePodcastApp(app: PurePodcastApplication) {
             }
 
             composable("search") {
+                val subscribedFeeds = remember(podcasts) {
+                    podcasts.associate { it.podcast.feedUrl to it.podcast.id }
+                }
                 SearchScreen(
                     results = searchResults,
+                    subscribedFeeds = subscribedFeeds,
                     isSearching = isSearching,
                     statusMessage = searchStatus,
                     onSearch = { q ->
@@ -226,6 +230,12 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                                 .onFailure {
                                     searchStatus = "Fehler: ${it.localizedMessage}"
                                 }
+                        }
+                    },
+                    onUnsubscribeById = { podcastId, title ->
+                        scope.launch {
+                            app.repository.unsubscribePodcast(podcastId)
+                            searchStatus = "„$title“ deabonniert."
                         }
                     },
                     onImportOpmlUri = { uri: Uri ->

@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Search
@@ -60,15 +61,18 @@ import com.lycoslane.purepodcast.core.network.PodcastSearchResult
 @Composable
 fun SearchScreen(
     results: List<PodcastSearchResult>,
+    subscribedFeeds: Map<String, Long>,
     isSearching: Boolean,
     statusMessage: String?,
     onSearch: (String) -> Unit,
     onSubscribeFeedUrl: (String) -> Unit,
+    onUnsubscribeById: (Long, String) -> Unit,
     onImportOpmlUri: (Uri) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var showRssDialog by remember { mutableStateOf(false) }
     var rssInput by remember { mutableStateOf("") }
+    var pendingUnsubscribe by remember { mutableStateOf<Pair<Long, String>?>(null) }
 
     LaunchedEffect(query) {
         val trimmed = query.trim()
@@ -189,13 +193,47 @@ fun SearchScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        IconButton(onClick = { onSubscribeFeedUrl(item.feedUrl) }) {
-                            Icon(Icons.Default.Add, contentDescription = "Abonnieren")
+                        val subscribedId = subscribedFeeds[item.feedUrl]
+                        if (subscribedId != null) {
+                            IconButton(onClick = { pendingUnsubscribe = subscribedId to item.title }) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = "Abonniert (tippen zum Deabonnieren)",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        } else {
+                            IconButton(onClick = { onSubscribeFeedUrl(item.feedUrl) }) {
+                                Icon(Icons.Default.Add, contentDescription = "Abonnieren")
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    pendingUnsubscribe?.let { (podcastId, title) ->
+        AlertDialog(
+            onDismissRequest = { pendingUnsubscribe = null },
+            title = { Text("Podcast deabonnieren?") },
+            text = {
+                Text("Möchtest du „$title“ wirklich entfernen? Heruntergeladene Episoden werden dabei gelöscht.")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onUnsubscribeById(podcastId, title)
+                    pendingUnsubscribe = null
+                }) {
+                    Text("Deabonnieren")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingUnsubscribe = null }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
     }
 
     if (showRssDialog) {
