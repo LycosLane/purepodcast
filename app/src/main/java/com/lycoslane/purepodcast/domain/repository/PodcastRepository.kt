@@ -156,7 +156,26 @@ class PodcastRepository(
     }
 
     suspend fun togglePlayed(episodeId: Long, isPlayed: Boolean) {
-        dao.setPlayed(episodeId, isPlayed)
+        val playedAt = if (isPlayed) System.currentTimeMillis() else 0L
+        dao.setPlayed(episodeId, isPlayed, playedAt)
+        if (isPlayed && preferences.settings.value.autoRemovePlayedDays == 0) {
+            deleteDownload(episodeId)
+        }
+    }
+
+    suspend fun cleanupPlayedDownloads() = withContext(Dispatchers.IO) {
+        val days = preferences.settings.value.autoRemovePlayedDays
+        if (days < 0) return@withContext
+        val targets = if (days == 0) {
+            dao.getAllPlayedDownloads()
+        } else {
+            val cutoffMs = System.currentTimeMillis() - days * 86_400_000L
+            dao.getPlayedDownloadsOlderThan(cutoffMs)
+        }
+        targets.forEach { ep ->
+            ep.localFilePath?.let { path -> File(path).delete() }
+            dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+        }
     }
 
     suspend fun toggleSortAscending(podcastId: Long, ascending: Boolean) {
@@ -273,7 +292,9 @@ class PodcastRepository(
                         if (guid.isEmpty()) continue
                         val ep = dao.getEpisodeByGuid(podcastId, guid) ?: continue
                         dao.updatePosition(ep.id, eObj.optLong("positionMs", ep.positionMs))
-                        dao.setPlayed(ep.id, eObj.optBoolean("isPlayed", ep.isPlayed))
+                        val restoredPlayed = eObj.optBoolean("isPlayed", ep.isPlayed)
+                        val restoredPlayedAt = if (restoredPlayed) ep.playedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis() else 0L
+                        dao.setPlayed(ep.id, restoredPlayed, restoredPlayedAt)
                     }
                 }
                 restored++
