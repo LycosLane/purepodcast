@@ -13,7 +13,10 @@ data class AppSettings(
     val downloadWhenQueued: Boolean = false,
     val addToQueueWhenDownloaded: Boolean = false,
     val autoRemovePlayedDays: Int = 1, // -1 = never, 0 = immediately, >0 = after X days
+    val maxDownloadsPerPodcast: Int = 0, // 0 = unlimited, 1..30
     val smartRewindSeconds: Int = 10, // 0 = off
+    val audioNormalizationEnabled: Boolean = false,
+    val bluetoothNextPrevSeeks: Boolean = true, // true = -10s/+30s, false = prev/next in queue
     val appLanguage: String = "en" // "en" or "de"
 )
 
@@ -31,7 +34,10 @@ class AppPreferences(context: Context) {
         downloadWhenQueued = prefs.getBoolean(KEY_DOWNLOAD_WHEN_QUEUED, false),
         addToQueueWhenDownloaded = prefs.getBoolean(KEY_QUEUE_WHEN_DOWNLOADED, false),
         autoRemovePlayedDays = prefs.getInt(KEY_AUTO_REMOVE_PLAYED_DAYS, 1),
+        maxDownloadsPerPodcast = prefs.getInt(KEY_MAX_DOWNLOADS_PER_PODCAST, 0).coerceIn(0, 30),
         smartRewindSeconds = prefs.getInt(KEY_SMART_REWIND_SECONDS, 10),
+        audioNormalizationEnabled = prefs.getBoolean(KEY_AUDIO_NORMALIZATION, false),
+        bluetoothNextPrevSeeks = prefs.getBoolean(KEY_BLUETOOTH_NEXT_PREV_SEEKS, true),
         appLanguage = prefs.getString(KEY_APP_LANGUAGE, "en") ?: "en"
     )
 
@@ -65,9 +71,25 @@ class AppPreferences(context: Context) {
         _settings.update { it.copy(autoRemovePlayedDays = days) }
     }
 
+    fun setMaxDownloadsPerPodcast(limit: Int) {
+        val clamped = limit.coerceIn(0, 30)
+        prefs.edit().putInt(KEY_MAX_DOWNLOADS_PER_PODCAST, clamped).apply()
+        _settings.update { it.copy(maxDownloadsPerPodcast = clamped) }
+    }
+
     fun setSmartRewindSeconds(seconds: Int) {
         prefs.edit().putInt(KEY_SMART_REWIND_SECONDS, seconds).apply()
         _settings.update { it.copy(smartRewindSeconds = seconds) }
+    }
+
+    fun setAudioNormalizationEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUDIO_NORMALIZATION, enabled).apply()
+        _settings.update { it.copy(audioNormalizationEnabled = enabled) }
+    }
+
+    fun setBluetoothNextPrevSeeks(seeks: Boolean) {
+        prefs.edit().putBoolean(KEY_BLUETOOTH_NEXT_PREV_SEEKS, seeks).apply()
+        _settings.update { it.copy(bluetoothNextPrevSeeks = seeks) }
     }
 
     fun setAppLanguage(languageTag: String) {
@@ -85,6 +107,9 @@ class AppPreferences(context: Context) {
         private const val KEY_DOWNLOAD_WHEN_QUEUED = "download_when_queued"
         private const val KEY_QUEUE_WHEN_DOWNLOADED = "queue_when_downloaded"
         private const val KEY_AUTO_REMOVE_PLAYED_DAYS = "auto_remove_played_days"
+        private const val KEY_MAX_DOWNLOADS_PER_PODCAST = "max_downloads_per_podcast"
         private const val KEY_SMART_REWIND_SECONDS = "smart_rewind_seconds"
+        private const val KEY_AUDIO_NORMALIZATION = "audio_normalization_enabled"
+        private const val KEY_BLUETOOTH_NEXT_PREV_SEEKS = "bluetooth_next_prev_seeks"
     }
 }

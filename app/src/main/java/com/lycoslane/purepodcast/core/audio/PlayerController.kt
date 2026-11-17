@@ -42,6 +42,7 @@ data class PlayerUiState(
     val durationMs: Long = 0L,
     val playbackSpeed: Float = 1.0f,
     val skipSilence: Boolean = false,
+    val silenceIntensity: Int = 1,
     val sleepTimerRemainingMs: Long = 0L
 )
 
@@ -120,7 +121,10 @@ class PlayerController(
             _state.update {
                 it.copy(
                     currentEpisode = withPodcast.episode,
-                    currentPodcast = withPodcast.podcast
+                    currentPodcast = withPodcast.podcast,
+                    playbackSpeed = withPodcast.podcast.playbackSpeed.coerceIn(0.75f, 3.0f),
+                    skipSilence = withPodcast.podcast.skipSilence,
+                    silenceIntensity = withPodcast.podcast.silenceIntensity.coerceIn(0, 2)
                 )
             }
         }
@@ -138,6 +142,9 @@ class PlayerController(
             val freshEpisode = withContext(Dispatchers.IO) {
                 dao.getEpisode(episode.id) ?: episode
             }
+            val freshPodcast = withContext(Dispatchers.IO) {
+                dao.getPodcast(podcast.id) ?: podcast
+            }
             val localUri = withContext(Dispatchers.IO) {
                 freshEpisode.localFilePath?.let { path ->
                     val f = File(path)
@@ -149,13 +156,13 @@ class PlayerController(
                 Uri.parse(freshEpisode.audioUrl)
             }
 
-            val artworkUri = freshEpisode.artworkUrl.ifEmpty { podcast.artworkUrl }
+            val artworkUri = freshEpisode.artworkUrl.ifEmpty { freshPodcast.artworkUrl }
                 .takeIf { NetworkSecurity.isValidHttpUrl(it) }
                 ?.let { Uri.parse(it) }
 
             val metadata = MediaMetadata.Builder()
                 .setTitle(freshEpisode.title)
-                .setArtist(podcast.title)
+                .setArtist(freshPodcast.title)
                 .setArtworkUri(artworkUri)
                 .build()
 
@@ -165,7 +172,8 @@ class PlayerController(
                 .setMediaMetadata(metadata)
                 .build()
 
-            val speed = podcast.playbackSpeed.coerceIn(0.75f, 3.0f)
+            val speed = freshPodcast.playbackSpeed.coerceIn(0.75f, 3.0f)
+            val intensity = freshPodcast.silenceIntensity.coerceIn(0, 2)
             val rewindMs = preferences.settings.value.smartRewindSeconds * 1000L
             val startPos = if (freshEpisode.positionMs > 0L) {
                 (freshEpisode.positionMs - rewindMs).coerceAtLeast(0L)
@@ -175,16 +183,17 @@ class PlayerController(
 
             mc.setMediaItem(mediaItem, startPos)
             mc.playbackParameters = PlaybackParameters(speed)
-            sendSkipSilenceCommand(mc, podcast.skipSilence)
+            sendSkipSilenceCommand(mc, freshPodcast.skipSilence, intensity)
             mc.prepare()
             mc.play()
 
             _state.update {
                 it.copy(
                     currentEpisode = freshEpisode,
-                    currentPodcast = podcast,
+                    currentPodcast = freshPodcast,
                     playbackSpeed = speed,
-                    skipSilence = podcast.skipSilence,
+                    skipSilence = freshPodcast.skipSilence,
+                    silenceIntensity = intensity,
                     durationMs = freshEpisode.durationMs,
                     positionMs = startPos,
                     isPlaying = true
@@ -216,6 +225,26 @@ class PlayerController(
         _state.update { it.copy(positionMs = target) }
     }
 
+    fun skipToNextInQueue() {
+        val mc = controller ?: return
+        mc.sendCustomCommand(SessionCommand(PlaybackService.CMD_SKIP_QUEUE_NEXT, Bundle.EMPTY), Bundle.EMPTY)
+    }
+
+    fun skipToPreviousInQueue() {
+        val mc = controller ?: return
+        mc.sendCustomCommand(SessionCommand(PlaybackService.CMD_SKIP_QUEUE_PREV, Bundle.EMPTY), Bundle.EMPTY)
+    }
+
+    fun stopAndClear() {
+        progressJob?.cancel()
+        sleepTimerJob?.cancel()
+        controller?.let { mc ->
+            mc.stop()
+            mc.clearMediaItems()
+        }
+        _state.value = PlayerUiState()
+    }
+
     fun setPlaybackSpeed(speed: Float) {
         val clamped = speed.coerceIn(0.75f, 3.0f)
         controller?.playbackParameters = PlaybackParameters(clamped)
@@ -226,15 +255,35 @@ class PlayerController(
 
     fun toggleSkipSilence() {
         val next = !_state.value.skipSilence
-        controller?.let { sendSkipSilenceCommand(it, next) }
+        val intensity = _state.value.silenceIntensity
+        controller?.let { sendSkipSilenceCommand(it, next, intensity) }
         _state.update { it.copy(skipSilence = next) }
         val podcastId = _state.value.currentPodcast?.id ?: return
         scope.launch(Dispatchers.IO) { dao.setSkipSilence(podcastId, next) }
     }
 
-    private fun sendSkipSilenceCommand(mc: MediaController, enabled: Boolean) {
+    fun setSilenceIntensity(intensity: Int) {
+        val clamped = intensity.coerceIn(0, 2)
+        val enabled = _state.value.skipSilence
+        controller?.let { sendSkipSilenceCommand(it, enabled, clamped) }
+        _state.update { it.copy(silenceIntensity = clamped) }
+        val podcastId = _state.value.currentPodcast?.id ?: return
+        scope.launch(Dispatchers.IO) { dao.setSilenceIntensity(podcastId, clamped) }
+    }
+
+    fun setAudioNormalization(enabled: Boolean) {
+        val mc = controller ?: return
+        val cmd = SessionCommand(PlaybackService.CMD_SET_AUDIO_NORMALIZATION, Bundle.EMPTY)
+        val args = Bundle().apply { putBoolean(PlaybackService.ARG_AUDIO_NORMALIZATION, enabled) }
+        mc.sendCustomCommand(cmd, args)
+    }
+
+    private fun sendSkipSilenceCommand(mc: MediaController, enabled: Boolean, intensity: Int) {
         val cmd = SessionCommand(PlaybackService.CMD_SET_SKIP_SILENCE, Bundle.EMPTY)
-        val args = Bundle().apply { putBoolean(PlaybackService.ARG_SKIP_SILENCE, enabled) }
+        val args = Bundle().apply {
+            putBoolean(PlaybackService.ARG_SKIP_SILENCE, enabled)
+            putInt(PlaybackService.ARG_SILENCE_INTENSITY, intensity.coerceIn(0, 2))
+        }
         mc.sendCustomCommand(cmd, args)
     }
 

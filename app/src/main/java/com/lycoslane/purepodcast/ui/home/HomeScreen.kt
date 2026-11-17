@@ -46,12 +46,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -74,6 +76,7 @@ import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.database.PodcastWithStats
 import com.lycoslane.purepodcast.core.preferences.AppSettings
 import com.lycoslane.purepodcast.ui.common.PodcastImage
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -91,7 +94,10 @@ fun HomeScreen(
     onToggleDownloadWhenQueued: (Boolean) -> Unit,
     onToggleAddToQueueWhenDownloaded: (Boolean) -> Unit,
     onChangeAutoRemovePlayedDays: (Int) -> Unit,
+    onChangeMaxDownloadsPerPodcast: (Int) -> Unit,
     onChangeSmartRewind: (Int) -> Unit,
+    onToggleAudioNormalization: (Boolean) -> Unit,
+    onChangeBluetoothNextPrevSeeks: (Boolean) -> Unit,
     onChangeAppLanguage: (String) -> Unit,
     onExportBackupUri: (Uri) -> Unit,
     onImportBackupUri: (Uri) -> Unit
@@ -283,6 +289,50 @@ fun HomeScreen(
                 }
 
                 Spacer(Modifier.height(14.dp))
+
+                var sliderLimit by remember(settings.maxDownloadsPerPodcast) {
+                    mutableFloatStateOf(settings.maxDownloadsPerPodcast.toFloat())
+                }
+                val displayLimit = sliderLimit.roundToInt()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_max_downloads),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_max_downloads_sub),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        text = if (displayLimit == 0) {
+                            stringResource(R.string.max_downloads_unlimited)
+                        } else {
+                            stringResource(R.string.max_downloads_count, displayLimit)
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Slider(
+                    value = sliderLimit,
+                    onValueChange = { sliderLimit = it },
+                    onValueChangeFinished = {
+                        onChangeMaxDownloadsPerPodcast(sliderLimit.roundToInt())
+                    },
+                    valueRange = 0f..30f,
+                    steps = 29,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(14.dp))
                 HorizontalDivider()
                 Spacer(Modifier.height(14.dp))
 
@@ -299,6 +349,13 @@ fun HomeScreen(
                     subtitle = stringResource(R.string.settings_queue_when_downloaded_sub),
                     checked = settings.addToQueueWhenDownloaded,
                     onCheckedChange = onToggleAddToQueueWhenDownloaded
+                )
+                Spacer(Modifier.height(12.dp))
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_audio_normalization),
+                    subtitle = stringResource(R.string.settings_audio_normalization_sub),
+                    checked = settings.audioNormalizationEnabled,
+                    onCheckedChange = onToggleAudioNormalization
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
@@ -328,6 +385,28 @@ fun HomeScreen(
                             label = { Text(label) }
                         )
                     }
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = stringResource(R.string.settings_bluetooth_skip),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(Modifier.height(6.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilterChip(
+                        selected = settings.bluetoothNextPrevSeeks,
+                        onClick = { onChangeBluetoothNextPrevSeeks(true) },
+                        label = { Text(stringResource(R.string.settings_bluetooth_skip_seek)) }
+                    )
+                    FilterChip(
+                        selected = !settings.bluetoothNextPrevSeeks,
+                        onClick = { onChangeBluetoothNextPrevSeeks(false) },
+                        label = { Text(stringResource(R.string.settings_bluetooth_skip_episode)) }
+                    )
                 }
 
                 Spacer(Modifier.height(14.dp))

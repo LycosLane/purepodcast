@@ -31,8 +31,8 @@ interface PurePodcastDao {
     @Query(
         """
         SELECT p.*,
-               (SELECT COUNT(*) FROM episodes e WHERE e.podcastId = p.id AND e.isPlayed = 0) AS unplayedCount,
-               (SELECT COUNT(*) FROM episodes e WHERE e.podcastId = p.id AND e.downloadState = 'DOWNLOADED') AS downloadedCount
+               (SELECT COUNT(*) FROM episodes e WHERE e.podcastId = p.id AND e.isPlayed = 0 AND e.isHidden = 0) AS unplayedCount,
+               (SELECT COUNT(*) FROM episodes e WHERE e.podcastId = p.id AND e.downloadState = 'DOWNLOADED' AND e.markedForDeletionAtMs = 0) AS downloadedCount
         FROM podcasts p
         ORDER BY p.title COLLATE NOCASE ASC
         """
@@ -88,6 +88,9 @@ interface PurePodcastDao {
     @Query("UPDATE podcasts SET skipSilence = :skipSilence WHERE id = :podcastId")
     suspend fun setSkipSilence(podcastId: Long, skipSilence: Boolean)
 
+    @Query("UPDATE podcasts SET silenceIntensity = :intensity WHERE id = :podcastId")
+    suspend fun setSilenceIntensity(podcastId: Long, intensity: Int)
+
     // --- Episodes ---
 
     @Query("SELECT * FROM episodes WHERE podcastId = :podcastId ORDER BY pubDateMs DESC")
@@ -99,7 +102,7 @@ interface PurePodcastDao {
     @Query("SELECT id FROM episodes WHERE podcastId = :podcastId")
     suspend fun getEpisodeIdsForPodcast(podcastId: Long): List<Long>
 
-    @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND (isPlayed = 1 OR positionMs > 0)")
+    @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND (isPlayed = 1 OR positionMs > 0 OR isHidden = 1)")
     suspend fun getEpisodesWithProgress(podcastId: Long): List<EpisodeEntity>
 
     @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND guid = :guid LIMIT 1")
@@ -121,10 +124,37 @@ interface PurePodcastDao {
     @Query("UPDATE episodes SET isPlayed = :isPlayed, playedAtMs = :playedAtMs WHERE id = :episodeId")
     suspend fun setPlayed(episodeId: Long, isPlayed: Boolean, playedAtMs: Long)
 
+    @Query("UPDATE episodes SET isHidden = :isHidden WHERE id = :episodeId")
+    suspend fun setHidden(episodeId: Long, isHidden: Boolean)
+
+    @Query("UPDATE episodes SET markedForDeletionAtMs = :markedAtMs WHERE id = :episodeId")
+    suspend fun markForDeletion(episodeId: Long, markedAtMs: Long)
+
+    @Query(
+        """
+        SELECT * FROM episodes
+        WHERE markedForDeletionAtMs > 0 AND markedForDeletionAtMs <= :cutoffMs
+          AND downloadState = 'DOWNLOADED' AND localFilePath IS NOT NULL
+        """
+    )
+    suspend fun getTrashedDownloadsOlderThan(cutoffMs: Long): List<EpisodeEntity>
+
+    @Query(
+        """
+        SELECT * FROM episodes
+        WHERE podcastId = :podcastId AND downloadState = 'DOWNLOADED'
+          AND markedForDeletionAtMs = 0 AND localFilePath IS NOT NULL
+          AND id NOT IN (SELECT episodeId FROM queue_items)
+        ORDER BY pubDateMs DESC
+        """
+    )
+    suspend fun getActiveDownloadsForPodcastNotInQueue(podcastId: Long): List<EpisodeEntity>
+
     @Query(
         """
         SELECT * FROM episodes
         WHERE isPlayed = 1 AND downloadState = 'DOWNLOADED' AND localFilePath IS NOT NULL
+          AND markedForDeletionAtMs = 0
           AND id NOT IN (SELECT episodeId FROM queue_items)
         """
     )
@@ -134,6 +164,7 @@ interface PurePodcastDao {
         """
         SELECT * FROM episodes
         WHERE isPlayed = 1 AND downloadState = 'DOWNLOADED' AND localFilePath IS NOT NULL
+          AND markedForDeletionAtMs = 0
           AND playedAtMs > 0 AND playedAtMs <= :cutoffMs
           AND id NOT IN (SELECT episodeId FROM queue_items)
         """
@@ -143,7 +174,7 @@ interface PurePodcastDao {
     @Query(
         """
         UPDATE episodes
-        SET downloadState = :state, downloadProgress = :progress, localFilePath = :localPath
+        SET downloadState = :state, downloadProgress = :progress, localFilePath = :localPath, markedForDeletionAtMs = 0
         WHERE id = :episodeId
         """
     )
@@ -157,7 +188,7 @@ interface PurePodcastDao {
     @Query(
         """
         SELECT * FROM episodes
-        WHERE podcastId = :podcastId AND pubDateMs >= :fromPubDateMs AND downloadState = 'NONE'
+        WHERE podcastId = :podcastId AND pubDateMs >= :fromPubDateMs AND downloadState = 'NONE' AND isHidden = 0
         """
     )
     suspend fun getNotDownloadedNewerThan(podcastId: Long, fromPubDateMs: Long): List<EpisodeEntity>
@@ -190,6 +221,16 @@ interface PurePodcastDao {
         """
     )
     fun observeQueueEpisodes(): Flow<List<EpisodeWithPodcast>>
+
+    @Transaction
+    @Query(
+        """
+        SELECT e.* FROM episodes e
+        INNER JOIN queue_items q ON q.episodeId = e.id
+        ORDER BY q.sortOrder ASC
+        """
+    )
+    suspend fun getQueueEpisodesOnce(): List<EpisodeWithPodcast>
 
     @Query("SELECT COALESCE(MAX(sortOrder), -1) FROM queue_items")
     suspend fun getMaxQueueOrder(): Int

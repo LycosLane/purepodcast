@@ -1,7 +1,10 @@
 package com.lycoslane.purepodcast.ui.player
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -25,6 +28,8 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -140,16 +145,20 @@ fun MiniPlayer(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun FullPlayerSheet(
     state: PlayerUiState,
+    hasQueue: Boolean,
     onDismiss: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onSeekBy: (Long) -> Unit,
+    onPrevEpisode: () -> Unit,
+    onNextEpisode: () -> Unit,
     onSetSpeed: (Float) -> Unit,
     onToggleSkipSilence: () -> Unit,
+    onSetSilenceIntensity: (Int) -> Unit,
     onSetSleepTimer: (Int) -> Unit
 ) {
     val ep = state.currentEpisode ?: return
@@ -159,6 +168,7 @@ fun FullPlayerSheet(
     var showNotes by remember { mutableStateOf(false) }
     var showSpeedRow by remember { mutableStateOf(false) }
     var showSleepRow by remember { mutableStateOf(false) }
+    var showSilenceIntensityRow by remember { mutableStateOf(false) }
     var scrubPos by remember(ep.id) { mutableStateOf<Float?>(null) }
 
     val plainNotes = remember(ep.descriptionHtml) {
@@ -241,9 +251,20 @@ fun FullPlayerSheet(
             Spacer(Modifier.height(12.dp))
 
             Row(
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                IconButton(
+                    onClick = onPrevEpisode,
+                    enabled = hasQueue,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Default.SkipPrevious,
+                        contentDescription = stringResource(R.string.cd_prev_episode),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
                 IconButton(onClick = { onSeekBy(-10_000L) }, modifier = Modifier.size(48.dp)) {
                     Icon(
                         Icons.Default.Replay10,
@@ -270,6 +291,17 @@ fun FullPlayerSheet(
                         modifier = Modifier.size(32.dp)
                     )
                 }
+                IconButton(
+                    onClick = onNextEpisode,
+                    enabled = hasQueue,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Default.SkipNext,
+                        contentDescription = stringResource(R.string.cd_next_episode),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
             }
 
             Spacer(Modifier.height(18.dp))
@@ -281,19 +313,70 @@ fun FullPlayerSheet(
             ) {
                 FilterChip(
                     selected = showSpeedRow,
-                    onClick = { showSpeedRow = !showSpeedRow; showSleepRow = false },
+                    onClick = {
+                        showSpeedRow = !showSpeedRow
+                        showSleepRow = false
+                        showSilenceIntensityRow = false
+                    },
                     label = { Text(String.format(Locale.getDefault(), "%.1fx", state.playbackSpeed)) },
                     leadingIcon = { Icon(Icons.Default.Speed, null, modifier = Modifier.size(16.dp)) }
                 )
-                FilterChip(
-                    selected = state.skipSilence,
-                    onClick = onToggleSkipSilence,
-                    label = { Text(stringResource(R.string.player_silence)) },
-                    leadingIcon = { Icon(Icons.Default.GraphicEq, null, modifier = Modifier.size(16.dp)) }
-                )
+
+                val silenceSelected = state.skipSilence
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (silenceSelected) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
+                    border = if (silenceSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier
+                        .height(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .combinedClickable(
+                            onClick = onToggleSkipSilence,
+                            onLongClick = {
+                                showSilenceIntensityRow = !showSilenceIntensityRow
+                                showSpeedRow = false
+                                showSleepRow = false
+                            }
+                        )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.GraphicEq,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (silenceSelected) {
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            }
+                        )
+                        Text(
+                            text = stringResource(R.string.player_silence),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (silenceSelected) {
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
+                }
+
                 FilterChip(
                     selected = state.sleepTimerRemainingMs > 0L || showSleepRow,
-                    onClick = { showSleepRow = !showSleepRow; showSpeedRow = false },
+                    onClick = {
+                        showSleepRow = !showSleepRow
+                        showSpeedRow = false
+                        showSilenceIntensityRow = false
+                    },
                     label = {
                         Text(
                             if (state.sleepTimerRemainingMs > 0L) formatDuration(state.sleepTimerRemainingMs)
@@ -308,6 +391,38 @@ fun FullPlayerSheet(
                     label = { Text(stringResource(R.string.player_notes)) },
                     leadingIcon = { Icon(Icons.Default.Description, null, modifier = Modifier.size(16.dp)) }
                 )
+            }
+
+            if (showSilenceIntensityRow) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.silence_intensity_title),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(4.dp))
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val levels = listOf(
+                        0 to stringResource(R.string.silence_soft),
+                        1 to stringResource(R.string.silence_medium),
+                        2 to stringResource(R.string.silence_strong)
+                    )
+                    levels.forEach { (level, label) ->
+                        FilterChip(
+                            selected = state.silenceIntensity == level,
+                            onClick = {
+                                onSetSilenceIntensity(level)
+                                if (!state.skipSilence) onToggleSkipSilence()
+                                showSilenceIntensityRow = false
+                            },
+                            label = { Text(label) }
+                        )
+                    }
+                }
             }
 
             if (showSpeedRow) {

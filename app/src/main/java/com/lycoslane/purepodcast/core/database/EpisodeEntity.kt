@@ -29,7 +29,9 @@ enum class DownloadState {
         Index(value = ["podcastId", "pubDateMs"]),
         Index(value = ["podcastId", "isPlayed"]),
         Index(value = ["podcastId", "downloadState"]),
-        Index(value = ["isPlayed", "downloadState"])
+        Index(value = ["isPlayed", "downloadState"]),
+        Index(value = ["podcastId", "isHidden"]),
+        Index(value = ["markedForDeletionAtMs"])
     ]
 )
 data class EpisodeEntity(
@@ -45,6 +47,8 @@ data class EpisodeEntity(
     val positionMs: Long = 0L,
     val isPlayed: Boolean = false,
     val playedAtMs: Long = 0L,
+    val isHidden: Boolean = false,
+    val markedForDeletionAtMs: Long = 0L,
     val localFilePath: String? = null,
     val downloadState: DownloadState = DownloadState.NONE,
     val downloadProgress: Int = 0,

@@ -95,13 +95,19 @@
     <!-- Player -->
     <string name="player_pause">Pause</string>
     <string name="player_play">Play</string>
-    <string name="player_silence">Silence</string>
+    <string name="player_silence">Trim silence</string>
     <string name="player_sleep">Sleep</string>
     <string name="player_notes">Notes</string>
     <string name="sleep_off">Off</string>
     <string name="sleep_minutes_short">%1$dm</string>
     <string name="cd_rewind_10">Rewind 10 seconds</string>
     <string name="cd_forward_30">Forward 30 seconds</string>
+    <string name="cd_prev_episode">Previous episode in queue</string>
+    <string name="cd_next_episode">Next episode in queue</string>
+    <string name="silence_intensity_title">Silence trimming intensity</string>
+    <string name="silence_soft">Soft</string>
+    <string name="silence_medium">Medium</string>
+    <string name="silence_strong">Strong</string>
 
     <!-- Download & Action Feedback -->
     <string name="cd_downloaded">Downloaded</string>
@@ -112,13 +118,37 @@
     <string name="dialog_clear_queue_body">All episodes will be removed from your queue.</string>
     <string name="backup_empty_file">Empty file</string>
     <string name="search_no_results">No podcasts found</string>
+    <string name="search_preview_swipe_hint">Swipe left or right to browse</string>
 
-    <!-- Auto-remove & Language -->
+    <!-- Detail Filters, Hide & Trash -->
+    <string name="filter_all">All</string>
+    <string name="filter_unplayed">Unplayed</string>
+    <string name="filter_hidden">Hidden</string>
+    <string name="filter_trash">Trash</string>
+    <string name="action_hide">Hide episode</string>
+    <string name="action_unhide">Show episode</string>
+    <string name="action_restore_trash">Restore download</string>
+    <string name="action_delete_now">Delete permanently</string>
+    <string name="trash_hint">Deletes after 24h</string>
+    <string name="dialog_delete_active_title">Delete playing episode?</string>
+    <string name="dialog_delete_active_body">This episode is currently loaded in the player. Stop playback and delete the download?</string>
+    <string name="action_stop_and_delete">Stop &amp; Delete</string>
+
+    <!-- Auto-remove, Limits, Audio & Language -->
     <string name="settings_auto_remove_played">Auto-remove listened downloads</string>
-    <string name="settings_auto_remove_played_sub">Delete downloaded audio after finishing an episode.</string>
+    <string name="settings_auto_remove_played_sub">Moves finished downloads to trash (deleted after 24h).</string>
     <string name="auto_remove_never">Keep</string>
     <string name="auto_remove_immediately">Immediately</string>
     <string name="auto_remove_days">%1$dd</string>
+    <string name="settings_max_downloads">Max downloads per podcast</string>
+    <string name="settings_max_downloads_sub">Queued episodes are excluded from this limit</string>
+    <string name="max_downloads_unlimited">Unlimited</string>
+    <string name="max_downloads_count">%1$d episodes</string>
+    <string name="settings_audio_normalization">Normalize audio loudness</string>
+    <string name="settings_audio_normalization_sub">Balances quiet voices and loud peaks across podcasts</string>
+    <string name="settings_bluetooth_skip">Bluetooth skip buttons</string>
+    <string name="settings_bluetooth_skip_seek">Rewind 10s / Forward 30s</string>
+    <string name="settings_bluetooth_skip_episode">Previous / Next episode in queue</string>
     <string name="settings_language">Language</string>
     <string name="settings_language_en">English</string>
     <string name="settings_language_de">Deutsch</string>

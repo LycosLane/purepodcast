@@ -7,6 +7,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,17 +35,23 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -79,11 +87,19 @@ import com.lycoslane.purepodcast.ui.common.formatDuration
 import com.lycoslane.purepodcast.ui.common.formatPubDate
 import com.lycoslane.purepodcast.ui.common.htmlToPlainText
 
-@OptIn(ExperimentalMaterial3Api::class)
+private enum class EpisodeFilter {
+    ALL,
+    UNPLAYED,
+    HIDDEN,
+    TRASH
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PodcastDetailScreen(
     podcast: PodcastEntity?,
     episodes: List<EpisodeEntity>,
+    activeEpisodeId: Long?,
     isRefreshing: Boolean,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
@@ -93,8 +109,12 @@ fun PodcastDetailScreen(
     onPlayEpisode: (EpisodeEntity) -> Unit,
     onDownloadEpisode: (EpisodeEntity) -> Unit,
     onDeleteDownload: (EpisodeEntity) -> Unit,
+    onStopAndDeleteActive: (EpisodeEntity) -> Unit,
+    onRestoreFromTrash: (EpisodeEntity) -> Unit,
+    onDeletePermanently: (EpisodeEntity) -> Unit,
     onAddToQueue: (EpisodeEntity) -> Unit,
     onTogglePlayed: (EpisodeEntity) -> Unit,
+    onToggleHidden: (EpisodeEntity) -> Unit,
     onDownloadNewerFrom: (EpisodeEntity) -> Unit,
     onCleanupOlderThan: (EpisodeEntity) -> Unit
 ) {
@@ -102,6 +122,16 @@ fun PodcastDetailScreen(
     var selectedEpisodeForNotes by remember { mutableStateOf<EpisodeEntity?>(null) }
     var expandDescription by remember { mutableStateOf(false) }
     var showUnsubscribeDialog by remember { mutableStateOf(false) }
+    var deleteActiveTarget by remember { mutableStateOf<EpisodeEntity?>(null) }
+    var activeFilter by remember { mutableStateOf(EpisodeFilter.ALL) }
+
+    fun requestDeleteDownload(ep: EpisodeEntity) {
+        if (ep.id == activeEpisodeId) {
+            deleteActiveTarget = ep
+        } else {
+            onDeleteDownload(ep)
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
@@ -139,6 +169,22 @@ fun PodcastDetailScreen(
 
         val plainDescription = remember(podcast.description) {
             htmlToPlainText(podcast.description)
+        }
+        val trashedCount = remember(episodes) {
+            episodes.count { it.markedForDeletionAtMs > 0L && it.downloadState == DownloadState.DOWNLOADED }
+        }
+        val hiddenCount = remember(episodes) {
+            episodes.count { it.isHidden }
+        }
+        val filteredEpisodes = remember(episodes, activeFilter) {
+            when (activeFilter) {
+                EpisodeFilter.ALL -> episodes.filter { !it.isHidden }
+                EpisodeFilter.UNPLAYED -> episodes.filter { !it.isHidden && !it.isPlayed }
+                EpisodeFilter.HIDDEN -> episodes.filter { it.isHidden }
+                EpisodeFilter.TRASH -> episodes.filter {
+                    it.markedForDeletionAtMs > 0L && it.downloadState == DownloadState.DOWNLOADED
+                }
+            }
         }
 
         PullToRefreshBox(
@@ -226,26 +272,57 @@ fun PodcastDetailScreen(
                             }
                         )
                     }
+
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        FilterChip(
+                            selected = activeFilter == EpisodeFilter.ALL,
+                            onClick = { activeFilter = EpisodeFilter.ALL },
+                            label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_all)) }
+                        )
+                        FilterChip(
+                            selected = activeFilter == EpisodeFilter.UNPLAYED,
+                            onClick = { activeFilter = EpisodeFilter.UNPLAYED },
+                            label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_unplayed)) }
+                        )
+                        if (hiddenCount > 0 || activeFilter == EpisodeFilter.HIDDEN) {
+                            FilterChip(
+                                selected = activeFilter == EpisodeFilter.HIDDEN,
+                                onClick = { activeFilter = EpisodeFilter.HIDDEN },
+                                label = {
+                                    Text("${androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_hidden)} ($hiddenCount)")
+                                }
+                            )
+                        }
+                        if (trashedCount > 0 || activeFilter == EpisodeFilter.TRASH) {
+                            FilterChip(
+                                selected = activeFilter == EpisodeFilter.TRASH,
+                                onClick = { activeFilter = EpisodeFilter.TRASH },
+                                label = {
+                                    Text("${androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_trash)} ($trashedCount)")
+                                }
+                            )
+                        }
+                    }
                 }
                 HorizontalDivider()
             }
 
-            items(episodes, key = { it.id }) { episode ->
+            items(filteredEpisodes, key = { it.id }) { episode ->
                 EpisodeSwipeRow(
                     episode = episode,
                     onClick = { onPlayEpisode(episode) },
                     onLongClick = { selectedEpisodeForMenu = episode },
-                    onSwipeRightQueue = { onAddToQueue(episode) },
-                    onSwipeLeftCleanup = {
-                        if (episode.downloadState == DownloadState.DOWNLOADED) {
-                            onDeleteDownload(episode)
-                        } else {
-                            onTogglePlayed(episode)
-                        }
-                    },
+                    onSwipeRightPlayed = { onTogglePlayed(episode) },
+                    onSwipeLeftHidden = { onToggleHidden(episode) },
                     onDownloadClick = {
-                        if (episode.downloadState == DownloadState.DOWNLOADED) {
-                            onDeleteDownload(episode)
+                        if (episode.markedForDeletionAtMs > 0L) {
+                            onRestoreFromTrash(episode)
+                        } else if (episode.downloadState == DownloadState.DOWNLOADED) {
+                            requestDeleteDownload(episode)
                         } else if (episode.downloadState == DownloadState.NONE || episode.downloadState == DownloadState.FAILED) {
                             onDownloadEpisode(episode)
                         }
@@ -295,26 +372,45 @@ fun PodcastDetailScreen(
                         selectedEpisodeForMenu = null
                     })
                 )
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            if (ep.downloadState == DownloadState.DOWNLOADED) androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_delete_download)
-                            else androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_download_offline)
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            if (ep.downloadState == DownloadState.DOWNLOADED) Icons.Default.Delete
-                            else Icons.Default.Download,
-                            null
-                        )
-                    },
-                    modifier = Modifier.clickable(onClick = {
-                        if (ep.downloadState == DownloadState.DOWNLOADED) onDeleteDownload(ep)
-                        else onDownloadEpisode(ep)
-                        selectedEpisodeForMenu = null
-                    })
-                )
+                if (ep.markedForDeletionAtMs > 0L && ep.downloadState == DownloadState.DOWNLOADED) {
+                    ListItem(
+                        headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_restore_trash)) },
+                        leadingContent = { Icon(Icons.Default.RestoreFromTrash, null) },
+                        modifier = Modifier.clickable(onClick = {
+                            onRestoreFromTrash(ep)
+                            selectedEpisodeForMenu = null
+                        })
+                    )
+                    ListItem(
+                        headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_delete_now)) },
+                        leadingContent = { Icon(Icons.Default.DeleteForever, null) },
+                        modifier = Modifier.clickable(onClick = {
+                            onDeletePermanently(ep)
+                            selectedEpisodeForMenu = null
+                        })
+                    )
+                } else {
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                if (ep.downloadState == DownloadState.DOWNLOADED) androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_delete_download)
+                                else androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_download_offline)
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                if (ep.downloadState == DownloadState.DOWNLOADED) Icons.Default.Delete
+                                else Icons.Default.Download,
+                                null
+                            )
+                        },
+                        modifier = Modifier.clickable(onClick = {
+                            if (ep.downloadState == DownloadState.DOWNLOADED) requestDeleteDownload(ep)
+                            else onDownloadEpisode(ep)
+                            selectedEpisodeForMenu = null
+                        })
+                    )
+                }
                 ListItem(
                     headlineContent = {
                         Text(
@@ -322,9 +418,32 @@ fun PodcastDetailScreen(
                             else androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_mark_played)
                         )
                     },
-                    leadingContent = { Icon(Icons.Default.CheckCircle, null) },
+                    leadingContent = {
+                        Icon(
+                            if (ep.isPlayed) Icons.Default.RadioButtonUnchecked else Icons.Default.CheckCircle,
+                            null
+                        )
+                    },
                     modifier = Modifier.clickable(onClick = {
                         onTogglePlayed(ep)
+                        selectedEpisodeForMenu = null
+                    })
+                )
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            if (ep.isHidden) androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_unhide)
+                            else androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_hide)
+                        )
+                    },
+                    leadingContent = {
+                        Icon(
+                            if (ep.isHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            null
+                        )
+                    },
+                    modifier = Modifier.clickable(onClick = {
+                        onToggleHidden(ep)
                         selectedEpisodeForMenu = null
                     })
                 )
@@ -409,6 +528,30 @@ fun PodcastDetailScreen(
             }
         )
     }
+
+    deleteActiveTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteActiveTarget = null },
+            title = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_delete_active_title)) },
+            text = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_delete_active_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteActiveTarget = null
+                    onStopAndDeleteActive(target)
+                }) {
+                    Text(
+                        text = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_stop_and_delete),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteActiveTarget = null }) {
+                    Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cancel))
+                }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -417,19 +560,19 @@ private fun EpisodeSwipeRow(
     episode: EpisodeEntity,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onSwipeRightQueue: () -> Unit,
-    onSwipeLeftCleanup: () -> Unit,
+    onSwipeRightPlayed: () -> Unit,
+    onSwipeLeftHidden: () -> Unit,
     onDownloadClick: () -> Unit
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             when (value) {
                 SwipeToDismissBoxValue.StartToEnd -> {
-                    onSwipeRightQueue()
+                    onSwipeRightPlayed()
                     false
                 }
                 SwipeToDismissBoxValue.EndToStart -> {
-                    onSwipeLeftCleanup()
+                    onSwipeLeftHidden()
                     false
                 }
                 SwipeToDismissBoxValue.Settled -> false
@@ -446,11 +589,15 @@ private fun EpisodeSwipeRow(
                 else -> Alignment.Center
             }
             val icon = when (dismissState.dismissDirection) {
-                SwipeToDismissBoxValue.StartToEnd -> Icons.AutoMirrored.Filled.PlaylistAdd
-                else -> if (episode.downloadState == DownloadState.DOWNLOADED) {
-                    Icons.Default.Delete
+                SwipeToDismissBoxValue.StartToEnd -> if (episode.isPlayed) {
+                    Icons.Default.RadioButtonUnchecked
                 } else {
                     Icons.Default.CheckCircle
+                }
+                else -> if (episode.isHidden) {
+                    Icons.Default.Visibility
+                } else {
+                    Icons.Default.VisibilityOff
                 }
             }
             Box(
@@ -545,11 +692,19 @@ private fun EpisodeSwipeRow(
                 }
                 DownloadState.DOWNLOADED -> {
                     IconButton(onClick = onDownloadClick) {
-                        Icon(
-                            Icons.Default.DownloadDone,
-                            contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_downloaded),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        if (episode.markedForDeletionAtMs > 0L) {
+                            Icon(
+                                Icons.Default.RestoreFromTrash,
+                                contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_restore_trash),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.DownloadDone,
+                                contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_downloaded),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
                 DownloadState.FAILED -> {

@@ -180,8 +180,21 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                             app.repository.cleanupPlayedDownloads(playerState.currentEpisode?.id)
                         }
                     },
+                    onChangeMaxDownloadsPerPodcast = { limit ->
+                        app.preferences.setMaxDownloadsPerPodcast(limit)
+                        scope.launch {
+                            app.repository.cleanupPlayedDownloads(playerState.currentEpisode?.id)
+                        }
+                    },
                     onChangeSmartRewind = { secs ->
                         app.preferences.setSmartRewindSeconds(secs)
+                    },
+                    onToggleAudioNormalization = { enabled ->
+                        app.preferences.setAudioNormalizationEnabled(enabled)
+                        app.playerController.setAudioNormalization(enabled)
+                    },
+                    onChangeBluetoothNextPrevSeeks = { seeks ->
+                        app.preferences.setBluetoothNextPrevSeeks(seeks)
                     },
                     onChangeAppLanguage = { lang ->
                         if (settings.appLanguage != lang) {
@@ -252,6 +265,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                 PodcastDetailScreen(
                     podcast = podcast,
                     episodes = episodes,
+                    activeEpisodeId = playerState.currentEpisode?.id,
                     isRefreshing = isRefreshingDetail,
                     onBack = { navController.popBackStack() },
                     onRefresh = {
@@ -281,6 +295,23 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                             app.repository.deleteDownload(ep.id, playerState.currentEpisode?.id)
                         }
                     },
+                    onStopAndDeleteActive = { ep ->
+                        scope.launch {
+                            app.playerController.stopAndClear()
+                            app.repository.deleteDownload(ep.id, activeEpisodeId = null, immediate = false)
+                        }
+                    },
+                    onRestoreFromTrash = { ep ->
+                        scope.launch { app.repository.restoreFromTrash(ep.id) }
+                    },
+                    onDeletePermanently = { ep ->
+                        scope.launch {
+                            if (ep.id == playerState.currentEpisode?.id) {
+                                app.playerController.stopAndClear()
+                            }
+                            app.repository.deleteDownload(ep.id, activeEpisodeId = null, immediate = true)
+                        }
+                    },
                     onAddToQueue = { ep ->
                         scope.launch {
                             app.repository.addToQueue(ep.id)
@@ -290,6 +321,11 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onTogglePlayed = { ep ->
                         scope.launch {
                             app.repository.togglePlayed(ep.id, !ep.isPlayed, playerState.currentEpisode?.id)
+                        }
+                    },
+                    onToggleHidden = { ep ->
+                        scope.launch {
+                            app.repository.toggleHidden(ep.id, !ep.isHidden, playerState.currentEpisode?.id)
                         }
                     },
                     onDownloadNewerFrom = { ep ->
@@ -336,6 +372,11 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                             }
                         }
                     },
+                    onLoadFeedPreview = { url ->
+                        runCatching {
+                            com.lycoslane.purepodcast.core.network.RssFeedParser.fetchAndParse(url)
+                        }.getOrNull()
+                    },
                     onSubscribeFeedUrl = { url ->
                         scope.launch {
                             searchStatus = context.getString(R.string.status_subscribing)
@@ -379,12 +420,16 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     if (showFullPlayer) {
         FullPlayerSheet(
             state = playerState,
+            hasQueue = queue.isNotEmpty(),
             onDismiss = { showFullPlayer = false },
             onTogglePlayPause = { app.playerController.togglePlayPause() },
             onSeekTo = { app.playerController.seekTo(it) },
             onSeekBy = { app.playerController.seekBy(it) },
+            onPrevEpisode = { app.playerController.skipToPreviousInQueue() },
+            onNextEpisode = { app.playerController.skipToNextInQueue() },
             onSetSpeed = { app.playerController.setPlaybackSpeed(it) },
             onToggleSkipSilence = { app.playerController.toggleSkipSilence() },
+            onSetSilenceIntensity = { app.playerController.setSilenceIntensity(it) },
             onSetSleepTimer = { app.playerController.setSleepTimer(it) }
         )
     }
