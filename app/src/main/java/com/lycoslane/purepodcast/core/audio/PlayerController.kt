@@ -16,6 +16,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.PodcastEntity
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
+import com.lycoslane.purepodcast.core.preferences.AppPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,7 +41,10 @@ data class PlayerUiState(
     val sleepTimerRemainingMs: Long = 0L
 )
 
-class PlayerController(private val context: Context) {
+class PlayerController(
+    private val context: Context,
+    private val preferences: AppPreferences
+) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val dao = PurePodcastDatabase.getInstance(context).dao()
@@ -52,6 +56,7 @@ class PlayerController(private val context: Context) {
     private var controller: MediaController? = null
     private var progressJob: Job? = null
     private var sleepTimerJob: Job? = null
+    private var lastPausedAtMs: Long = 0L
 
     fun connect() {
         if (controllerFuture != null) return
@@ -63,6 +68,9 @@ class PlayerController(private val context: Context) {
             controller = mc
             mc.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (!isPlaying) {
+                        lastPausedAtMs = System.currentTimeMillis()
+                    }
                     _state.update { it.copy(isPlaying = isPlaying) }
                 }
 
@@ -95,7 +103,14 @@ class PlayerController(private val context: Context) {
             .setMediaMetadata(metadata)
             .build()
 
-        mc.setMediaItem(mediaItem, episode.positionMs)
+        val rewindMs = preferences.settings.value.smartRewindSeconds * 1000L
+        val startPos = if (episode.positionMs > 0L) {
+            (episode.positionMs - rewindMs).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+
+        mc.setMediaItem(mediaItem, startPos)
         mc.playbackParameters = PlaybackParameters(podcast.playbackSpeed)
         sendSkipSilenceCommand(mc, podcast.skipSilence)
         mc.prepare()
@@ -106,7 +121,7 @@ class PlayerController(private val context: Context) {
                 currentEpisode = episode,
                 currentPodcast = podcast,
                 isPlaying = true,
-                positionMs = episode.positionMs,
+                positionMs = startPos,
                 durationMs = episode.durationMs,
                 playbackSpeed = podcast.playbackSpeed,
                 skipSilence = podcast.skipSilence
@@ -116,7 +131,17 @@ class PlayerController(private val context: Context) {
 
     fun togglePlayPause() {
         val mc = controller ?: return
-        if (mc.isPlaying) mc.pause() else mc.play()
+        if (mc.isPlaying) {
+            mc.pause()
+        } else {
+            val pausedDuration = System.currentTimeMillis() - lastPausedAtMs
+            val rewindMs = preferences.settings.value.smartRewindSeconds * 1000L
+            if (lastPausedAtMs > 0L && pausedDuration >= 30_000L && rewindMs > 0L) {
+                val target = (mc.currentPosition - rewindMs).coerceAtLeast(0L)
+                mc.seekTo(target)
+            }
+            mc.play()
+        }
     }
 
     fun seekTo(positionMs: Long) {

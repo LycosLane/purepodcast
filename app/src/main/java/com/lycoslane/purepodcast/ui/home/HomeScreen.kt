@@ -1,5 +1,8 @@
 package com.lycoslane.purepodcast.ui.home
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,14 +19,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
@@ -35,6 +43,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -49,10 +58,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.database.PodcastWithStats
 import com.lycoslane.purepodcast.core.preferences.AppSettings
 
@@ -62,19 +73,35 @@ fun HomeScreen(
     podcasts: List<PodcastWithStats>,
     isRefreshing: Boolean,
     settings: AppSettings,
+    backupStatus: String?,
     onRefreshAll: () -> Unit,
     onPodcastClick: (Long) -> Unit,
     onAddClick: () -> Unit,
     onChangeRefreshInterval: (Int) -> Unit,
     onToggleWifiOnly: (Boolean) -> Unit,
-    onToggleAutoDownloadDefault: (Boolean) -> Unit
+    onToggleAutoDownloadDefault: (Boolean) -> Unit,
+    onChangeSmartRewind: (Int) -> Unit,
+    onExportBackupUri: (Uri) -> Unit,
+    onImportBackupUri: (Uri) -> Unit
 ) {
     var showSettings by remember { mutableStateOf(false) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) onExportBackupUri(uri)
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) onImportBackupUri(uri)
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("PurePodcast", fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.app_name), fontWeight = FontWeight.SemiBold) },
                 actions = {
                     if (isRefreshing) {
                         CircularProgressIndicator(
@@ -85,14 +112,14 @@ fun HomeScreen(
                         )
                     } else {
                         IconButton(onClick = onRefreshAll) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Alle Feeds aktualisieren")
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.action_refresh_all))
                         }
                     }
                     IconButton(onClick = onAddClick) {
-                        Icon(Icons.Default.Add, contentDescription = "Podcast hinzufügen")
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.action_add_podcast))
                     }
                     IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Einstellungen")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.action_settings))
                     }
                 }
             )
@@ -121,12 +148,12 @@ fun HomeScreen(
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            text = "Noch keine Podcasts abonniert",
+                            text = stringResource(R.string.empty_podcasts_title),
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            text = "Suche freie Podcasts, füge eine RSS-URL ein oder importiere eine OPML-Datei.",
+                            text = stringResource(R.string.empty_podcasts_subtitle),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -134,7 +161,7 @@ fun HomeScreen(
                         Button(onClick = onAddClick) {
                             Icon(Icons.Default.Add, contentDescription = null)
                             Spacer(Modifier.size(8.dp))
-                            Text("Podcast hinzufügen")
+                            Text(stringResource(R.string.action_add_podcast))
                         }
                     }
                 }
@@ -162,18 +189,19 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 28.dp)
             ) {
                 Text(
-                    text = "Einstellungen",
+                    text = stringResource(R.string.settings_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(16.dp))
 
                 Text(
-                    text = "Hintergrund-Updates (Intervall)",
+                    text = stringResource(R.string.settings_refresh_interval),
                     style = MaterialTheme.typography.labelLarge
                 )
                 Spacer(Modifier.height(8.dp))
@@ -181,14 +209,12 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf(
-                        0 to "Aus",
-                        1 to "1 Std.",
-                        3 to "3 Std.",
-                        6 to "6 Std.",
-                        12 to "12 Std.",
-                        24 to "24 Std."
-                    ).forEach { (hours, label) ->
+                    listOf(0, 1, 3, 6, 12, 24).forEach { hours ->
+                        val label = if (hours == 0) {
+                            stringResource(R.string.interval_off)
+                        } else {
+                            stringResource(R.string.interval_hours, hours)
+                        }
                         FilterChip(
                             selected = settings.refreshIntervalHours == hours,
                             onClick = { onChangeRefreshInterval(hours) },
@@ -207,12 +233,12 @@ fun HomeScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Auto-Downloads nur im WLAN",
+                            text = stringResource(R.string.settings_wifi_only),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = "Schont mobiles Datenvolumen im Hintergrund",
+                            text = stringResource(R.string.settings_wifi_only_sub),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -231,12 +257,12 @@ fun HomeScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Neue Abos automatisch laden",
+                            text = stringResource(R.string.settings_auto_download_default),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = "Aktiviert Auto-Download ab Abo-Datum für neue Podcasts",
+                            text = stringResource(R.string.settings_auto_download_default_sub),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -244,6 +270,83 @@ fun HomeScreen(
                     Switch(
                         checked = settings.autoDownloadNewByDefault,
                         onCheckedChange = onToggleAutoDownloadDefault
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(14.dp))
+
+                Text(
+                    text = stringResource(R.string.settings_smart_rewind),
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Text(
+                    text = stringResource(R.string.settings_smart_rewind_sub),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(0, 5, 10, 15, 30).forEach { secs ->
+                        val label = if (secs == 0) {
+                            stringResource(R.string.interval_off)
+                        } else {
+                            stringResource(R.string.seconds_short, secs)
+                        }
+                        FilterChip(
+                            selected = settings.smartRewindSeconds == secs,
+                            onClick = { onChangeSmartRewind(secs) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(14.dp))
+
+                Text(
+                    text = stringResource(R.string.settings_backup_title),
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Text(
+                    text = stringResource(R.string.settings_backup_sub),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { exportLauncher.launch("PurePodcast_backup.json") },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Download, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.action_export_backup))
+                    }
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Restore, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.action_import_backup))
+                    }
+                }
+
+                if (!backupStatus.isNullOrBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = backupStatus,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }

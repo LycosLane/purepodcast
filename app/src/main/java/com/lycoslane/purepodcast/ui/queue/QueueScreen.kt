@@ -33,10 +33,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
 import com.lycoslane.purepodcast.core.database.PodcastEntity
@@ -53,11 +55,11 @@ fun QueueScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Warteschlange", fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.queue_title), fontWeight = FontWeight.SemiBold) },
                 actions = {
                     if (queue.isNotEmpty()) {
                         IconButton(onClick = onClear) {
-                            Icon(Icons.Default.DeleteSweep, contentDescription = "Warteschlange leeren")
+                            Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.queue_clear))
                         }
                     }
                 }
@@ -79,12 +81,12 @@ fun QueueScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "Warteschlange ist leer",
+                        text = stringResource(R.string.queue_empty),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "Wische eine Episode nach rechts, um sie hinzuzufügen.",
+                        text = stringResource(R.string.queue_empty_sub),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -132,7 +134,7 @@ fun QueueScreen(
                             )
                         }
                         IconButton(onClick = { onRemove(item.episode.id) }) {
-                            Icon(Icons.Default.Close, contentDescription = "Entfernen")
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_remove))
                         }
                     }
                     HorizontalDivider(modifier = Modifier.alpha(0.35f))

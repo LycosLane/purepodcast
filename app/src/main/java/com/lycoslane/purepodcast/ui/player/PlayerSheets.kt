@@ -236,7 +236,7 @@ fun FullPlayerSheet(
                 FilterChip(
                     selected = state.skipSilence,
                     onClick = onToggleSkipSilence,
-                    label = { Text("Stille") },
+                    label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.player_silence)) },
                     leadingIcon = { Icon(Icons.Default.GraphicEq, null, modifier = Modifier.size(16.dp)) }
                 )
                 FilterChip(
@@ -245,7 +245,7 @@ fun FullPlayerSheet(
                     label = {
                         Text(
                             if (state.sleepTimerRemainingMs > 0L) formatDuration(state.sleepTimerRemainingMs)
-                            else "Sleep"
+                            else androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.player_sleep)
                         )
                     },
                     leadingIcon = { Icon(Icons.Default.Bedtime, null, modifier = Modifier.size(16.dp)) }
@@ -253,7 +253,7 @@ fun FullPlayerSheet(
                 FilterChip(
                     selected = showNotes,
                     onClick = { showNotes = !showNotes },
-                    label = { Text("Notes") },
+                    label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.player_notes)) },
                     leadingIcon = { Icon(Icons.Default.Description, null, modifier = Modifier.size(16.dp)) }
                 )
             }
@@ -280,7 +280,8 @@ fun FullPlayerSheet(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    listOf(0 to "Aus", 15 to "15m", 30 to "30m", 45 to "45m", 60 to "60m").forEach { (mins, label) ->
+                    val offLabel = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.sleep_off)
+                    listOf(0 to offLabel, 15 to "15m", 30 to "30m", 45 to "45m", 60 to "60m").forEach { (mins, label) ->
                         FilterChip(
                             selected = false,
                             onClick = { onSetSleepTimer(mins); showSleepRow = false },
@@ -295,7 +296,9 @@ fun FullPlayerSheet(
                 HorizontalDivider()
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = htmlToPlainText(ep.descriptionHtml).ifBlank { "Keine Show Notes vorhanden." },
+                    text = htmlToPlainText(ep.descriptionHtml).ifBlank {
+                        androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.no_show_notes)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth()

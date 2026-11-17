@@ -1,0 +1,95 @@
+<resources>
+    <string name="app_name">PurePodcast</string>
+
+    <!-- Navigation -->
+    <string name="nav_podcasts">Podcasts</string>
+    <string name="nav_queue">Warteschlange</string>
+    <string name="nav_discover">Finden</string>
+
+    <!-- Home -->
+    <string name="action_refresh_all">Alle Feeds aktualisieren</string>
+    <string name="action_add_podcast">Podcast hinzufügen</string>
+    <string name="action_settings">Einstellungen</string>
+    <string name="empty_podcasts_title">Noch keine Podcasts abonniert</string>
+    <string name="empty_podcasts_subtitle">Suche freie Podcasts, füge eine RSS-URL ein oder importiere eine OPML-Datei.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Einstellungen</string>
+    <string name="settings_refresh_interval">Hintergrund-Updates (Intervall)</string>
+    <string name="interval_off">Aus</string>
+    <string name="interval_hours">%1$d Std.</string>
+    <string name="settings_wifi_only">Auto-Downloads nur im WLAN</string>
+    <string name="settings_wifi_only_sub">Schont mobiles Datenvolumen im Hintergrund</string>
+    <string name="settings_auto_download_default">Neue Abos automatisch laden</string>
+    <string name="settings_auto_download_default_sub">Aktiviert Auto-Download ab Abo-Datum für neue Podcasts</string>
+    <string name="settings_smart_rewind">Smart Rewind beim Fortsetzen</string>
+    <string name="settings_smart_rewind_sub">Spult nach Pausen oder Neustart kurz zurück</string>
+    <string name="seconds_short">%1$ds</string>
+    <string name="settings_backup_title">Backup &amp; Wiederherstellen</string>
+    <string name="settings_backup_sub">Sichert Abos, Hörpositionen, Status &amp; Einstellungen</string>
+    <string name="action_export_backup">Backup speichern</string>
+    <string name="action_import_backup">Backup laden</string>
+    <string name="backup_exported">Backup gespeichert.</string>
+    <string name="backup_imported">%1$d Podcasts aus Backup wiederhergestellt.</string>
+    <string name="backup_failed">Backup-Fehler: %1$s</string>
+
+    <!-- Search -->
+    <string name="search_title">Podcasts finden</string>
+    <string name="search_hint">Podcast suchen (z. B. Tech, Hörspiel…)</string>
+    <string name="action_search">Suchen</string>
+    <string name="action_rss_url">RSS-URL</string>
+    <string name="action_opml_import">OPML-Import</string>
+    <string name="action_subscribe">Abonnieren</string>
+    <string name="action_subscribed_tap">Abonniert (tippen zum Deabonnieren)</string>
+    <string name="dialog_unsubscribe_title">Podcast deabonnieren?</string>
+    <string name="dialog_unsubscribe_body">Möchtest du „%1$s“ wirklich entfernen? Heruntergeladene Episoden werden dabei gelöscht.</string>
+    <string name="action_unsubscribe">Deabonnieren</string>
+    <string name="action_cancel">Abbrechen</string>
+    <string name="dialog_rss_title">RSS-Feed-URL hinzufügen</string>
+    <string name="status_subscribing">Abonniere Feed…</string>
+    <string name="status_subscribed">Podcast abonniert!</string>
+    <string name="status_unsubscribed">„%1$s“ deabonniert.</string>
+    <string name="status_search_failed">Suche fehlgeschlagen: %1$s</string>
+    <string name="status_opml_importing">Importiere OPML…</string>
+    <string name="status_opml_imported">%1$d Podcasts aus OPML importiert!</string>
+    <string name="status_opml_failed">OPML-Import fehlgeschlagen: %1$s</string>
+
+    <!-- Detail -->
+    <string name="action_back">Zurück</string>
+    <string name="action_toggle_sort">Sortierung wechseln</string>
+    <string name="action_refresh_feed">Feed aktualisieren</string>
+    <string name="action_remove_podcast">Podcast entfernen</string>
+    <string name="sort_asc">Sortierung: Alt → Neu</string>
+    <string name="sort_desc">Sortierung: Neu → Alt</string>
+    <string name="show_less">Weniger anzeigen</string>
+    <string name="show_more">Mehr anzeigen</string>
+    <string name="auto_download_active">Auto-Download aktiv ab %1$s (tippen zum Aus)</string>
+    <string name="action_play">Abspielen</string>
+    <string name="action_show_notes">Show Notes lesen</string>
+    <string name="action_add_queue">In Warteschlange</string>
+    <string name="action_delete_download">Download löschen</string>
+    <string name="action_download_offline">Herunterladen (Offline)</string>
+    <string name="action_mark_unplayed">Als ungehört markieren</string>
+    <string name="action_mark_played">Als gehört markieren</string>
+    <string name="action_auto_download_newer">Ab hier alle neueren automatisch laden</string>
+    <string name="action_auto_download_newer_sub">Lädt diese + alle neueren Episoden herunter</string>
+    <string name="action_cleanup_older">Alle älteren löschen &amp; als gehört markieren</string>
+    <string name="action_cleanup_older_sub">Gibt Speicherplatz frei und räumt die Liste auf</string>
+    <string name="no_show_notes">Keine Show Notes vorhanden.</string>
+    <string name="at_position">• bei %1$s</string>
+
+    <!-- Queue -->
+    <string name="queue_title">Warteschlange</string>
+    <string name="queue_clear">Warteschlange leeren</string>
+    <string name="queue_empty">Warteschlange ist leer</string>
+    <string name="queue_empty_sub">Wische eine Episode nach rechts, um sie hinzuzufügen.</string>
+    <string name="action_remove">Entfernen</string>
+
+    <!-- Player -->
+    <string name="player_pause">Pause</string>
+    <string name="player_play">Play</string>
+    <string name="player_silence">Stille</string>
+    <string name="player_sleep">Sleep</string>
+    <string name="player_notes">Notes</string>
+    <string name="sleep_off">Aus</string>
+</resources>

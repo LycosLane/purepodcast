@@ -177,6 +177,93 @@ class PodcastRepository(
         dao.clearQueue()
     }
 
+    suspend fun exportBackupJson(): String = withContext(Dispatchers.IO) {
+        val settings = preferences.settings.value
+        val root = org.json.JSONObject().apply {
+            put("version", 1)
+            put("exportedAtMs", System.currentTimeMillis())
+            put(
+                "settings",
+                org.json.JSONObject().apply {
+                    put("refreshIntervalHours", settings.refreshIntervalHours)
+                    put("wifiOnlyDownloads", settings.wifiOnlyDownloads)
+                    put("autoDownloadNewByDefault", settings.autoDownloadNewByDefault)
+                    put("smartRewindSeconds", settings.smartRewindSeconds)
+                }
+            )
+            val podcastsArr = org.json.JSONArray()
+            dao.getAllPodcasts().forEach { pod ->
+                val epArr = org.json.JSONArray()
+                dao.getEpisodesWithProgress(pod.id).forEach { ep ->
+                    epArr.put(
+                        org.json.JSONObject().apply {
+                            put("guid", ep.guid)
+                            put("positionMs", ep.positionMs)
+                            put("isPlayed", ep.isPlayed)
+                        }
+                    )
+                }
+                podcastsArr.put(
+                    org.json.JSONObject().apply {
+                        put("feedUrl", pod.feedUrl)
+                        put("autoDownloadFromPubDateMs", pod.autoDownloadFromPubDateMs)
+                        put("sortAscending", pod.sortAscending)
+                        put("playbackSpeed", pod.playbackSpeed.toDouble())
+                        put("skipSilence", pod.skipSilence)
+                        put("episodes", epArr)
+                    }
+                )
+            }
+            put("podcasts", podcastsArr)
+        }
+        root.toString(2)
+    }
+
+    suspend fun importBackupJson(jsonText: String): Int = withContext(Dispatchers.IO) {
+        val root = org.json.JSONObject(jsonText)
+        root.optJSONObject("settings")?.let { s ->
+            if (s.has("refreshIntervalHours")) preferences.setRefreshIntervalHours(s.getInt("refreshIntervalHours"))
+            if (s.has("wifiOnlyDownloads")) preferences.setWifiOnlyDownloads(s.getBoolean("wifiOnlyDownloads"))
+            if (s.has("autoDownloadNewByDefault")) preferences.setAutoDownloadNewByDefault(s.getBoolean("autoDownloadNewByDefault"))
+            if (s.has("smartRewindSeconds")) preferences.setSmartRewindSeconds(s.getInt("smartRewindSeconds"))
+        }
+
+        val podcastsArr = root.optJSONArray("podcasts") ?: return@withContext 0
+        var restored = 0
+        for (i in 0 until podcastsArr.length()) {
+            val pObj = podcastsArr.optJSONObject(i) ?: continue
+            val feedUrl = pObj.optString("feedUrl", "").trim()
+            if (feedUrl.isEmpty()) continue
+            runCatching {
+                val podcastId = subscribeByFeedUrl(feedUrl)
+                val existing = dao.getPodcast(podcastId)
+                if (existing != null) {
+                    dao.updatePodcast(
+                        existing.copy(
+                            autoDownloadFromPubDateMs = pObj.optLong("autoDownloadFromPubDateMs", existing.autoDownloadFromPubDateMs),
+                            sortAscending = pObj.optBoolean("sortAscending", existing.sortAscending),
+                            playbackSpeed = pObj.optDouble("playbackSpeed", existing.playbackSpeed.toDouble()).toFloat(),
+                            skipSilence = pObj.optBoolean("skipSilence", existing.skipSilence)
+                        )
+                    )
+                }
+                val epArr = pObj.optJSONArray("episodes")
+                if (epArr != null) {
+                    for (j in 0 until epArr.length()) {
+                        val eObj = epArr.optJSONObject(j) ?: continue
+                        val guid = eObj.optString("guid", "")
+                        if (guid.isEmpty()) continue
+                        val ep = dao.getEpisodeByGuid(podcastId, guid) ?: continue
+                        dao.updatePosition(ep.id, eObj.optLong("positionMs", ep.positionMs))
+                        dao.setPlayed(ep.id, eObj.optBoolean("isPlayed", ep.isPlayed))
+                    }
+                }
+                restored++
+            }
+        }
+        restored
+    }
+
     private suspend fun insertParsedEpisodes(
         podcastId: Long,
         episodes: List<com.lycoslane.purepodcast.core.network.ParsedEpisode>

@@ -90,7 +90,7 @@ fun SearchScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Podcasts finden", fontWeight = FontWeight.SemiBold) })
+            TopAppBar(title = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.search_title), fontWeight = FontWeight.SemiBold) })
         }
     ) { innerPadding ->
         Column(
@@ -103,7 +103,7 @@ fun SearchScreen(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Podcast suchen (z. B. Tech, Hörspiel…)") },
+                placeholder = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.search_hint)) },
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 trailingIcon = {
@@ -111,7 +111,7 @@ fun SearchScreen(
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else if (query.isNotBlank()) {
                         IconButton(onClick = { onSearch(query) }) {
-                            Icon(Icons.Default.Search, contentDescription = "Suchen")
+                            Icon(Icons.Default.Search, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_search))
                         }
                     }
                 },
@@ -131,7 +131,7 @@ fun SearchScreen(
                 ) {
                     Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("RSS-URL")
+                    Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_rss_url))
                 }
                 OutlinedButton(
                     onClick = { opmlPicker.launch(arrayOf("*/*")) },
@@ -139,7 +139,7 @@ fun SearchScreen(
                 ) {
                     Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("OPML-Import")
+                    Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_opml_import))
                 }
             }
 
@@ -198,13 +198,13 @@ fun SearchScreen(
                             IconButton(onClick = { pendingUnsubscribe = subscribedId to item.title }) {
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = "Abonniert (tippen zum Deabonnieren)",
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_subscribed_tap),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                         } else {
                             IconButton(onClick = { onSubscribeFeedUrl(item.feedUrl) }) {
-                                Icon(Icons.Default.Add, contentDescription = "Abonnieren")
+                                Icon(Icons.Default.Add, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_subscribe))
                             }
                         }
                     }
@@ -216,21 +216,21 @@ fun SearchScreen(
     pendingUnsubscribe?.let { (podcastId, title) ->
         AlertDialog(
             onDismissRequest = { pendingUnsubscribe = null },
-            title = { Text("Podcast deabonnieren?") },
+            title = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_unsubscribe_title)) },
             text = {
-                Text("Möchtest du „$title“ wirklich entfernen? Heruntergeladene Episoden werden dabei gelöscht.")
+                Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_unsubscribe_body, title))
             },
             confirmButton = {
                 Button(onClick = {
                     onUnsubscribeById(podcastId, title)
                     pendingUnsubscribe = null
                 }) {
-                    Text("Deabonnieren")
+                    Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_unsubscribe))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingUnsubscribe = null }) {
-                    Text("Abbrechen")
+                    Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cancel))
                 }
             }
         )
@@ -239,7 +239,7 @@ fun SearchScreen(
     if (showRssDialog) {
         AlertDialog(
             onDismissRequest = { showRssDialog = false },
-            title = { Text("RSS-Feed-URL hinzufügen") },
+            title = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_rss_title)) },
             text = {
                 OutlinedTextField(
                     value = rssInput,
@@ -257,12 +257,12 @@ fun SearchScreen(
                         showRssDialog = false
                     }
                 }) {
-                    Text("Abonnieren")
+                    Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_subscribe))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showRssDialog = false }) {
-                    Text("Abbrechen")
+                    Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cancel))
                 }
             }
         )

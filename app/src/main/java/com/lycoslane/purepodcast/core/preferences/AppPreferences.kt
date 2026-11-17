@@ -9,7 +9,8 @@ import kotlinx.coroutines.flow.update
 data class AppSettings(
     val refreshIntervalHours: Int = 6, // 0 = manual only
     val wifiOnlyDownloads: Boolean = true,
-    val autoDownloadNewByDefault: Boolean = false
+    val autoDownloadNewByDefault: Boolean = false,
+    val smartRewindSeconds: Int = 10 // 0 = off
 )
 
 class AppPreferences(context: Context) {
@@ -22,7 +23,8 @@ class AppPreferences(context: Context) {
     private fun load(): AppSettings = AppSettings(
         refreshIntervalHours = prefs.getInt(KEY_REFRESH_INTERVAL_HOURS, 6),
         wifiOnlyDownloads = prefs.getBoolean(KEY_WIFI_ONLY, true),
-        autoDownloadNewByDefault = prefs.getBoolean(KEY_AUTO_DOWNLOAD_DEFAULT, false)
+        autoDownloadNewByDefault = prefs.getBoolean(KEY_AUTO_DOWNLOAD_DEFAULT, false),
+        smartRewindSeconds = prefs.getInt(KEY_SMART_REWIND_SECONDS, 10)
     )
 
     fun setRefreshIntervalHours(hours: Int) {
@@ -40,9 +42,15 @@ class AppPreferences(context: Context) {
         _settings.update { it.copy(autoDownloadNewByDefault = enabled) }
     }
 
+    fun setSmartRewindSeconds(seconds: Int) {
+        prefs.edit().putInt(KEY_SMART_REWIND_SECONDS, seconds).apply()
+        _settings.update { it.copy(smartRewindSeconds = seconds) }
+    }
+
     companion object {
         private const val KEY_REFRESH_INTERVAL_HOURS = "refresh_interval_hours"
         private const val KEY_WIFI_ONLY = "wifi_only_downloads"
         private const val KEY_AUTO_DOWNLOAD_DEFAULT = "auto_download_new_default"
+        private const val KEY_SMART_REWIND_SECONDS = "smart_rewind_seconds"
     }
 }

@@ -107,19 +107,19 @@ fun PodcastDetailScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_back))
                     }
                 },
                 actions = {
                     if (podcast != null) {
                         IconButton(onClick = { onToggleSort(!podcast.sortAscending) }) {
-                            Icon(Icons.Default.SwapVert, contentDescription = "Sortierung wechseln")
+                            Icon(Icons.Default.SwapVert, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_toggle_sort))
                         }
                         IconButton(onClick = onRefresh) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Feed aktualisieren")
+                            Icon(Icons.Default.Refresh, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_refresh_feed))
                         }
                         IconButton(onClick = onUnsubscribe) {
-                            Icon(Icons.Default.Delete, contentDescription = "Podcast entfernen")
+                            Icon(Icons.Default.Delete, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_remove_podcast))
                         }
                     }
                 }
@@ -167,7 +167,11 @@ fun PodcastDetailScreen(
                             }
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                text = if (podcast.sortAscending) "Sortierung: Alt → Neu" else "Sortierung: Neu → Alt",
+                                text = if (podcast.sortAscending) {
+                                    androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.sort_asc)
+                                } else {
+                                    androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.sort_desc)
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -187,7 +191,10 @@ fun PodcastDetailScreen(
                             onClick = { expandDescription = !expandDescription },
                             contentPadding = PaddingValues(0.dp)
                         ) {
-                            Text(if (expandDescription) "Weniger anzeigen" else "Mehr anzeigen")
+                            Text(
+                                if (expandDescription) androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.show_less)
+                                else androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.show_more)
+                            )
                         }
                     }
 
@@ -195,7 +202,12 @@ fun PodcastDetailScreen(
                         AssistChip(
                             onClick = onDisableAutoDownload,
                             label = {
-                                Text("Auto-Download aktiv ab ${formatPubDate(podcast.autoDownloadFromPubDateMs)} (tippen zum Aus)")
+                                Text(
+                                    androidx.compose.ui.res.stringResource(
+                                        com.lycoslane.purepodcast.R.string.auto_download_active,
+                                        formatPubDate(podcast.autoDownloadFromPubDateMs)
+                                    )
+                                )
                             },
                             leadingIcon = {
                                 Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -248,7 +260,7 @@ fun PodcastDetailScreen(
                 HorizontalDivider()
 
                 ListItem(
-                    headlineContent = { Text("Abspielen") },
+                    headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_play)) },
                     leadingContent = { Icon(Icons.Default.PlayArrow, null) },
                     modifier = Modifier.clickable(onClick = {
                         onPlayEpisode(ep)
@@ -256,7 +268,7 @@ fun PodcastDetailScreen(
                     })
                 )
                 ListItem(
-                    headlineContent = { Text("Show Notes lesen") },
+                    headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_show_notes)) },
                     leadingContent = { Icon(Icons.Default.Description, null) },
                     modifier = Modifier.clickable(onClick = {
                         selectedEpisodeForNotes = ep
@@ -264,7 +276,7 @@ fun PodcastDetailScreen(
                     })
                 )
                 ListItem(
-                    headlineContent = { Text("In Warteschlange") },
+                    headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_add_queue)) },
                     leadingContent = { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null) },
                     modifier = Modifier.clickable(onClick = {
                         onAddToQueue(ep)
@@ -274,8 +286,8 @@ fun PodcastDetailScreen(
                 ListItem(
                     headlineContent = {
                         Text(
-                            if (ep.downloadState == DownloadState.DOWNLOADED) "Download löschen"
-                            else "Herunterladen (Offline)"
+                            if (ep.downloadState == DownloadState.DOWNLOADED) androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_delete_download)
+                            else androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_download_offline)
                         )
                     },
                     leadingContent = {
@@ -293,7 +305,10 @@ fun PodcastDetailScreen(
                 )
                 ListItem(
                     headlineContent = {
-                        Text(if (ep.isPlayed) "Als ungehört markieren" else "Als gehört markieren")
+                        Text(
+                            if (ep.isPlayed) androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_mark_unplayed)
+                            else androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_mark_played)
+                        )
                     },
                     leadingContent = { Icon(Icons.Default.CheckCircle, null) },
                     modifier = Modifier.clickable(onClick = {
@@ -303,8 +318,8 @@ fun PodcastDetailScreen(
                 )
                 HorizontalDivider()
                 ListItem(
-                    headlineContent = { Text("Ab hier alle neueren automatisch laden") },
-                    supportingContent = { Text("Lädt diese + alle neueren Episoden herunter") },
+                    headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_auto_download_newer)) },
+                    supportingContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_auto_download_newer_sub)) },
                     leadingContent = { Icon(Icons.Default.AutoAwesome, null) },
                     modifier = Modifier.clickable(onClick = {
                         onDownloadNewerFrom(ep)
@@ -312,8 +327,8 @@ fun PodcastDetailScreen(
                     })
                 )
                 ListItem(
-                    headlineContent = { Text("Alle älteren löschen & als gehört markieren") },
-                    supportingContent = { Text("Gibt Speicherplatz frei und räumt die Liste auf") },
+                    headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cleanup_older)) },
+                    supportingContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cleanup_older_sub)) },
                     leadingContent = { Icon(Icons.Default.CleaningServices, null) },
                     modifier = Modifier.clickable(onClick = {
                         onCleanupOlderThan(ep)
@@ -347,7 +362,9 @@ fun PodcastDetailScreen(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = htmlToPlainText(ep.descriptionHtml).ifBlank { "Keine Show Notes vorhanden." },
+                    text = htmlToPlainText(ep.descriptionHtml).ifBlank {
+                        androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.no_show_notes)
+                    },
                     style = MaterialTheme.typography.bodyMedium
                 )
             }

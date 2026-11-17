@@ -21,7 +21,7 @@ class PurePodcastApplication : Application() {
         super.onCreate()
         preferences = AppPreferences(this)
         repository = PodcastRepository(this, preferences)
-        playerController = PlayerController(this).apply { connect() }
+        playerController = PlayerController(this, preferences).apply { connect() }
         FeedRefreshWorker.schedulePeriodic(this, preferences.settings.value.refreshIntervalHours)
     }
 

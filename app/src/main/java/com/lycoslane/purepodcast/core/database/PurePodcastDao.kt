@@ -79,6 +79,12 @@ interface PurePodcastDao {
     @Query("SELECT * FROM episodes WHERE podcastId = :podcastId ORDER BY pubDateMs ASC")
     fun observeEpisodesAsc(podcastId: Long): Flow<List<EpisodeEntity>>
 
+    @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND (isPlayed = 1 OR positionMs > 0)")
+    suspend fun getEpisodesWithProgress(podcastId: Long): List<EpisodeEntity>
+
+    @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND guid = :guid LIMIT 1")
+    suspend fun getEpisodeByGuid(podcastId: Long, guid: String): EpisodeEntity?
+
     @Query("SELECT * FROM episodes WHERE id = :episodeId")
     suspend fun getEpisode(episodeId: Long): EpisodeEntity?
 

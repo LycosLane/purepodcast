@@ -53,6 +53,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     var searchResults by remember { mutableStateOf<List<PodcastSearchResult>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var searchStatus by remember { mutableStateOf<String?>(null) }
+    var backupStatus by remember { mutableStateOf<String?>(null) }
     var showFullPlayer by remember { mutableStateOf(false) }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -76,7 +77,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                             }
                         },
                         icon = { Icon(Icons.Default.Podcasts, null) },
-                        label = { Text("Podcasts") }
+                        label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.nav_podcasts)) }
                     )
                     NavigationBarItem(
                         selected = currentRoute == "queue",
@@ -86,7 +87,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                             }
                         },
                         icon = { Icon(Icons.Default.QueueMusic, null) },
-                        label = { Text("Warteschlange") }
+                        label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.nav_queue)) }
                     )
                     NavigationBarItem(
                         selected = currentRoute == "search",
@@ -96,7 +97,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                             }
                         },
                         icon = { Icon(Icons.Default.Explore, null) },
-                        label = { Text("Finden") }
+                        label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.nav_discover)) }
                     )
                 }
             }
@@ -112,6 +113,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     podcasts = podcasts,
                     isRefreshing = isRefreshing,
                     settings = settings,
+                    backupStatus = backupStatus,
                     onRefreshAll = {
                         scope.launch {
                             isRefreshing = true
@@ -137,6 +139,36 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     },
                     onToggleAutoDownloadDefault = { enabled ->
                         app.preferences.setAutoDownloadNewByDefault(enabled)
+                    },
+                    onChangeSmartRewind = { secs ->
+                        app.preferences.setSmartRewindSeconds(secs)
+                    },
+                    onExportBackupUri = { uri ->
+                        scope.launch {
+                            runCatching {
+                                val json = app.repository.exportBackupJson()
+                                context.contentResolver.openOutputStream(uri)?.use { out ->
+                                    out.write(json.toByteArray(Charsets.UTF_8))
+                                }
+                            }.onSuccess {
+                                backupStatus = context.getString(com.lycoslane.purepodcast.R.string.backup_exported)
+                            }.onFailure {
+                                backupStatus = context.getString(com.lycoslane.purepodcast.R.string.backup_failed, it.localizedMessage ?: "")
+                            }
+                        }
+                    },
+                    onImportBackupUri = { uri ->
+                        scope.launch {
+                            runCatching {
+                                val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                                    ?: error("Empty file")
+                                app.repository.importBackupJson(text)
+                            }.onSuccess { count ->
+                                backupStatus = context.getString(com.lycoslane.purepodcast.R.string.backup_imported, count)
+                            }.onFailure {
+                                backupStatus = context.getString(com.lycoslane.purepodcast.R.string.backup_failed, it.localizedMessage ?: "")
+                            }
+                        }
                     }
                 )
             }
@@ -213,7 +245,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                             searchStatus = null
                             searchResults = runCatching { app.repository.searchPodcasts(q) }
                                 .getOrElse {
-                                    searchStatus = "Suche fehlgeschlagen: ${it.localizedMessage}"
+                                    searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_search_failed, it.localizedMessage ?: "")
                                     emptyList()
                                 }
                             isSearching = false
@@ -221,34 +253,34 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     },
                     onSubscribeFeedUrl = { url ->
                         scope.launch {
-                            searchStatus = "Abonniere Feed…"
+                            searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_subscribing)
                             runCatching { app.repository.subscribeByFeedUrl(url) }
                                 .onSuccess { podcastId ->
-                                    searchStatus = "Podcast abonniert!"
+                                    searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_subscribed)
                                     navController.navigate("detail/$podcastId")
                                 }
                                 .onFailure {
-                                    searchStatus = "Fehler: ${it.localizedMessage}"
+                                    searchStatus = it.localizedMessage
                                 }
                         }
                     },
                     onUnsubscribeById = { podcastId, title ->
                         scope.launch {
                             app.repository.unsubscribePodcast(podcastId)
-                            searchStatus = "„$title“ deabonniert."
+                            searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_unsubscribed, title)
                         }
                     },
                     onImportOpmlUri = { uri: Uri ->
                         scope.launch {
-                            searchStatus = "Importiere OPML…"
+                            searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_opml_importing)
                             runCatching {
                                 context.contentResolver.openInputStream(uri)?.use { stream ->
                                     app.repository.importOpml(stream)
                                 } ?: 0
                             }.onSuccess { count ->
-                                searchStatus = "$count Podcasts aus OPML importiert!"
+                                searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_opml_imported, count)
                             }.onFailure {
-                                searchStatus = "OPML-Import fehlgeschlagen: ${it.localizedMessage}"
+                                searchStatus = context.getString(com.lycoslane.purepodcast.R.string.status_opml_failed, it.localizedMessage ?: "")
                             }
                         }
                     }
