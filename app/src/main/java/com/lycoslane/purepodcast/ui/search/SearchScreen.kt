@@ -450,8 +450,10 @@ fun SearchScreen(
 
                             val rawDesc = feed?.description ?: ""
                             val desc by produceState(initialValue = "", key1 = rawDesc) {
-                                value = if (rawDesc.isBlank()) "" else {
-                                    withContext(Dispatchers.Default) { htmlToPlainText(rawDesc) }
+                                if (rawDesc.isBlank()) {
+                                    value = ""
+                                } else {
+                                    value = withContext(Dispatchers.Default) { htmlToPlainText(rawDesc) }
                                 }
                             }
                             val episodes = remember(feed) {
@@ -684,8 +686,10 @@ fun SearchScreen(
             selectedPreviewEpisode?.let { (epFeed, ep) ->
                 ModalBottomSheet(onDismissRequest = { selectedPreviewEpisode = null }) {
                     val epDesc by produceState(initialValue = "", key1 = ep.descriptionHtml) {
-                        value = if (ep.descriptionHtml.isBlank()) "" else {
-                            withContext(Dispatchers.Default) { htmlToPlainText(ep.descriptionHtml) }
+                        if (ep.descriptionHtml.isBlank()) {
+                            value = ""
+                        } else {
+                            value = withContext(Dispatchers.Default) { htmlToPlainText(ep.descriptionHtml) }
                         }
                     }
                     Column(
