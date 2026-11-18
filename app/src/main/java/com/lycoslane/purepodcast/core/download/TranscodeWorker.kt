@@ -1,9 +1,7 @@
 package com.lycoslane.purepodcast.core.download
 
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -12,15 +10,34 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.lycoslane.purepodcast.PurePodcastApplication
-import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.AudioTranscoder
 import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+
+data class TranscodeStatus(
+    val isActive: Boolean = false,
+    val currentIndex: Int = 0,
+    val totalCount: Int = 0,
+    val episodeTitle: String = "",
+    val episodePercent: Int = 0
+) {
+    /** Overall progress in 0f..1f across all episodes in the current run. */
+    val overallProgress: Float
+        get() {
+            if (totalCount <= 0) return 0f
+            val completedBefore = (currentIndex - 1).coerceAtLeast(0).toFloat()
+            val currentFraction = (episodePercent.coerceIn(0, 100) / 100f)
+            return ((completedBefore + currentFraction) / totalCount.toFloat()).coerceIn(0f, 1f)
+        }
+}
 
 class TranscodeWorker(
     appContext: Context,
@@ -29,177 +46,119 @@ class TranscodeWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         transcodeMutex.withLock {
-            val app = applicationContext as PurePodcastApplication
-            val settings = app.preferences.settings.value
-            val bitrateKbps = settings.transcodeBitrateKbps
-            if (bitrateKbps <= 0) return@withLock Result.success()
+            try {
+                // Dismiss any leftover legacy notifications from older app versions
+                val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                runCatching {
+                    nm?.cancel(NOTIFICATION_ID)
+                    nm?.cancel(NOTIFICATION_ID + 1)
+                }
 
-            val dao = PurePodcastDatabase.getInstance(applicationContext).dao()
-            val singleEpisodeId = inputData.getLong(KEY_EPISODE_ID, -1L)
+                val app = applicationContext as PurePodcastApplication
+                val settings = app.preferences.settings.value
+                val bitrateKbps = settings.transcodeBitrateKbps
+                if (bitrateKbps <= 0) return@withLock Result.success()
 
-            val targets = if (singleEpisodeId > 0L) {
-                listOfNotNull(dao.getEpisode(singleEpisodeId))
-            } else {
-                dao.getUntranscodedDownloads()
-            }.filter {
-                !it.isTranscoded &&
-                    it.downloadState == DownloadState.DOWNLOADED &&
-                    it.localFilePath?.startsWith("content://") != true
-            }
+                val dao = PurePodcastDatabase.getInstance(applicationContext).dao()
+                val singleEpisodeId = inputData.getLong(KEY_EPISODE_ID, -1L)
 
-            val isBatch = singleEpisodeId <= 0L
-            var processed = 0
-            var converted = 0
+                val targets = if (singleEpisodeId > 0L) {
+                    listOfNotNull(dao.getEpisode(singleEpisodeId))
+                } else {
+                    dao.getUntranscodedDownloads()
+                }.filter {
+                    !it.isTranscoded &&
+                        it.downloadState == DownloadState.DOWNLOADED &&
+                        it.localFilePath?.startsWith("content://") != true
+                }
 
-            if (isBatch && targets.isEmpty()) {
-                postNotification(
-                    title = applicationContext.getString(R.string.app_name),
-                    text = applicationContext.getString(R.string.notif_transcode_nothing),
-                    progress = null
-                )
-                return@withLock Result.success()
-            }
+                if (targets.isEmpty()) return@withLock Result.success()
 
-            if (targets.isEmpty()) return@withLock Result.success()
-
-            // Foreground (dataSync) so conversion isn't killed by background limits.
-            runCatching {
-                setForeground(
-                    WorkerForeground.info(
-                        context = applicationContext,
-                        notificationId = NOTIFICATION_ID,
-                        channelId = CHANNEL_ID,
-                        channelName = applicationContext.getString(R.string.notif_transcode_channel),
-                        title = applicationContext.getString(R.string.settings_section_compression),
-                        text = applicationContext.getString(R.string.notif_transcode_progress, 1, targets.size),
-                        progressMax = targets.size,
-                        progressCurrent = 0
+                var processed = 0
+                for (ep in targets) {
+                    if (isStopped) break
+                    processed++
+                    _status.value = TranscodeStatus(
+                        isActive = true,
+                        currentIndex = processed,
+                        totalCount = targets.size,
+                        episodeTitle = ep.title,
+                        episodePercent = 0
                     )
-                )
-            }
 
-            for (ep in targets) {
-                if (isStopped) break
-                processed++
-                if (isBatch) {
-                    runCatching {
-                        setForeground(
-                            WorkerForeground.info(
-                                context = applicationContext,
-                                notificationId = NOTIFICATION_ID,
-                                channelId = CHANNEL_ID,
-                                channelName = applicationContext.getString(R.string.notif_transcode_channel),
-                                title = applicationContext.getString(R.string.settings_section_compression),
-                                text = applicationContext.getString(R.string.notif_transcode_progress, processed, targets.size),
-                                progressMax = targets.size,
-                                progressCurrent = processed - 1
-                            )
-                        )
-                    }
-                }
-                if (ep.id == app.playerController.state.value.currentEpisode?.id) continue
-                val path = ep.localFilePath ?: continue
+                    if (ep.id == app.playerController.state.value.currentEpisode?.id) continue
+                    val path = ep.localFilePath ?: continue
 
-                val sourceFile = File(path)
-                if (!sourceFile.exists() || sourceFile.length() <= 0L) continue
+                    val sourceFile = File(path)
+                    if (!sourceFile.exists() || sourceFile.length() <= 0L) continue
 
-                val parentDir = sourceFile.parentFile ?: continue
-                // Already a compact AAC file at or below the target bitrate: nothing to gain.
-                if (AudioTranscoder.isAlreadyCompact(sourceFile, bitrateKbps)) {
-                    dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length())
-                    continue
-                }
-                // Need room for the temporary output next to the source (worst case ~ source size).
-                if (parentDir.usableSpace < sourceFile.length() + MIN_FREE_BYTES) continue
-                val targetM4a = File(parentDir, "${ep.id}.m4a")
-                val tempFile = File(parentDir, "${ep.id}.m4a.tmp")
-
-                val ok = AudioTranscoder.transcodeToAacM4a(
-                    sourceFile = sourceFile,
-                    tempOutputFile = tempFile,
-                    targetBitrateKbps = bitrateKbps,
-                    shouldCancel = { isStopped }
-                )
-
-                if (ok && tempFile.exists() && tempFile.length() > 0L) {
-                    // Re-validate: user may have started playback, trashed or removed the episode meanwhile.
-                    val fresh = dao.getEpisode(ep.id)
-                    val playingNow = app.playerController.state.value.currentEpisode?.id == ep.id
-                    if (playingNow || fresh == null ||
-                        fresh.downloadState != DownloadState.DOWNLOADED ||
-                        fresh.markedForDeletionAtMs > 0L ||
-                        fresh.localFilePath != path
-                    ) {
-                        tempFile.delete()
+                    val parentDir = sourceFile.parentFile ?: continue
+                    // Already a compact AAC file at or below the target bitrate: nothing to gain.
+                    if (AudioTranscoder.isAlreadyCompact(sourceFile, bitrateKbps)) {
+                        dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length())
+                        _status.value = _status.value.copy(episodePercent = 100)
                         continue
                     }
-                    if (tempFile.length() < sourceFile.length()) {
-                        if (targetM4a.exists()) targetM4a.delete()
-                        val moved = tempFile.renameTo(targetM4a) || run {
-                            tempFile.copyTo(targetM4a, overwrite = true)
-                            tempFile.delete()
-                            true
+                    // Need room for the temporary output next to the source (worst case ~ source size).
+                    if (parentDir.usableSpace < sourceFile.length() + MIN_FREE_BYTES) continue
+                    val targetM4a = File(parentDir, "${ep.id}.m4a")
+                    val tempFile = File(parentDir, "${ep.id}.m4a.tmp")
+
+                    val ok = AudioTranscoder.transcodeToAacM4a(
+                        sourceFile = sourceFile,
+                        tempOutputFile = tempFile,
+                        targetBitrateKbps = bitrateKbps,
+                        shouldCancel = { isStopped },
+                        onProgress = { pct ->
+                            _status.value = TranscodeStatus(
+                                isActive = true,
+                                currentIndex = processed,
+                                totalCount = targets.size,
+                                episodeTitle = ep.title,
+                                episodePercent = pct
+                            )
                         }
-                        if (moved) {
-                            dao.markEpisodeTranscoded(ep.id, targetM4a.absolutePath, targetM4a.length())
-                            if (sourceFile.absolutePath != targetM4a.absolutePath) {
-                                sourceFile.delete()
+                    )
+
+                    if (ok && tempFile.exists() && tempFile.length() > 0L) {
+                        // Re-validate: user may have started playback, trashed or removed the episode meanwhile.
+                        val fresh = dao.getEpisode(ep.id)
+                        val playingNow = app.playerController.state.value.currentEpisode?.id == ep.id
+                        if (playingNow || fresh == null ||
+                            fresh.downloadState != DownloadState.DOWNLOADED ||
+                            fresh.markedForDeletionAtMs > 0L ||
+                            fresh.localFilePath != path
+                        ) {
+                            tempFile.delete()
+                            continue
+                        }
+                        if (tempFile.length() < sourceFile.length()) {
+                            if (targetM4a.exists()) targetM4a.delete()
+                            val moved = tempFile.renameTo(targetM4a) || run {
+                                tempFile.copyTo(targetM4a, overwrite = true)
+                                tempFile.delete()
+                                true
                             }
-                            converted++
+                            if (moved) {
+                                dao.markEpisodeTranscoded(ep.id, targetM4a.absolutePath, targetM4a.length())
+                                if (sourceFile.absolutePath != targetM4a.absolutePath) {
+                                    sourceFile.delete()
+                                }
+                            }
+                        } else {
+                            // Transcoded file wasn't smaller (e.g., source already low-bitrate); keep original
+                            tempFile.delete()
+                            dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length())
                         }
                     } else {
-                        // Transcoded file wasn't smaller (e.g., source already low-bitrate); keep original
                         tempFile.delete()
-                        dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length())
-                        converted++
                     }
-                } else {
-                    tempFile.delete()
                 }
+
+                Result.success()
+            } finally {
+                _status.value = TranscodeStatus()
             }
-
-            if (isBatch) {
-                val text = if (converted > 0) {
-                    applicationContext.getString(R.string.notif_transcode_done, converted)
-                } else {
-                    applicationContext.getString(R.string.notif_transcode_nothing)
-                }
-                postNotification(
-                    title = applicationContext.getString(R.string.settings_section_compression),
-                    text = text,
-                    progress = null
-                )
-            }
-
-            Result.success()
-        }
-    }
-
-    private fun postNotification(title: String, text: String, progress: Pair<Int, Int>?) {
-        val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            ?: return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            applicationContext.getString(R.string.notif_transcode_channel),
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            setShowBadge(false)
-        }
-        nm.createNotificationChannel(channel)
-        val builder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setOnlyAlertOnce(true)
-            .setSilent(true)
-            .setOngoing(progress != null)
-            .setAutoCancel(progress == null)
-        if (progress != null) {
-            builder.setProgress(progress.second, progress.first, false)
-        }
-        try {
-            nm.notify(if (progress == null) NOTIFICATION_ID + 1 else NOTIFICATION_ID, builder.build())
-        } catch (_: SecurityException) {
         }
     }
 
@@ -207,9 +166,11 @@ class TranscodeWorker(
         private const val KEY_EPISODE_ID = "episode_id"
         private const val MIN_FREE_BYTES = 64L * 1024 * 1024
         private const val UNIQUE_BATCH_WORK = "transcode_all_downloads"
-        private const val CHANNEL_ID = "purepodcast_transcode"
         private const val NOTIFICATION_ID = 4102
         private val transcodeMutex = Mutex()
+
+        private val _status = MutableStateFlow(TranscodeStatus())
+        val status: StateFlow<TranscodeStatus> = _status.asStateFlow()
 
         fun cancelForEpisode(context: Context, episodeId: Long) {
             WorkManager.getInstance(context).cancelUniqueWork("transcode_ep_$episodeId")

@@ -211,10 +211,7 @@
     <string name="snackbar_compression_select_bitrate">Please select 96 or 128 kbps first</string>
     <string name="snackbar_compression_nothing_to_do">All downloads are already compressed</string>
     <string name="snackbar_compression_queued_count">Compression started for %1$d episodes</string>
-    <string name="notif_transcode_channel">Audio Compression</string>
-    <string name="notif_transcode_progress">Compressing episode %1$d of %2$d…</string>
-    <string name="notif_transcode_done">Compression complete: %1$d episodes converted</string>
-    <string name="notif_transcode_nothing">All downloads are already compressed</string>
+    <string name="notif_transcode_progress">Compressing %1$d / %2$d</string>
 
     <!-- v1.0.4: Unified Episodes View & Favorites -->
     <string name="action_toggle_episodes_view">Switch Podcasts / Episodes view</string>

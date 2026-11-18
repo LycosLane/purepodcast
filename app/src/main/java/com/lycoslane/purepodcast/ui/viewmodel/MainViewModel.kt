@@ -48,6 +48,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _backupStatus = MutableStateFlow<String?>(null)
     val backupStatus: StateFlow<String?> = _backupStatus.asStateFlow()
 
+    val transcodeStatus: StateFlow<com.lycoslane.purepodcast.core.download.TranscodeStatus> =
+        com.lycoslane.purepodcast.core.download.TranscodeWorker.status
+
     fun refreshAll() {
         if (_isRefreshing.value) return
         viewModelScope.launch {

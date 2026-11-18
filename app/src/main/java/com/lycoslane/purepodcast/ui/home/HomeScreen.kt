@@ -98,6 +98,7 @@ import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
 import com.lycoslane.purepodcast.core.database.PodcastEntity
 import com.lycoslane.purepodcast.core.database.PodcastWithStats
+import com.lycoslane.purepodcast.core.download.TranscodeStatus
 import com.lycoslane.purepodcast.core.local.LocalPodcastScanner
 import com.lycoslane.purepodcast.core.preferences.AppSettings
 import com.lycoslane.purepodcast.ui.common.PodcastImage
@@ -123,6 +124,7 @@ fun HomeScreen(
     isRefreshing: Boolean,
     settings: AppSettings,
     backupStatus: String?,
+    transcodeStatus: TranscodeStatus = TranscodeStatus(),
     onRefreshAll: () -> Unit,
     onPodcastClick: (Long) -> Unit,
     onAddClick: () -> Unit,
@@ -748,11 +750,60 @@ fun HomeScreen(
                         onCheckedChange = onToggleTranscodeChargingOnly
                     )
                     Spacer(Modifier.height(6.dp))
-                    OutlinedButton(
-                        onClick = onTranscodeAllNow,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(stringResource(R.string.action_compress_all_now))
+                    if (transcodeStatus.isActive) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = buildString {
+                                        append(
+                                            stringResource(
+                                                R.string.notif_transcode_progress,
+                                                transcodeStatus.currentIndex,
+                                                transcodeStatus.totalCount
+                                            )
+                                        )
+                                        if (transcodeStatus.episodeTitle.isNotBlank()) {
+                                            append(" • ")
+                                            append(transcodeStatus.episodeTitle)
+                                        }
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "${(transcodeStatus.overallProgress * 100f).toInt()}%",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = { transcodeStatus.overallProgress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                            )
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onTranscodeAllNow,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.action_compress_all_now))
+                        }
                     }
                 }
 

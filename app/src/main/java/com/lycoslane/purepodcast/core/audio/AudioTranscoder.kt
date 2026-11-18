@@ -41,7 +41,8 @@ object AudioTranscoder {
         sourceFile: File,
         tempOutputFile: File,
         targetBitrateKbps: Int,
-        shouldCancel: () -> Boolean = { false }
+        shouldCancel: () -> Boolean = { false },
+        onProgress: (Int) -> Unit = {}
     ): Boolean {
         if (!sourceFile.exists() || sourceFile.length() <= 0L) return false
 
@@ -73,6 +74,13 @@ object AudioTranscoder {
             val sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             val channelCount = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
             if (channelCount !in 1..2 || sampleRate <= 0) return false
+            val totalDurationUs = if (inputFormat.containsKey(MediaFormat.KEY_DURATION)) {
+                inputFormat.getLong(MediaFormat.KEY_DURATION).coerceAtLeast(0L)
+            } else {
+                0L
+            }
+            var lastReportedPct = 0
+            onProgress(0)
 
             extractor.selectTrack(audioTrackIndex)
 
@@ -215,6 +223,14 @@ object AudioTranscoder {
                         }
                         encodedFrames += (totalPut / bytesPerFrame).toLong()
                         encoder.queueInputBuffer(encInIdx, 0, totalPut, ptsUs, 0)
+                        if (totalDurationUs > 0L) {
+                            val currentUs = encodedFrames * 1_000_000L / decRate
+                            val pct = ((currentUs * 100L) / totalDurationUs).toInt().coerceIn(0, 99)
+                            if (pct >= lastReportedPct + 2) {
+                                lastReportedPct = pct
+                                onProgress(pct)
+                            }
+                        }
                     } else {
                         val ptsUs = encodedFrames * 1_000_000L / decRate
                         encoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
@@ -259,7 +275,9 @@ object AudioTranscoder {
                 muxer.stop()
                 muxerStarted = false
             }
-            return tempOutputFile.exists() && tempOutputFile.length() > 0L
+            val ok = tempOutputFile.exists() && tempOutputFile.length() > 0L
+            if (ok) onProgress(100)
+            return ok
         } catch (_: Throwable) {
             tempOutputFile.delete()
             return false

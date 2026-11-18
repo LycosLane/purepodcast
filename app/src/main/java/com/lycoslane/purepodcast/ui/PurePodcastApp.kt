@@ -1,10 +1,16 @@
 package com.lycoslane.purepodcast.ui
 
 import android.app.Activity
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Podcasts
@@ -12,6 +18,8 @@ import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -19,6 +27,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,9 +37,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -44,6 +57,7 @@ import com.lycoslane.purepodcast.PurePodcastApplication
 import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.PlayerController
 import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
+import com.lycoslane.purepodcast.core.download.TranscodeStatus
 import com.lycoslane.purepodcast.core.local.LocalPodcastScanner
 import com.lycoslane.purepodcast.ui.detail.PodcastDetailScreen
 import com.lycoslane.purepodcast.ui.home.HomeScreen
@@ -77,6 +91,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     val settings by mainViewModel.settings.collectAsStateWithLifecycle()
     val isRefreshing by mainViewModel.isRefreshing.collectAsStateWithLifecycle()
     val backupStatus by mainViewModel.backupStatus.collectAsStateWithLifecycle()
+    val transcodeStatus by mainViewModel.transcodeStatus.collectAsStateWithLifecycle()
 
     val activeEpisodeId by remember(app.playerController) {
         app.playerController.state
@@ -119,6 +134,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             Column {
+                TranscodeProgressBanner(status = transcodeStatus)
                 MiniPlayerBar(
                     playerController = app.playerController,
                     onExpand = { showFullPlayer = true }
@@ -193,6 +209,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     isRefreshing = isRefreshing,
                     settings = settings,
                     backupStatus = backupStatus,
+                    transcodeStatus = transcodeStatus,
                     onRefreshAll = mainViewModel::refreshAll,
                     onPodcastClick = { podcastId -> openDetail(podcastId, "home") },
                     onAddClick = { navigateTopLevel("search") },
@@ -432,6 +449,57 @@ fun PurePodcastApp(app: PurePodcastApplication) {
             onTextScaleChange = mainViewModel::setTextScale,
             onDismiss = { showFullPlayer = false }
         )
+    }
+}
+
+@Composable
+private fun TranscodeProgressBanner(status: TranscodeStatus) {
+    if (!status.isActive) return
+    Surface(
+        tonalElevation = 3.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = buildString {
+                        append(stringResource(R.string.notif_transcode_progress, status.currentIndex, status.totalCount))
+                        if (status.episodeTitle.isNotBlank()) {
+                            append(" • ")
+                            append(status.episodeTitle)
+                        }
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "${(status.overallProgress * 100f).toInt()}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            LinearProgressIndicator(
+                progress = { status.overallProgress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+            )
+        }
     }
 }
 
