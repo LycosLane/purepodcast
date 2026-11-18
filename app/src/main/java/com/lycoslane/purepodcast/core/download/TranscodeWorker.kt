@@ -62,7 +62,7 @@ class TranscodeWorker(
 
             if (targets.isEmpty()) return@withLock Result.success()
 
-            // Foreground (dataSync) so batch conversion isn't killed by the 10 minute limit.
+            // Foreground (dataSync) so conversion isn't killed by background limits.
             runCatching {
                 setForeground(
                     WorkerForeground.info(
@@ -71,7 +71,9 @@ class TranscodeWorker(
                         channelId = CHANNEL_ID,
                         channelName = applicationContext.getString(R.string.notif_transcode_channel),
                         title = applicationContext.getString(R.string.settings_section_compression),
-                        text = applicationContext.getString(R.string.notif_transcode_progress, 1, targets.size)
+                        text = applicationContext.getString(R.string.notif_transcode_progress, 1, targets.size),
+                        progressMax = targets.size,
+                        progressCurrent = 0
                     )
                 )
             }
@@ -80,11 +82,20 @@ class TranscodeWorker(
                 if (isStopped) break
                 processed++
                 if (isBatch) {
-                    postNotification(
-                        title = applicationContext.getString(R.string.settings_section_compression),
-                        text = applicationContext.getString(R.string.notif_transcode_progress, processed, targets.size),
-                        progress = processed to targets.size
-                    )
+                    runCatching {
+                        setForeground(
+                            WorkerForeground.info(
+                                context = applicationContext,
+                                notificationId = NOTIFICATION_ID,
+                                channelId = CHANNEL_ID,
+                                channelName = applicationContext.getString(R.string.notif_transcode_channel),
+                                title = applicationContext.getString(R.string.settings_section_compression),
+                                text = applicationContext.getString(R.string.notif_transcode_progress, processed, targets.size),
+                                progressMax = targets.size,
+                                progressCurrent = processed - 1
+                            )
+                        )
+                    }
                 }
                 if (ep.id == app.playerController.state.value.currentEpisode?.id) continue
                 val path = ep.localFilePath ?: continue
@@ -171,13 +182,16 @@ class TranscodeWorker(
             CHANNEL_ID,
             applicationContext.getString(R.string.notif_transcode_channel),
             NotificationManager.IMPORTANCE_LOW
-        )
+        ).apply {
+            setShowBadge(false)
+        }
         nm.createNotificationChannel(channel)
         val builder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle(title)
             .setContentText(text)
             .setOnlyAlertOnce(true)
+            .setSilent(true)
             .setOngoing(progress != null)
             .setAutoCancel(progress == null)
         if (progress != null) {

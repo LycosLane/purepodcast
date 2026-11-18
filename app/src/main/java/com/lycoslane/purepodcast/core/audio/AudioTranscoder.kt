@@ -87,7 +87,7 @@ object AudioTranscoder {
             ).apply {
                 setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
                 setInteger(MediaFormat.KEY_BIT_RATE, targetBitrateKbps * 1000)
-                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16 * 1024)
+                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 64 * 1024)
             }
 
             encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
@@ -110,7 +110,7 @@ object AudioTranscoder {
 
             // Keep a simple FIFO of decoded PCM chunks to feed the encoder cleanly
             val pcmQueue = ArrayDeque<ByteArray>()
-            val maxQueuedChunks = 32
+            val maxQueuedChunks = 64
 
             while (!encoderDone) {
                 if (shouldCancel()) {
@@ -118,29 +118,37 @@ object AudioTranscoder {
                     return false
                 }
 
+                var madeProgress = false
+
                 // 1. Feed extractor -> decoder (backpressure: pause when encoder is behind)
-                if (!extractorDone && pcmQueue.size < maxQueuedChunks) {
-                    val inIdx = decoder.dequeueInputBuffer(TIMEOUT_US)
-                    if (inIdx >= 0) {
-                        val buf = decoder.getInputBuffer(inIdx)
-                        if (buf != null) {
-                            val size = extractor.readSampleData(buf, 0)
-                            if (size < 0) {
-                                decoder.queueInputBuffer(inIdx, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                                extractorDone = true
-                            } else {
-                                val pts = extractor.sampleTime.coerceAtLeast(0L)
-                                decoder.queueInputBuffer(inIdx, 0, size, pts, 0)
-                                extractor.advance()
-                            }
+                while (!extractorDone && pcmQueue.size < maxQueuedChunks) {
+                    val inIdx = decoder.dequeueInputBuffer(0L)
+                    if (inIdx < 0) break
+                    madeProgress = true
+                    val buf = decoder.getInputBuffer(inIdx)
+                    if (buf != null) {
+                        val size = extractor.readSampleData(buf, 0)
+                        if (size < 0) {
+                            decoder.queueInputBuffer(inIdx, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            extractorDone = true
+                        } else {
+                            val pts = extractor.sampleTime.coerceAtLeast(0L)
+                            decoder.queueInputBuffer(inIdx, 0, size, pts, 0)
+                            extractor.advance()
                         }
+                    } else {
+                        decoder.queueInputBuffer(inIdx, 0, 0, 0L, 0)
+                        break
                     }
                 }
 
                 // 2. Drain decoder -> pcmQueue
-                if (!decoderDone && pcmQueue.size < maxQueuedChunks) {
-                    val outIdx = decoder.dequeueOutputBuffer(decInfo, TIMEOUT_US)
-                    if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                while (!decoderDone && pcmQueue.size < maxQueuedChunks) {
+                    val outIdx = decoder.dequeueOutputBuffer(decInfo, 0L)
+                    if (outIdx == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                        break
+                    } else if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        madeProgress = true
                         val f = decoder.outputFormat
                         if (f.containsKey(MediaFormat.KEY_SAMPLE_RATE)) decRate = f.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                         if (f.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) decChannels = f.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
@@ -150,6 +158,7 @@ object AudioTranscoder {
                             return false
                         }
                     } else if (outIdx >= 0) {
+                        madeProgress = true
                         val outBuf = decoder.getOutputBuffer(outIdx)
                         if (outBuf != null && decInfo.size > 0) {
                             outBuf.position(decInfo.offset)
@@ -162,13 +171,16 @@ object AudioTranscoder {
                         if ((decInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                             decoderDone = true
                         }
+                    } else {
+                        break
                     }
                 }
 
                 // 3. Feed pcmQueue -> encoder (sample-accurate, strictly monotonic timestamps)
                 while ((pcmQueue.isNotEmpty() || decoderDone) && !encoderEosSent) {
-                    val encInIdx = encoder.dequeueInputBuffer(TIMEOUT_US)
+                    val encInIdx = encoder.dequeueInputBuffer(0L)
                     if (encInIdx < 0) break
+                    madeProgress = true
 
                     val encInBuf: ByteBuffer? = encoder.getInputBuffer(encInIdx)
                     if (encInBuf == null) {
@@ -179,7 +191,6 @@ object AudioTranscoder {
                     encInBuf.clear()
 
                     if (pcmQueue.isNotEmpty()) {
-                        val chunk = pcmQueue.first()
                         val bytesPerFrame = 2 * decChannels
                         val capacity = (encInBuf.remaining() / bytesPerFrame) * bytesPerFrame
                         if (capacity <= 0) {
@@ -187,15 +198,23 @@ object AudioTranscoder {
                             encoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, 0)
                             break
                         }
-                        val take = minOf(chunk.size, capacity)
                         val ptsUs = encodedFrames * 1_000_000L / decRate
-                        encInBuf.put(chunk, 0, take)
-                        encodedFrames += (take / bytesPerFrame).toLong()
-                        pcmQueue.removeFirst()
-                        if (take < chunk.size) {
-                            pcmQueue.addFirst(chunk.copyOfRange(take, chunk.size))
+                        var totalPut = 0
+                        while (pcmQueue.isNotEmpty() && totalPut < capacity) {
+                            val chunk = pcmQueue.first()
+                            val remainingCap = capacity - totalPut
+                            val take = minOf(chunk.size, remainingCap)
+                            if (take <= 0) break
+                            encInBuf.put(chunk, 0, take)
+                            totalPut += take
+                            pcmQueue.removeFirst()
+                            if (take < chunk.size) {
+                                pcmQueue.addFirst(chunk.copyOfRange(take, chunk.size))
+                                break
+                            }
                         }
-                        encoder.queueInputBuffer(encInIdx, 0, take, ptsUs, 0)
+                        encodedFrames += (totalPut / bytesPerFrame).toLong()
+                        encoder.queueInputBuffer(encInIdx, 0, totalPut, ptsUs, 0)
                     } else {
                         val ptsUs = encodedFrames * 1_000_000L / decRate
                         encoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
@@ -206,16 +225,19 @@ object AudioTranscoder {
 
                 // 4. Drain encoder -> muxer
                 while (true) {
-                    val encOutIdx = encoder.dequeueOutputBuffer(encInfo, TIMEOUT_US)
+                    val timeoutUs = if (!madeProgress) TIMEOUT_US else 0L
+                    val encOutIdx = encoder.dequeueOutputBuffer(encInfo, timeoutUs)
                     if (encOutIdx == MediaCodec.INFO_TRY_AGAIN_LATER) {
                         break
                     } else if (encOutIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        madeProgress = true
                         if (!muxerStarted) {
                             muxerTrackIndex = muxer.addTrack(encoder.outputFormat)
                             muxer.start()
                             muxerStarted = true
                         }
                     } else if (encOutIdx >= 0) {
+                        madeProgress = true
                         val outBuf = encoder.getOutputBuffer(encOutIdx)
                         if (outBuf != null && (encInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0 && encInfo.size > 0 && muxerStarted) {
                             outBuf.position(encInfo.offset)
@@ -227,6 +249,8 @@ object AudioTranscoder {
                             encoderDone = true
                             break
                         }
+                    } else {
+                        break
                     }
                 }
             }

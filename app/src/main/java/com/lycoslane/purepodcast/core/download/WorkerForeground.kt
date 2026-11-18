@@ -18,19 +18,25 @@ internal object WorkerForeground {
         channelId: String,
         channelName: String,
         title: String,
-        text: String
+        text: String,
+        progressMax: Int = 0,
+        progressCurrent: Int = 0
     ): ForegroundInfo {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         nm?.createNotificationChannel(
-            NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW).apply {
+                setShowBadge(false)
+            }
         )
+        val indeterminate = progressMax <= 0
         val notification: Notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(title)
             .setContentText(text)
             .setOnlyAlertOnce(true)
+            .setSilent(true)
             .setOngoing(true)
-            .setProgress(0, 0, true)
+            .setProgress(progressMax, progressCurrent, indeterminate)
             .build()
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
