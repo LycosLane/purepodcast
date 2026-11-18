@@ -74,7 +74,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -449,11 +448,10 @@ fun SearchScreen(
                             }
 
                             val rawDesc = feed?.description ?: ""
-                            val desc by produceState(initialValue = "", key1 = rawDesc) {
-                                if (rawDesc.isBlank()) {
-                                    value = ""
-                                } else {
-                                    value = withContext(Dispatchers.Default) { htmlToPlainText(rawDesc) }
+                            var desc by remember(rawDesc) { mutableStateOf("") }
+                            LaunchedEffect(rawDesc) {
+                                desc = if (rawDesc.isBlank()) "" else {
+                                    withContext(Dispatchers.Default) { htmlToPlainText(rawDesc) }
                                 }
                             }
                             val episodes = remember(feed) {
@@ -685,11 +683,10 @@ fun SearchScreen(
 
             selectedPreviewEpisode?.let { (epFeed, ep) ->
                 ModalBottomSheet(onDismissRequest = { selectedPreviewEpisode = null }) {
-                    val epDesc by produceState(initialValue = "", key1 = ep.descriptionHtml) {
-                        if (ep.descriptionHtml.isBlank()) {
-                            value = ""
-                        } else {
-                            value = withContext(Dispatchers.Default) { htmlToPlainText(ep.descriptionHtml) }
+                    var epDesc by remember(ep.descriptionHtml) { mutableStateOf("") }
+                    LaunchedEffect(ep.descriptionHtml) {
+                        epDesc = if (ep.descriptionHtml.isBlank()) "" else {
+                            withContext(Dispatchers.Default) { htmlToPlainText(ep.descriptionHtml) }
                         }
                     }
                     Column(
