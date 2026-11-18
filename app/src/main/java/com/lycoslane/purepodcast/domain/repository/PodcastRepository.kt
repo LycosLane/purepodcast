@@ -549,6 +549,8 @@ class PodcastRepository(
                             put("positionMs", ep.positionMs)
                             put("isPlayed", ep.isPlayed)
                             put("isHidden", ep.isHidden)
+                            put("isFavorite", ep.isFavorite)
+                            put("playedAtMs", ep.playedAtMs)
                         }
                     )
                 }
@@ -580,7 +582,7 @@ class PodcastRepository(
                 preferences.setRefreshIntervalHours(hours)
                 com.lycoslane.purepodcast.core.download.FeedRefreshWorker.schedulePeriodic(context, hours, replaceExisting = true)
             }
-            if (s.has("wifiOnlyDownloads")) preferences.setWifiOnlyDownloads(s.optBoolean("wifiOnlyDownloads", false))
+            if (s.has("wifiOnlyDownloads")) preferences.setWifiOnlyDownloads(s.optBoolean("wifiOnlyDownloads", true))
             if (s.has("autoDownloadNewByDefault")) preferences.setAutoDownloadNewByDefault(s.optBoolean("autoDownloadNewByDefault", false))
             if (s.has("downloadWhenQueued")) preferences.setDownloadWhenQueued(s.optBoolean("downloadWhenQueued", false))
             if (s.has("addToQueueWhenDownloaded")) preferences.setAddToQueueWhenDownloaded(s.optBoolean("addToQueueWhenDownloaded", false))
@@ -596,7 +598,7 @@ class PodcastRepository(
                 preferences.setMaxDownloadsPerPodcast(s.optInt("maxDownloadsPerPodcast", 0).coerceIn(0, 30))
             }
             if (s.has("smartRewindSeconds")) {
-                preferences.setSmartRewindSeconds(s.optInt("smartRewindSeconds", 5).coerceIn(0, 60))
+                preferences.setSmartRewindSeconds(s.optInt("smartRewindSeconds", 10).coerceIn(0, 60))
             }
             if (s.has("audioNormalizationEnabled")) {
                 preferences.setAudioNormalizationEnabled(s.optBoolean("audioNormalizationEnabled", false))
@@ -612,6 +614,12 @@ class PodcastRepository(
                 val lang = s.optString("appLanguage", "en")
                 if (lang in listOf("en", "de")) preferences.setAppLanguage(lang)
             }
+            if (s.has("transcodeBitrateKbps")) {
+                val kbps = s.optInt("transcodeBitrateKbps", 0).let { if (it in listOf(0, 96, 128)) it else 0 }
+                preferences.setTranscodeBitrateKbps(kbps)
+            }
+            if (s.has("transcodeAutoEnabled")) preferences.setTranscodeAutoEnabled(s.optBoolean("transcodeAutoEnabled", false))
+            if (s.has("transcodeChargingOnly")) preferences.setTranscodeChargingOnly(s.optBoolean("transcodeChargingOnly", true))
         }
 
         val podcastsArr = root.optJSONArray("podcasts") ?: return@withContext 0
@@ -639,15 +647,21 @@ class PodcastRepository(
                 }
                 val epArr = pObj.optJSONArray("episodes")
                 if (epArr != null) {
-                    for (j in 0 until epArr.length()) {
+                    for (j in 0 until minOf(epArr.length(), 5000)) {
                         val eObj = epArr.optJSONObject(j) ?: continue
                         val guid = eObj.optString("guid", "")
                         if (guid.isEmpty()) continue
                         val ep = dao.getEpisodeByGuid(podcastId, guid) ?: continue
                         dao.updatePosition(ep.id, eObj.optLong("positionMs", ep.positionMs).coerceAtLeast(0L))
                         val restoredPlayed = eObj.optBoolean("isPlayed", ep.isPlayed)
-                        val restoredPlayedAt = if (restoredPlayed) ep.playedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis() else 0L
+                        val restoredPlayedAt = if (restoredPlayed) {
+                            eObj.optLong("playedAtMs", 0L).takeIf { it > 0L }
+                                ?: ep.playedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis()
+                        } else 0L
                         dao.setPlayed(ep.id, restoredPlayed, restoredPlayedAt)
+                        if (eObj.has("isFavorite")) {
+                            dao.setFavorite(ep.id, eObj.optBoolean("isFavorite", false))
+                        }
                         if (eObj.has("isHidden")) {
                             dao.setHidden(ep.id, eObj.optBoolean("isHidden", ep.isHidden))
                         }

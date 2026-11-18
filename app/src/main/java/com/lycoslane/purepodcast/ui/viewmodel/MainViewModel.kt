@@ -127,6 +127,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setLocalFolderUri(uri: String) {
+        val old = app.preferences.settings.value.localFolderUri
+        if (old.isNotBlank() && old != uri) {
+            runCatching {
+                app.contentResolver.releasePersistableUriPermission(
+                    android.net.Uri.parse(old),
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+        }
         app.preferences.setLocalFolderUri(uri)
         viewModelScope.launch {
             runCatching { app.repository.syncLocalFolder() }

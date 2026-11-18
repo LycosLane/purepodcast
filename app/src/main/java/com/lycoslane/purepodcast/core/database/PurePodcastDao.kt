@@ -106,7 +106,7 @@ interface PurePodcastDao {
     @Query("SELECT id FROM episodes WHERE podcastId = :podcastId")
     suspend fun getEpisodeIdsForPodcast(podcastId: Long): List<Long>
 
-    @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND (isPlayed = 1 OR positionMs > 0 OR isHidden = 1)")
+    @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND (isPlayed = 1 OR positionMs > 0 OR isHidden = 1 OR isFavorite = 1)")
     suspend fun getEpisodesWithProgress(podcastId: Long): List<EpisodeEntity>
 
     @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND guid = :guid LIMIT 1")
