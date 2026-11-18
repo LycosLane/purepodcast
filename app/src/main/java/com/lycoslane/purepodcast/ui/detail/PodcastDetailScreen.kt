@@ -73,6 +73,8 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -82,6 +84,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -859,12 +862,32 @@ private fun EpisodeSwipeRow(
 ) {
     val latestRight by androidx.compose.runtime.rememberUpdatedState(onSwipeRightQueue)
     val latestLeft by androidx.compose.runtime.rememberUpdatedState(onSwipeLeftAction)
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val thresholdFraction = 0.45f
+    var rowWidthPx by remember { mutableIntStateOf(0) }
+    var latestSwipeFraction by remember { mutableFloatStateOf(0f) }
 
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
-            value != SwipeToDismissBoxValue.Settled
-        }
+            value == SwipeToDismissBoxValue.Settled || latestSwipeFraction >= thresholdFraction
+        },
+        positionalThreshold = { totalDistance -> totalDistance * thresholdFraction }
     )
+
+    val currentOffset = runCatching { dismissState.requireOffset() }.getOrDefault(0f)
+    val swipeFraction = if (rowWidthPx > 0) {
+        (kotlin.math.abs(currentOffset) / rowWidthPx.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    latestSwipeFraction = swipeFraction
+    val reachedThreshold = swipeFraction >= thresholdFraction
+
+    androidx.compose.runtime.LaunchedEffect(reachedThreshold) {
+        if (reachedThreshold) {
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+        }
+    }
 
     androidx.compose.runtime.LaunchedEffect(dismissState.currentValue) {
         val value = dismissState.currentValue
@@ -880,6 +903,7 @@ private fun EpisodeSwipeRow(
 
     SwipeToDismissBox(
         state = dismissState,
+        modifier = Modifier.onSizeChanged { rowWidthPx = it.width },
         backgroundContent = {
             val dir = dismissState.dismissDirection
             val alignment = when (dir) {
@@ -887,10 +911,15 @@ private fun EpisodeSwipeRow(
                 SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
                 else -> Alignment.Center
             }
-            val bgColor = when (dir) {
+            val baseColor = when (dir) {
                 SwipeToDismissBoxValue.StartToEnd -> Color(0xFF2E7D32)
                 SwipeToDismissBoxValue.EndToStart -> if (isTrashMode) MaterialTheme.colorScheme.error else Color(0xFFBF360C)
                 else -> MaterialTheme.colorScheme.surfaceVariant
+            }
+            val bgColor = if (reachedThreshold || dir == SwipeToDismissBoxValue.Settled) {
+                baseColor
+            } else {
+                baseColor.copy(alpha = 0.35f + 0.35f * (swipeFraction / thresholdFraction))
             }
             val icon = when (dir) {
                 SwipeToDismissBoxValue.StartToEnd -> Icons.AutoMirrored.Filled.PlaylistAdd
@@ -919,6 +948,7 @@ private fun EpisodeSwipeRow(
             ) {
                 if (dir != SwipeToDismissBoxValue.Settled) {
                     Row(
+                        modifier = Modifier.alpha(if (reachedThreshold) 1f else 0.7f),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
