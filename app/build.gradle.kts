@@ -22,13 +22,17 @@ android {
         applicationId = "com.lycoslane.purepodcast"
         minSdk = 29
         targetSdk = 35
-        versionCode = 26
-        versionName = "1.0.15"
+        versionCode = 27
+        versionName = "1.0.16"
     }
 
     lint {
         checkReleaseBuilds = false
-        abortOnError = false
+        abortOnError = true
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 
     signingConfigs {
@@ -71,7 +75,10 @@ android {
 }
 
 dependencies {
-    testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.kotlinx.coroutines.test)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)

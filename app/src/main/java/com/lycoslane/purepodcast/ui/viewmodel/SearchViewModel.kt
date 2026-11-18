@@ -63,9 +63,12 @@ class SearchViewModel(
             try {
                 _results.value = runCatching {
                     app.repository.searchPodcasts(trimmed).distinctBy { it.feedUrl }
-                }.getOrElse { _ ->
+                }.getOrElse { err ->
                     lastSearchedQuery = null
-                    _statusMessage.value = app.getString(R.string.status_search_failed, app.getString(R.string.error_generic_network))
+                    _statusMessage.value = app.getString(
+                        R.string.status_search_failed,
+                        err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                    )
                     emptyList()
                 }
             } finally {
@@ -88,7 +91,10 @@ class SearchViewModel(
                     onSubscribed(podcastId)
                 }
                 .onFailure { err ->
-                    _statusMessage.value = app.getString(R.string.status_search_failed, app.getString(R.string.error_generic_network))
+                    _statusMessage.value = app.getString(
+                        R.string.status_search_failed,
+                        err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                    )
                 }
         }
     }
@@ -120,7 +126,10 @@ class SearchViewModel(
                 )
                 onDone(podcastId)
             }.onFailure { err ->
-                _statusMessage.value = app.getString(R.string.status_search_failed, app.getString(R.string.error_generic_network))
+                _statusMessage.value = app.getString(
+                    R.string.status_search_failed,
+                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                )
             }
         }
     }
@@ -142,7 +151,10 @@ class SearchViewModel(
                 _statusMessage.value = app.getString(R.string.snackbar_download_started)
                 onDone(podcastId)
             }.onFailure { err ->
-                _statusMessage.value = app.getString(R.string.status_search_failed, app.getString(R.string.error_generic_network))
+                _statusMessage.value = app.getString(
+                    R.string.status_search_failed,
+                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                )
             }
         }
     }
@@ -161,8 +173,11 @@ class SearchViewModel(
                 )
             }.onSuccess { (podcastId, _) ->
                 onOpenPodcast(podcastId)
-            }.onFailure { _ ->
-                _statusMessage.value = app.getString(R.string.status_search_failed, app.getString(R.string.error_generic_network))
+            }.onFailure { err ->
+                _statusMessage.value = app.getString(
+                    R.string.status_search_failed,
+                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                )
             }
         }
     }
@@ -179,7 +194,10 @@ class SearchViewModel(
             }.onSuccess { count ->
                 _statusMessage.value = app.getString(R.string.status_opml_imported, count)
             }.onFailure { err ->
-                _statusMessage.value = app.getString(R.string.status_opml_failed, app.getString(R.string.error_generic_network))
+                _statusMessage.value = app.getString(
+                    R.string.status_opml_failed,
+                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                )
             }
         }
     }

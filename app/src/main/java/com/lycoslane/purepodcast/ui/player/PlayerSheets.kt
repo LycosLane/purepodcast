@@ -191,7 +191,6 @@ fun FullPlayerSheet(
     var showReaderDialog by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var scrubPos by remember(ep.id) { mutableStateOf<Float?>(null) }
     var pendingSeekPos by remember(ep.id) { mutableStateOf<Float?>(null) }
-    var activeSleepPreset by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
 
     androidx.compose.runtime.LaunchedEffect(pendingSeekPos) {
         if (pendingSeekPos != null) {
@@ -544,12 +543,11 @@ fun FullPlayerSheet(
                         val selected = if (state.sleepTimerRemainingMs <= 0L) {
                             mins == 0
                         } else {
-                            mins == activeSleepPreset
+                            mins == state.sleepTimerPresetMinutes
                         }
                         FilterChip(
                             selected = selected,
                             onClick = {
-                                activeSleepPreset = mins
                                 onSetSleepTimer(mins)
                                 showSleepRow = false
                             },

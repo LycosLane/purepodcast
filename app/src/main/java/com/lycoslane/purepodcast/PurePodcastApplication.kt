@@ -38,9 +38,4 @@ class PurePodcastApplication : Application() {
             runCatching { repository.cleanupPlayedDownloads(playerController.state.value.currentEpisode?.id) }
         }
     }
-
-    override fun onTerminate() {
-        playerController.release()
-        super.onTerminate()
-    }
 }

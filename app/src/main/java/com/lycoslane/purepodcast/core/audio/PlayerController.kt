@@ -43,7 +43,8 @@ data class PlayerUiState(
     val playbackSpeed: Float = 1.0f,
     val skipSilence: Boolean = false,
     val silenceIntensity: Int = 1,
-    val sleepTimerRemainingMs: Long = 0L
+    val sleepTimerRemainingMs: Long = 0L,
+    val sleepTimerPresetMinutes: Int = 0
 )
 
 class PlayerController(
@@ -345,15 +346,20 @@ class PlayerController(
     fun setSleepTimer(minutes: Int) {
         sleepTimerJob?.cancel()
         if (minutes <= 0) {
-            _state.update { it.copy(sleepTimerRemainingMs = 0L) }
+            _state.update { it.copy(sleepTimerRemainingMs = 0L, sleepTimerPresetMinutes = 0) }
             return
         }
         val endElapsed = SystemClock.elapsedRealtime() + minutes * 60_000L
-        _state.update { it.copy(sleepTimerRemainingMs = minutes * 60_000L) }
+        _state.update { it.copy(sleepTimerRemainingMs = minutes * 60_000L, sleepTimerPresetMinutes = minutes) }
         sleepTimerJob = scope.launch {
             while (isActive) {
                 val remaining = (endElapsed - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-                _state.update { it.copy(sleepTimerRemainingMs = remaining) }
+                _state.update {
+                    it.copy(
+                        sleepTimerRemainingMs = remaining,
+                        sleepTimerPresetMinutes = if (remaining == 0L) 0 else minutes
+                    )
+                }
                 if (remaining == 0L) break
                 delay(1_000L)
             }
