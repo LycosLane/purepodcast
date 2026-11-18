@@ -171,10 +171,11 @@ fun PinchZoomText(
         color = color,
         modifier = modifier
             .semantics {
-                if (currentOnClick != null) {
+                val click = currentOnClick
+                if (click != null) {
                     role = Role.Button
                     onClick {
-                        currentOnClick.invoke()
+                        click()
                         true
                     }
                 }

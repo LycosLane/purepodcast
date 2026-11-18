@@ -463,7 +463,7 @@ fun PodcastDetailScreen(
                     onSwipeRightQueue = { onAddToQueue(episode) },
                     onSwipeLeftAction = {
                         if (isTrashFilter) {
-                            deletePermanentlyEpisodeId = ep.idisode
+                            deletePermanentlyEpisodeId = episode.id
                         } else {
                             if (!episode.isHidden) {
                                 lastHiddenEpisodeId = episode.id
@@ -762,7 +762,7 @@ fun PodcastDetailScreen(
             text = { Text(target.title) },
             confirmButton = {
                 TextButton(onClick = {
-                    deletePermanentlyTarget = null
+                    deletePermanentlyEpisodeId = null
                     onDeletePermanently(target)
                 }) {
                     Text(
@@ -813,7 +813,7 @@ fun PodcastDetailScreen(
             text = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_delete_active_body)) },
             confirmButton = {
                 TextButton(onClick = {
-                    deleteActiveTarget = null
+                    deleteActiveEpisodeId = null
                     onStopAndDeleteActive(target)
                 }) {
                     Text(
