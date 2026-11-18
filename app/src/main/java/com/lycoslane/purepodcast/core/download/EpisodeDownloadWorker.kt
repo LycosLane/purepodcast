@@ -11,6 +11,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.lycoslane.purepodcast.PurePodcastApplication
+import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
 import com.lycoslane.purepodcast.core.network.BoundedInputStream
@@ -43,37 +44,91 @@ class EpisodeDownloadWorker(
         if (!dir.exists()) dir.mkdirs()
         val targetFile = File(dir, "${episode.id}.mp3")
         val tempFile = File(dir, "${episode.id}.tmp")
+        val etagFile = File(dir, "${episode.id}.etag")
 
         dao.updateDownloadState(episodeId, DownloadState.DOWNLOADING, 0, null)
 
+        // Promote to a foreground (dataSync) job so long downloads aren't killed after 10 minutes.
+        runCatching {
+            setForeground(
+                WorkerForeground.info(
+                    context = applicationContext,
+                    notificationId = FOREGROUND_ID_BASE + (episodeId % 100_000L).toInt(),
+                    channelId = DOWNLOAD_CHANNEL_ID,
+                    channelName = applicationContext.getString(R.string.notif_download_channel),
+                    title = episode.title,
+                    text = applicationContext.getString(R.string.notif_downloading)
+                )
+            )
+        }
+
         var conn: HttpURLConnection? = null
         try {
+            // Resume a partial download only if we stored a strong ETag to validate it with If-Range.
+            val savedEtag = runCatching { etagFile.readText().trim() }.getOrDefault("")
+            var existing = if (tempFile.exists() && savedEtag.isNotEmpty() && !savedEtag.startsWith("W/")) {
+                tempFile.length()
+            } else {
+                tempFile.delete()
+                0L
+            }
+            val requestHeaders = if (existing > 0L) {
+                mapOf("Range" to "bytes=$existing-", "If-Range" to savedEtag)
+            } else {
+                emptyMap()
+            }
+
             conn = NetworkSecurity.openValidatedConnection(
                 rawUrl = episode.audioUrl,
                 connectTimeoutMs = 15_000,
-                readTimeoutMs = 30_000
+                readTimeoutMs = 30_000,
+                headers = requestHeaders
             )
             val code = conn.responseCode
+            if (code == 416) {
+                // Stale partial file: start over on the next attempt.
+                tempFile.delete()
+                etagFile.delete()
+                dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+                return@withContext Result.retry()
+            }
             if (code !in 200..299) {
                 dao.updateDownloadState(episodeId, DownloadState.FAILED, 0, null)
                 val isPermanent4xx = code in 400..499 && code != 408 && code != 429
-                return@withContext if (isPermanent4xx || runAttemptCount >= 3) Result.failure() else Result.retry()
+                if (isPermanent4xx || runAttemptCount >= 3) {
+                    tempFile.delete()
+                    etagFile.delete()
+                    return@withContext Result.failure()
+                }
+                return@withContext Result.retry()
+            }
+            if (code != 206) existing = 0L // server ignored Range: restart from scratch
+            conn.getHeaderField("ETag")?.takeIf { it.isNotBlank() }?.let { etag ->
+                runCatching { etagFile.writeText(etag) }
             }
 
-            val totalBytes = conn.contentLengthLong.takeIf { it > 0 } ?: episode.fileSizeBytes
+            val remaining = conn.contentLengthLong.takeIf { it > 0 }
+            val totalBytes = if (remaining != null) existing + remaining else episode.fileSizeBytes
             if (totalBytes > MAX_EPISODE_BYTES) {
+                dao.updateDownloadState(episodeId, DownloadState.FAILED, 0, null)
+                tempFile.delete()
+                etagFile.delete()
+                return@withContext Result.failure()
+            }
+            if (totalBytes > 0 && dir.usableSpace < (totalBytes - existing) + MIN_FREE_BYTES) {
+                // Not enough free space: fail without endless retries.
                 dao.updateDownloadState(episodeId, DownloadState.FAILED, 0, null)
                 return@withContext Result.failure()
             }
-            var downloaded = 0L
+            var downloaded = existing
             var lastReportedPct = -1
 
             BoundedInputStream(conn.inputStream, MAX_EPISODE_BYTES).use { input ->
-                tempFile.outputStream().use { output ->
+                java.io.FileOutputStream(tempFile, existing > 0L).use { output ->
                     val buffer = ByteArray(16 * 1024)
                     while (true) {
                         if (isStopped) {
-                            tempFile.delete()
+                            // Keep the partial file so the download can resume later.
                             dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
                             return@withContext Result.failure()
                         }
@@ -95,6 +150,7 @@ class EpisodeDownloadWorker(
             val latest = dao.getEpisode(episodeId)
             if (isStopped || latest == null || latest.isHidden || latest.skipAutoDownload) {
                 tempFile.delete()
+                etagFile.delete()
                 if (latest != null) {
                     dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
                 }
@@ -107,6 +163,7 @@ class EpisodeDownloadWorker(
                 tempFile.delete()
             }
 
+            etagFile.delete()
             dao.updateDownloadState(
                 episodeId = episodeId,
                 state = DownloadState.DOWNLOADED,
@@ -135,7 +192,7 @@ class EpisodeDownloadWorker(
             }
             Result.success()
         } catch (e: CancellationException) {
-            tempFile.delete()
+            // Partial file is kept for resume; orphans are swept at app start.
             withContext(NonCancellable) {
                 val current = dao.getEpisode(episodeId)
                 if (current != null &&
@@ -146,13 +203,18 @@ class EpisodeDownloadWorker(
             }
             throw e
         } catch (_: Exception) {
-            tempFile.delete()
             if (isStopped) {
                 dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
                 Result.failure()
             } else {
                 dao.updateDownloadState(episodeId, DownloadState.FAILED, 0, null)
-                if (runAttemptCount >= 3) Result.failure() else Result.retry()
+                if (runAttemptCount >= 3) {
+                    tempFile.delete()
+                    etagFile.delete()
+                    Result.failure()
+                } else {
+                    Result.retry()
+                }
             }
         } finally {
             conn?.disconnect()
@@ -162,6 +224,9 @@ class EpisodeDownloadWorker(
     companion object {
         private const val KEY_EPISODE_ID = "episode_id"
         private const val MAX_EPISODE_BYTES = 1536L * 1024 * 1024 // 1.5 GiB
+        private const val MIN_FREE_BYTES = 64L * 1024 * 1024
+        private const val FOREGROUND_ID_BASE = 5000
+        private const val DOWNLOAD_CHANNEL_ID = "purepodcast_downloads"
 
         fun uniqueName(episodeId: Long) = "episode_download_$episodeId"
 

@@ -24,11 +24,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(
+            val uiPrefs = getSharedPreferences("ui_state", MODE_PRIVATE)
+            if (!uiPrefs.getBoolean("notif_permission_asked", false) &&
+                ContextCompat.checkSelfPermission(
                     this,
                     Manifest.permission.POST_NOTIFICATIONS
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
+                // Ask only once; repeated prompts are annoying and the OS stops showing them anyway.
+                uiPrefs.edit().putBoolean("notif_permission_asked", true).apply()
                 ActivityCompat.requestPermissions(
                     this,
                     arrayOf(Manifest.permission.POST_NOTIFICATIONS),

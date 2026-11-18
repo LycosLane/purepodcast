@@ -226,11 +226,39 @@ class PodcastRepository(
     }
 
     suspend fun unsubscribePodcast(podcastId: Long) = withContext(Dispatchers.IO) {
-        dao.getEpisodeIdsForPodcast(podcastId).forEach { epId ->
-            EpisodeDownloadWorker.cancel(context, epId)
+        cleanupMutex.withLock {
+            dao.getEpisodeIdsForPodcast(podcastId).forEach { epId ->
+                EpisodeDownloadWorker.cancel(context, epId)
+                com.lycoslane.purepodcast.core.download.TranscodeWorker.cancelForEpisode(context, epId)
+            }
+            File(context.filesDir, "episodes/$podcastId").deleteRecursively()
+            dao.deletePodcast(podcastId)
         }
-        File(context.filesDir, "episodes/$podcastId").deleteRecursively()
-        dao.deletePodcast(podcastId)
+    }
+
+    /**
+     * Startup sweep: resets downloads stuck in QUEUED/DOWNLOADING whose work no longer exists
+     * (crash, force-stop, expired work) and removes stale partial files.
+     */
+    suspend fun sweepOrphanedDownloads() = withContext(Dispatchers.IO) {
+        val wm = androidx.work.WorkManager.getInstance(context)
+        val stillActive = mutableSetOf<Long>()
+        dao.getActiveDownloadEpisodes().forEach { ep ->
+            val alive = runCatching {
+                wm.getWorkInfosForUniqueWork(EpisodeDownloadWorker.uniqueName(ep.id)).get().any {
+                    !it.state.isFinished
+                }
+            }.getOrDefault(true)
+            if (alive) stillActive.add(ep.id) else dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+        }
+        val cutoff = System.currentTimeMillis() - 2L * 86_400_000L
+        File(context.filesDir, "episodes").listFiles()?.forEach { dir ->
+            dir.listFiles()?.forEach { f ->
+                val isPartial = f.name.endsWith(".tmp") || f.name.endsWith(".etag")
+                val id = f.name.substringBefore('.').toLongOrNull()
+                if (isPartial && id !in stillActive && f.lastModified() < cutoff) f.delete()
+            }
+        }
     }
 
     suspend fun enqueueDownload(episodeId: Long) {
@@ -462,6 +490,7 @@ class PodcastRepository(
     /** Deletes the file and resets download state. Returns false (no changes) if deletion failed. */
     private suspend fun purgeEpisodeFile(ep: EpisodeEntity): Boolean {
         val path = ep.localFilePath
+        com.lycoslane.purepodcast.core.download.TranscodeWorker.cancelForEpisode(context, ep.id)
         if (path != null && !safeDeleteEpisodeFile(path)) return false
         dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
         dao.setSkipAutoDownload(ep.id, true)
@@ -478,11 +507,6 @@ class PodcastRepository(
 
     suspend fun toggleSortAscending(podcastId: Long, ascending: Boolean) {
         dao.setSortAscending(podcastId, ascending)
-    }
-
-    suspend fun updatePodcastAudioPrefs(podcastId: Long, speed: Float, skipSilence: Boolean) {
-        dao.setPlaybackSpeed(podcastId, speed.coerceIn(0.75f, 3.0f))
-        dao.setSkipSilence(podcastId, skipSilence)
     }
 
     suspend fun addToQueue(episodeId: Long) {
@@ -690,7 +714,16 @@ class PodcastRepository(
                 artworkUrl = ep.artworkUrl,
                 pubDateMs = ep.pubDateMs,
                 durationMs = ep.durationMs,
-                fileSizeBytes = ep.fileSizeBytes
+                fileSizeBytes = ep.fileSizeBytes,
+                // Inline chapters are stored directly; an external Podcasting 2.0 chapters URL is
+                // stored as a "url:" marker and resolved lazily when the episode is played.
+                chaptersJson = ep.chaptersJson.ifEmpty {
+                    if (ep.chaptersUrl.isNotEmpty() && NetworkSecurity.isValidHttpUrl(ep.chaptersUrl)) {
+                        "url:" + ep.chaptersUrl
+                    } else {
+                        ""
+                    }
+                }
             )
         }
         dao.insertEpisodes(entities)

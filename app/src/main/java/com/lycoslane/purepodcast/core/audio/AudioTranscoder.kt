@@ -12,6 +12,27 @@ object AudioTranscoder {
 
     private const val TIMEOUT_US = 10_000L
 
+    /** True if [file] is already AAC (mp4a) with a declared bitrate at or below [targetKbps]. */
+    fun isAlreadyCompact(file: File, targetKbps: Int): Boolean {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(file.absolutePath)
+            for (i in 0 until extractor.trackCount) {
+                val fmt = extractor.getTrackFormat(i)
+                val mime = fmt.getString(MediaFormat.KEY_MIME) ?: continue
+                if (!mime.startsWith("audio/")) continue
+                if (mime != "audio/mp4a-latm") return false
+                if (!fmt.containsKey(MediaFormat.KEY_BIT_RATE)) return false
+                return fmt.getInteger(MediaFormat.KEY_BIT_RATE) <= targetKbps * 1000
+            }
+            false
+        } catch (_: Exception) {
+            false
+        } finally {
+            runCatching { extractor.release() }
+        }
+    }
+
     /**
      * Transcodes [sourceFile] to AAC-LC inside an M4A container at [targetBitrateKbps] (e.g. 96 or 128).
      * Writes to [tempOutputFile]. Returns true if transcoding succeeded and produced a valid smaller file.

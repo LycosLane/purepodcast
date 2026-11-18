@@ -219,6 +219,7 @@ class PlaybackService : MediaSessionService() {
                     positionSaveJob?.cancel()
                     lastPausedElapsedMs = 0L
                     val episodeId = player.currentMediaItem?.mediaId?.toLongOrNull() ?: return
+                    lastEpisodePrefs().edit().remove(KEY_LAST_EPISODE_ID).apply()
                     serviceScope.launch(Dispatchers.IO) {
                         val dao = PurePodcastDatabase.getInstance(applicationContext).dao()
                         val now = System.currentTimeMillis()
@@ -232,8 +233,18 @@ class PlaybackService : MediaSessionService() {
                                 dao.markForDeletion(episodeId, now)
                             }
                         }
+                        // Auto-advance: the finished episode is no longer in the queue,
+                        // so "forward" picks the head of the remaining queue.
+                        if (dao.getQueueEpisodesOnce().isNotEmpty()) {
+                            withContext(Dispatchers.Main) { skipQueueEpisode(forward = true) }
+                        }
                     }
                 }
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val id = mediaItem?.mediaId?.toLongOrNull() ?: return
+                lastEpisodePrefs().edit().putLong(KEY_LAST_EPISODE_ID, id).apply()
             }
         })
 
@@ -285,6 +296,35 @@ class PlaybackService : MediaSessionService() {
                             .setAvailablePlayerCommands(safePlayerCommands)
                             .build()
                     }
+                }
+
+                override fun onPlaybackResumption(
+                    mediaSession: MediaSession,
+                    controller: MediaSession.ControllerInfo
+                ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+                    val future = com.google.common.util.concurrent.SettableFuture
+                        .create<MediaSession.MediaItemsWithStartPosition>()
+                    serviceScope.launch {
+                        try {
+                            val id = lastEpisodePrefs().getLong(KEY_LAST_EPISODE_ID, -1L)
+                            val withPodcast = if (id < 0) null else withContext(Dispatchers.IO) {
+                                PurePodcastDatabase.getInstance(applicationContext).dao().getEpisodeWithPodcast(id)
+                            }
+                            val item = withPodcast?.let { buildMediaItem(it.episode, it.podcast) }
+                            if (item == null) {
+                                future.setException(UnsupportedOperationException("Nothing to resume"))
+                            } else {
+                                future.set(
+                                    MediaSession.MediaItemsWithStartPosition(
+                                        listOf(item), 0, (withPodcast?.episode?.positionMs ?: 0L).coerceAtLeast(0L)
+                                    )
+                                )
+                            }
+                        } catch (e: Exception) {
+                            future.setException(e)
+                        }
+                    }
+                    return future
                 }
 
                 override fun onCustomCommand(
@@ -406,6 +446,40 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    /** Builds the MediaItem for an episode (local file preferred, validated remote URL otherwise). */
+    private suspend fun buildMediaItem(
+        ep: com.lycoslane.purepodcast.core.database.EpisodeEntity,
+        pod: com.lycoslane.purepodcast.core.database.PodcastEntity
+    ): MediaItem? {
+        val localUri = withContext(Dispatchers.IO) {
+            ep.localFilePath?.let { path ->
+                if (path.startsWith("content://")) {
+                    Uri.parse(path)
+                } else {
+                    val f = File(path)
+                    if (f.exists()) Uri.fromFile(f) else null
+                }
+            }
+        }
+        val mediaUri = localUri ?: run {
+            if (!NetworkSecurity.isValidHttpUrl(ep.audioUrl)) return null
+            Uri.parse(ep.audioUrl)
+        }
+        val artworkUri = ep.artworkUrl.ifEmpty { pod.artworkUrl }
+            .takeIf { NetworkSecurity.isValidHttpUrl(it) }
+            ?.let { Uri.parse(it) }
+        val metadata = MediaMetadata.Builder()
+            .setTitle(ep.title)
+            .setArtist(pod.title)
+            .setArtworkUri(artworkUri)
+            .build()
+        return MediaItem.Builder()
+            .setMediaId(ep.id.toString())
+            .setUri(mediaUri)
+            .setMediaMetadata(metadata)
+            .build()
+    }
+
     private fun skipQueueEpisode(forward: Boolean) {
         saveCurrentPosition()
         val currentId = player.currentMediaItem?.mediaId?.toLongOrNull()
@@ -426,36 +500,8 @@ class PlaybackService : MediaSessionService() {
             val target = queue[nextIdx]
             val ep = target.episode
             val pod = target.podcast
-
-            val localUri = withContext(Dispatchers.IO) {
-                ep.localFilePath?.let { path ->
-                    if (path.startsWith("content://")) {
-                        Uri.parse(path)
-                    } else {
-                        val f = File(path)
-                        if (f.exists()) Uri.fromFile(f) else null
-                    }
-                }
-            }
-            val mediaUri = localUri ?: run {
-                if (!NetworkSecurity.isValidHttpUrl(ep.audioUrl)) return@launch
-                Uri.parse(ep.audioUrl)
-            }
-            val artworkUri = ep.artworkUrl.ifEmpty { pod.artworkUrl }
-                .takeIf { NetworkSecurity.isValidHttpUrl(it) }
-                ?.let { Uri.parse(it) }
-
-            val metadata = MediaMetadata.Builder()
-                .setTitle(ep.title)
-                .setArtist(pod.title)
-                .setArtworkUri(artworkUri)
-                .build()
-
-            val mediaItem = MediaItem.Builder()
-                .setMediaId(ep.id.toString())
-                .setUri(mediaUri)
-                .setMediaMetadata(metadata)
-                .build()
+            val mediaItem = buildMediaItem(ep, pod) ?: return@launch
+            val mediaUri = mediaItem.localConfiguration!!.uri
 
             val speed = pod.playbackSpeed.coerceIn(0.75f, 3.0f)
             val rewindMs = (applicationContext as PurePodcastApplication)
@@ -471,6 +517,9 @@ class PlaybackService : MediaSessionService() {
             player.play()
         }
     }
+
+    private fun lastEpisodePrefs() =
+        getSharedPreferences("playback_state", MODE_PRIVATE)
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
@@ -524,10 +573,13 @@ class PlaybackService : MediaSessionService() {
         releaseDynamicsProcessing()
 
         if (episodeId != null) {
-            (applicationContext as PurePodcastApplication).appScope.launch(Dispatchers.IO) {
-                runCatching {
-                    PurePodcastDatabase.getInstance(applicationContext).dao()
-                        .updatePosition(episodeId, pos)
+            // Bounded synchronous write so the position survives immediate process death.
+            runCatching {
+                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                    kotlinx.coroutines.withTimeoutOrNull(1_500L) {
+                        PurePodcastDatabase.getInstance(applicationContext).dao()
+                            .updatePosition(episodeId, pos)
+                    }
                 }
             }
         }
@@ -537,6 +589,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
+        private const val KEY_LAST_EPISODE_ID = "last_episode_id"
         const val CMD_SET_SKIP_SILENCE = "com.lycoslane.purepodcast.SET_SKIP_SILENCE"
         const val ARG_SKIP_SILENCE = "skip_silence"
         const val ARG_SILENCE_INTENSITY = "silence_intensity"

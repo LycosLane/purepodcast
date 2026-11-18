@@ -303,6 +303,12 @@ interface PurePodcastDao {
     @Query("DELETE FROM queue_items WHERE episodeId = :episodeId")
     suspend fun removeFromQueue(episodeId: Long)
 
+    @Query("SELECT * FROM episodes WHERE downloadState IN ('QUEUED', 'DOWNLOADING')")
+    suspend fun getActiveDownloadEpisodes(): List<EpisodeEntity>
+
+    @Query("UPDATE episodes SET chaptersJson = :json WHERE id = :episodeId")
+    suspend fun updateChaptersJson(episodeId: Long, json: String)
+
     @Query("SELECT COUNT(*) FROM queue_items WHERE episodeId = :episodeId")
     suspend fun queueCount(episodeId: Long): Int
 

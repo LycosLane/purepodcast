@@ -138,6 +138,17 @@ class PlayerController(
                     silenceIntensity = withPodcast.podcast.silenceIntensity.coerceIn(0, 2)
                 )
             }
+            // Lazily resolve an external chapters file (stored as "url:<link>" by the feed import).
+            val marker = withPodcast.episode.chaptersJson
+            if (marker.startsWith("url:")) {
+                val json = com.lycoslane.purepodcast.core.network.ChaptersParser
+                    .fetchPodcasting2ChaptersJson(marker.removePrefix("url:"))
+                dao.updateChaptersJson(episodeId, json)
+                _state.update { st ->
+                    val cur = st.currentEpisode
+                    if (cur != null && cur.id == episodeId) st.copy(currentEpisode = cur.copy(chaptersJson = json)) else st
+                }
+            }
         }
     }
 

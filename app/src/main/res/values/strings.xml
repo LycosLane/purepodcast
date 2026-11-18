@@ -230,4 +230,6 @@
     <string name="filter_episodes_favorites">Favorites</string>
     <string name="episodes_empty_filter">No episodes match this filter.</string>
     <string name="episode_remaining">%1$s left</string>
+    <string name="notif_download_channel">Downloads</string>
+    <string name="notif_downloading">Downloading episode…</string>
 </resources>

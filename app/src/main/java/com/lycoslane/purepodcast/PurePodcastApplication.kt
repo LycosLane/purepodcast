@@ -34,6 +34,7 @@ class PurePodcastApplication : Application() {
             replaceExisting = false
         )
         appScope.launch {
+            runCatching { repository.sweepOrphanedDownloads() }
             runCatching { repository.cleanupPlayedDownloads(playerController.state.value.currentEpisode?.id) }
         }
     }

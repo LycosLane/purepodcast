@@ -57,6 +57,22 @@ class TranscodeWorker(
             return@withContext Result.success()
         }
 
+        if (targets.isEmpty()) return@withContext Result.success()
+
+        // Foreground (dataSync) so batch conversion isn't killed by the 10 minute limit.
+        runCatching {
+            setForeground(
+                WorkerForeground.info(
+                    context = applicationContext,
+                    notificationId = NOTIFICATION_ID,
+                    channelId = CHANNEL_ID,
+                    channelName = applicationContext.getString(R.string.notif_transcode_channel),
+                    title = applicationContext.getString(R.string.settings_section_compression),
+                    text = applicationContext.getString(R.string.notif_transcode_progress, 1, targets.size)
+                )
+            )
+        }
+
         for (ep in targets) {
             if (isStopped) break
             processed++
@@ -74,6 +90,13 @@ class TranscodeWorker(
             if (!sourceFile.exists() || sourceFile.length() <= 0L) continue
 
             val parentDir = sourceFile.parentFile ?: continue
+            // Already a compact AAC file at or below the target bitrate: nothing to gain.
+            if (AudioTranscoder.isAlreadyCompact(sourceFile, bitrateKbps)) {
+                dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length())
+                continue
+            }
+            // Need room for the temporary output next to the source (worst case ~ source size).
+            if (parentDir.usableSpace < sourceFile.length() + MIN_FREE_BYTES) continue
             val targetM4a = File(parentDir, "${ep.id}.m4a")
             val tempFile = File(parentDir, "${ep.id}.m4a.tmp")
 
@@ -157,16 +180,21 @@ class TranscodeWorker(
             builder.setProgress(progress.second, progress.first, false)
         }
         try {
-            nm.notify(NOTIFICATION_ID, builder.build())
+            nm.notify(if (progress == null) NOTIFICATION_ID + 1 else NOTIFICATION_ID, builder.build())
         } catch (_: SecurityException) {
         }
     }
 
     companion object {
         private const val KEY_EPISODE_ID = "episode_id"
+        private const val MIN_FREE_BYTES = 64L * 1024 * 1024
         private const val UNIQUE_BATCH_WORK = "transcode_all_downloads"
         private const val CHANNEL_ID = "purepodcast_transcode"
         private const val NOTIFICATION_ID = 4102
+
+        fun cancelForEpisode(context: Context, episodeId: Long) {
+            WorkManager.getInstance(context).cancelUniqueWork("transcode_ep_$episodeId")
+        }
 
         fun enqueueSingle(context: Context, episodeId: Long, chargingOnly: Boolean) {
             val constraints = Constraints.Builder()
