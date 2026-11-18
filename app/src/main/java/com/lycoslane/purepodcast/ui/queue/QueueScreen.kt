@@ -36,6 +36,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -154,6 +155,22 @@ fun QueueScreen(
             ) {
                 items(queue, key = { it.episode.id }) { item ->
                     val isActive = item.episode.id == currentEpisode?.id
+                    val ep = item.episode
+                    val posMs = if (isActive && currentEpisode != null && currentEpisode.positionMs > 0L) {
+                        currentEpisode.positionMs
+                    } else {
+                        ep.positionMs
+                    }
+                    val durMs = if (isActive && currentEpisode != null && currentEpisode.durationMs > 0L) {
+                        currentEpisode.durationMs
+                    } else {
+                        ep.durationMs
+                    }
+                    val progressFraction = when {
+                        ep.isPlayed -> 1f
+                        posMs > 0L && durMs > 0L -> (posMs.toFloat() / durMs.toFloat()).coerceIn(0.02f, 1f)
+                        else -> 0f
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -210,9 +227,18 @@ fun QueueScreen(
                             )
                             val sub = buildString {
                                 append(item.podcast.title)
-                                if (item.episode.durationMs > 0L) {
+                                if (durMs > 0L) {
                                     append(" • ")
-                                    append(formatDuration(item.episode.durationMs))
+                                    if (posMs > 0L && !ep.isPlayed) {
+                                        append(
+                                            stringResource(
+                                                R.string.episode_remaining,
+                                                formatDuration((durMs - posMs).coerceAtLeast(0L))
+                                            )
+                                        )
+                                    } else {
+                                        append(formatDuration(durMs))
+                                    }
                                 }
                             }
                             Text(
@@ -226,6 +252,16 @@ fun QueueScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            if (progressFraction > 0f) {
+                                Spacer(Modifier.height(5.dp))
+                                LinearProgressIndicator(
+                                    progress = { progressFraction },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(3.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                )
+                            }
                         }
                         if (!item.podcast.isLocal) {
                             when (item.episode.downloadState) {

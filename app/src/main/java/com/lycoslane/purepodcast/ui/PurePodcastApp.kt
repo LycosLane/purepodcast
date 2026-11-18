@@ -374,16 +374,24 @@ fun PurePodcastApp(app: PurePodcastApplication) {
             }
 
             composable("queue") {
-                val activePair by remember(app.playerController) {
+                val activePlayback by remember(app.playerController) {
                     app.playerController.state
-                        .map { it.currentEpisode to it.currentPodcast }
+                        .map { state ->
+                            val ep = state.currentEpisode?.let { current ->
+                                current.copy(
+                                    positionMs = if (state.positionMs > 0L) state.positionMs else current.positionMs,
+                                    durationMs = if (state.durationMs > 0L) state.durationMs else current.durationMs
+                                )
+                            }
+                            ep to state.currentPodcast
+                        }
                         .distinctUntilChanged()
                 }.collectAsStateWithLifecycle(initialValue = null to null)
 
                 QueueScreen(
                     queue = queue,
-                    currentEpisode = activePair.first,
-                    currentPodcast = activePair.second,
+                    currentEpisode = activePlayback.first,
+                    currentPodcast = activePlayback.second,
                     scrollToggleTrigger = queueScrollTrigger,
                     onScrollToggleConsumed = { queueScrollTrigger = 0 },
                     onOpenNowPlaying = { showFullPlayer = true },

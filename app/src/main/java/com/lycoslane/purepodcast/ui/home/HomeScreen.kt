@@ -326,6 +326,13 @@ fun HomeScreen(
                         val visiblePodcastIds = remember(visiblePodcasts) {
                             visiblePodcasts.map { it.podcast.id }.toSet()
                         }
+                        val inProgressCount = remember(allEpisodes, visiblePodcastIds) {
+                            allEpisodes.count { item ->
+                                item.podcast.id in visiblePodcastIds &&
+                                    item.episode.positionMs > 0L &&
+                                    !item.episode.isPlayed
+                            }
+                        }
                         val filteredEpisodes = remember(allEpisodes, visiblePodcastIds, activeEpisodeFilter) {
                             val cutoff14d = System.currentTimeMillis() - 14L * 86_400_000L
                             allEpisodes.filter { item ->
@@ -361,7 +368,10 @@ fun HomeScreen(
                             FilterChip(
                                 selected = activeEpisodeFilter == HomeEpisodeFilter.IN_PROGRESS,
                                 onClick = { activeEpisodeFilter = HomeEpisodeFilter.IN_PROGRESS },
-                                label = { Text(stringResource(R.string.filter_episodes_in_progress)) }
+                                label = {
+                                    val baseLabel = stringResource(R.string.filter_episodes_in_progress)
+                                    Text(if (inProgressCount > 0) "$baseLabel ($inProgressCount)" else baseLabel)
+                                }
                             )
                             FilterChip(
                                 selected = activeEpisodeFilter == HomeEpisodeFilter.DOWNLOADED,
@@ -1131,14 +1141,29 @@ private fun HomeEpisodeRow(
                 overflow = TextOverflow.Ellipsis
             )
             if (ep.positionMs > 0L && !ep.isPlayed && ep.durationMs > 0L) {
-                Text(
-                    text = stringResource(
-                        R.string.episode_remaining,
-                        formatDuration((ep.durationMs - ep.positionMs).coerceAtLeast(0L))
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                val progressFraction = (ep.positionMs.toFloat() / ep.durationMs.toFloat()).coerceIn(0.02f, 1f)
+                Spacer(Modifier.height(3.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { progressFraction },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.episode_remaining,
+                            formatDuration((ep.durationMs - ep.positionMs).coerceAtLeast(0L))
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
         IconButton(onClick = onToggleFavorite) {

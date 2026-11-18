@@ -104,6 +104,7 @@ import com.lycoslane.purepodcast.ui.common.htmlToPlainText
 private enum class EpisodeFilter {
     ALL,
     UNPLAYED,
+    IN_PROGRESS,
     HIDDEN,
     TRASH
 }
@@ -230,10 +231,14 @@ fun PodcastDetailScreen(
         val hiddenCount = remember(episodes) {
             episodes.count { it.isHidden }
         }
+        val inProgressCount = remember(episodes) {
+            episodes.count { !it.isHidden && !it.isPlayed && it.positionMs > 0L }
+        }
         val filteredEpisodes = remember(episodes, activeFilter, episodeSearchQuery) {
             val base = when (activeFilter) {
                 EpisodeFilter.ALL -> episodes.filter { !it.isHidden }
                 EpisodeFilter.UNPLAYED -> episodes.filter { !it.isHidden && !it.isPlayed }
+                EpisodeFilter.IN_PROGRESS -> episodes.filter { !it.isHidden && !it.isPlayed && it.positionMs > 0L }
                 EpisodeFilter.HIDDEN -> episodes.filter { it.isHidden }
                 EpisodeFilter.TRASH -> episodes.filter {
                     it.markedForDeletionAtMs > 0L && it.downloadState == DownloadState.DOWNLOADED
@@ -397,6 +402,15 @@ fun PodcastDetailScreen(
                             onClick = { activeFilter = EpisodeFilter.UNPLAYED },
                             label = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_unplayed)) }
                         )
+                        if (inProgressCount > 0 || activeFilter == EpisodeFilter.IN_PROGRESS) {
+                            FilterChip(
+                                selected = activeFilter == EpisodeFilter.IN_PROGRESS,
+                                onClick = { activeFilter = EpisodeFilter.IN_PROGRESS },
+                                label = {
+                                    Text("${androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_episodes_in_progress)} ($inProgressCount)")
+                                }
+                            )
+                        }
                         if (hiddenCount > 0 || activeFilter == EpisodeFilter.HIDDEN) {
                             FilterChip(
                                 selected = activeFilter == EpisodeFilter.HIDDEN,
@@ -454,6 +468,7 @@ fun PodcastDetailScreen(
                 item(key = "filter_empty") {
                     val emptyMsg = when (activeFilter) {
                         EpisodeFilter.UNPLAYED -> androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_empty_unplayed)
+                        EpisodeFilter.IN_PROGRESS -> androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.episodes_empty_filter)
                         EpisodeFilter.HIDDEN -> androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_empty_hidden)
                         EpisodeFilter.TRASH -> androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.filter_empty_trash)
                         EpisodeFilter.ALL -> ""
@@ -1049,15 +1064,37 @@ private fun EpisodeSwipeRow(
                         )
                     }
                     if (episode.positionMs > 0L && !episode.isPlayed) {
-                        Text(
-                            text = androidx.compose.ui.res.stringResource(
+                        val remainingMs = (episode.durationMs - episode.positionMs).coerceAtLeast(0L)
+                        val progressText = if (episode.durationMs > 0L && remainingMs > 0L) {
+                            androidx.compose.ui.res.stringResource(
+                                com.lycoslane.purepodcast.R.string.episode_remaining,
+                                formatDuration(remainingMs)
+                            )
+                        } else {
+                            androidx.compose.ui.res.stringResource(
                                 com.lycoslane.purepodcast.R.string.at_position,
                                 formatDuration(episode.positionMs)
-                            ),
+                            )
+                        }
+                        Text(
+                            text = progressText,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
+                }
+                if (episode.positionMs > 0L && !episode.isPlayed && episode.durationMs > 0L) {
+                    Spacer(Modifier.height(6.dp))
+                    val progressFraction = (episode.positionMs.toFloat() / episode.durationMs.toFloat()).coerceIn(0.02f, 1f)
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { progressFraction },
+                        modifier = Modifier
+                            .fillMaxWidth(0.75f)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
                 }
             }
 
