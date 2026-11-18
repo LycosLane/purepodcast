@@ -43,7 +43,6 @@
     <!-- Search -->
     <string name="search_title">Find Podcasts</string>
     <string name="search_hint">Search podcasts (e.g. Tech, Comedy…)</string>
-    <string name="action_search">Search</string>
     <string name="action_rss_url">RSS URL</string>
     <string name="action_opml_import">Import OPML</string>
     <string name="action_subscribe">Subscribe</string>
@@ -135,7 +134,6 @@
     <string name="action_unhide">Show episode</string>
     <string name="action_restore_trash">Restore download</string>
     <string name="action_delete_now">Delete permanently</string>
-    <string name="trash_hint">Deleted downloads are permanently removed after 24 hours.</string>
     <string name="dialog_delete_active_title">Delete playing episode?</string>
     <string name="dialog_delete_active_body">This episode is currently loaded in the player. Stop playback and delete the download?</string>
     <string name="action_stop_and_delete">Stop &amp; Delete</string>
@@ -143,7 +141,6 @@
     <!-- Auto-remove, Limits, Audio & Language -->
     <string name="settings_auto_remove_played">Auto-remove listened downloads</string>
     <string name="settings_auto_remove_played_sub">Moves finished downloads to trash after the configured delay.</string>
-    <string name="auto_remove_never">Keep</string>
     <string name="auto_remove_immediately">Immediately</string>
     <string name="auto_remove_days">%1$dd</string>
     <string name="settings_max_downloads">Max downloads per podcast</string>

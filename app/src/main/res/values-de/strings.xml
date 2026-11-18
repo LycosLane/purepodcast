@@ -43,7 +43,6 @@
     <!-- Search -->
     <string name="search_title">Podcasts finden</string>
     <string name="search_hint">Podcast suchen (z. B. Tech, Hörspiel…)</string>
-    <string name="action_search">Suchen</string>
     <string name="action_rss_url">RSS-URL</string>
     <string name="action_opml_import">OPML-Import</string>
     <string name="action_subscribe">Abonnieren</string>
@@ -135,7 +134,6 @@
     <string name="action_unhide">Episode einblenden</string>
     <string name="action_restore_trash">Download wiederherstellen</string>
     <string name="action_delete_now">Endgültig löschen</string>
-    <string name="trash_hint">Gelöschte Downloads werden nach 24 Stunden endgültig entfernt.</string>
     <string name="dialog_delete_active_title">Aktuelle Episode löschen?</string>
     <string name="dialog_delete_active_body">Diese Episode ist gerade im Player geladen. Wiedergabe stoppen und Download löschen?</string>
     <string name="action_stop_and_delete">Stoppen &amp; Löschen</string>
@@ -143,7 +141,6 @@
     <!-- Auto-remove, Limits, Audio & Language -->
     <string name="settings_auto_remove_played">Gehörte Downloads entfernen</string>
     <string name="settings_auto_remove_played_sub">Verschiebt gehörte Downloads nach der Wartezeit in den Papierkorb.</string>
-    <string name="auto_remove_never">Behalten</string>
     <string name="auto_remove_immediately">Sofort</string>
     <string name="auto_remove_days">%1$d Tage</string>
     <string name="settings_max_downloads">Max. Downloads pro Podcast</string>
