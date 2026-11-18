@@ -15,24 +15,24 @@
 
     <!-- Settings -->
     <string name="settings_title">Einstellungen</string>
-    <string name="settings_refresh_interval">Hintergrund-Updates (Intervall)</string>
+    <string name="settings_refresh_interval">Neue Episoden automatisch prüfen</string>
     <string name="interval_off">Aus</string>
     <string name="interval_hours">%1$d Std.</string>
-    <string name="settings_wifi_only">Downloads nur im WLAN</string>
+    <string name="settings_wifi_only">Downloads nur über WLAN</string>
     <string name="settings_wifi_only_sub">Keine Downloads über mobile Daten</string>
-    <string name="settings_auto_download_default">Neue Abos automatisch laden</string>
+    <string name="settings_auto_download_default">Neue Episoden bei neuen Abos automatisch laden</string>
     <string name="settings_auto_download_default_sub">Aktiviert Auto-Download ab Abo-Datum für neue Podcasts</string>
-    <string name="settings_download_when_queued">Beim Einreihen herunterladen</string>
+    <string name="settings_download_when_queued">Episoden in der Warteschlange automatisch laden</string>
     <string name="settings_download_when_queued_sub">Lädt Episoden automatisch, sobald sie in die Warteschlange kommen</string>
-    <string name="settings_queue_when_downloaded">Downloads in Warteschlange</string>
+    <string name="settings_queue_when_downloaded">Heruntergeladene Episoden in Warteschlange legen</string>
     <string name="settings_queue_when_downloaded_sub">Reiht fertige Downloads automatisch in die Warteschlange ein</string>
     <string name="settings_section_downloads">Downloads</string>
     <string name="settings_section_playback">Wiedergabe &amp; Warteschlange</string>
     <string name="settings_section_updates">Updates &amp; Backup</string>
-    <string name="settings_smart_rewind">Smart Rewind beim Fortsetzen</string>
+    <string name="settings_smart_rewind">Nach Pause kurz zurückspulen</string>
     <string name="settings_smart_rewind_sub">Spult nach einer Pause kurz zurück</string>
     <string name="seconds_short">%1$ds</string>
-    <string name="settings_backup_title">Backup &amp; Wiederherstellen</string>
+    <string name="settings_backup_title">Backup</string>
     <string name="settings_backup_sub">Sichert Abos, Hörpositionen, Status &amp; Einstellungen</string>
     <string name="action_export_backup">Backup speichern</string>
     <string name="action_import_backup">Backup laden</string>
@@ -90,6 +90,7 @@
     <string name="queue_empty">Warteschlange ist leer</string>
     <string name="queue_empty_sub">Lange auf eine Episode tippen und „In Warteschlange“ wählen.</string>
     <string name="queue_now_playing">Läuft gerade</string>
+    <string name="queue_last_played">Zuletzt gehört</string>
     <string name="action_remove">Entfernen</string>
 
     <!-- Player -->
@@ -139,31 +140,32 @@
     <string name="action_stop_and_delete">Stoppen &amp; Löschen</string>
 
     <!-- Auto-remove, Limits, Audio & Language -->
-    <string name="settings_auto_remove_played">Gehörte Downloads entfernen</string>
+    <string name="settings_auto_remove_played">Gehörte Downloads löschen</string>
     <string name="settings_auto_remove_played_sub">Verschiebt gehörte Downloads nach der Wartezeit in den Papierkorb.</string>
+    <string name="auto_remove_never">Nie</string>
     <string name="auto_remove_immediately">Sofort</string>
-    <string name="auto_remove_days">%1$d Tage</string>
+    <string name="auto_remove_days">%1$d T.</string>
     <string name="settings_max_downloads">Max. Downloads pro Podcast</string>
     <string name="settings_max_downloads_sub">Episoden in der Warteschlange sind ausgenommen</string>
     <string name="max_downloads_count">%1$d Episoden</string>
-    <string name="settings_audio_normalization">Lautstärke normalisieren</string>
+    <string name="settings_audio_normalization">Leise Stimmen verstärken (Lautstärke angleichen)</string>
     <string name="settings_audio_normalization_sub">Gleicht leise Stimmen und Lautstärkesprünge an</string>
-    <string name="settings_bluetooth_skip">Bluetooth-Skip-Tasten</string>
+    <string name="settings_bluetooth_skip">Kopfhörer-Tasten (Vor / Zurück)</string>
     <string name="settings_bluetooth_skip_seek">10s zurück / 30s vor</string>
-    <string name="settings_bluetooth_skip_episode">Vorherige / Nächste Episode in Warteschlange</string>
+    <string name="settings_bluetooth_skip_episode">Vorherige / Nächste Episode</string>
     <string name="settings_language">Sprache</string>
     <string name="settings_language_en">English</string>
     <string name="settings_language_de">Deutsch</string>
 
     <!-- Phase 2: Vorschau, Gesten, Papierkorb & Einstellungen -->
     <string name="settings_auto_remove_delay">Wartezeit nach dem Hören</string>
-    <string name="settings_trash_retention">Papierkorb-Aufbewahrung</string>
+    <string name="settings_trash_retention">Papierkorb endgültig leeren nach</string>
     <string name="settings_trash_retention_sub">Wie lange gelöschte Downloads wiederhergestellt werden können</string>
     <string name="trash_hint_hours">Gelöschte Downloads werden nach %1$d Stunden endgültig entfernt.</string>
-    <string name="trash_retention_immediate">Sofort löschen</string>
-    <string name="trash_retention_24h">24 Stunden</string>
-    <string name="trash_retention_48h">48 Stunden</string>
-    <string name="settings_max_downloads_unlimited_toggle">Unbegrenzte Downloads pro Podcast</string>
+    <string name="trash_retention_immediate">Sofort</string>
+    <string name="trash_retention_24h">24 Std.</string>
+    <string name="trash_retention_48h">48 Std.</string>
+    <string name="settings_max_downloads_unlimited_toggle">Downloads pro Podcast begrenzen</string>
     <string name="preview_listen">Reinhören</string>
     <string name="preview_playing">Vorschau läuft</string>
     <string name="preview_queue_next">Als Nächstes</string>
@@ -187,12 +189,12 @@
     <string name="episode_search_hint">Episoden durchsuchen…</string>
     <string name="filter_source_subscribed">Abonniert</string>
     <string name="filter_source_local">Lokal</string>
-    <string name="settings_section_compression">Audio-Komprimierung</string>
+    <string name="settings_section_compression">Downloads komprimieren (AAC/M4A)</string>
     <string name="settings_compression_sub">Wandelt heruntergeladene Episoden in AAC (M4A) um, um Speicher zu sparen</string>
     <string name="settings_compression_off">Aus</string>
-    <string name="settings_compression_auto">Nach Download automatisch komprimieren</string>
+    <string name="settings_compression_auto">Neue Downloads automatisch komprimieren</string>
     <string name="settings_compression_auto_sub">Komprimiert neue Downloads im Hintergrund</string>
-    <string name="settings_compression_charging_only">Nur beim Laden</string>
+    <string name="settings_compression_charging_only">Automatisch nur während des Ladens</string>
     <string name="settings_compression_charging_only_sub">Schont den Akku bei der Umwandlung</string>
     <string name="action_compress_all_now">Alle Downloads jetzt komprimieren</string>
     <string name="cd_expand_player">Player öffnen</string>
@@ -238,4 +240,5 @@
     <string name="compressed_downloads_total_summary">%1$d Episode(n) • Aktuell: %2$s • Gespart: %3$s</string>
     <string name="compressed_episode_saved_detail">%1$s → %2$s (–%3$s / –%4$d%%)</string>
     <string name="compressed_episode_size_only">%1$s (AAC/M4A komprimiert)</string>
+    <string name="settings_version_format">PurePodcast v%1$s (Build %2$d)</string>
 </resources>

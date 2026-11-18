@@ -134,6 +134,10 @@ interface PurePodcastDao {
     @Query("SELECT * FROM episodes WHERE id = :episodeId")
     suspend fun getEpisodeWithPodcast(episodeId: Long): EpisodeWithPodcast?
 
+    @Transaction
+    @Query("SELECT * FROM episodes WHERE positionMs > 0 AND isPlayed = 0 AND isHidden = 0 ORDER BY pubDateMs DESC LIMIT 1")
+    suspend fun getMostRecentInProgressEpisode(): EpisodeWithPodcast?
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEpisodes(episodes: List<EpisodeEntity>): List<Long>
 

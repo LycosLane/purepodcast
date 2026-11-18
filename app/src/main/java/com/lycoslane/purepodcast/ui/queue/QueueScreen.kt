@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material3.AlertDialog
@@ -72,6 +73,7 @@ fun QueueScreen(
     queue: List<EpisodeWithPodcast>,
     currentEpisode: EpisodeEntity?,
     currentPodcast: PodcastEntity?,
+    isPlaying: Boolean = false,
     scrollToggleTrigger: Int = 0,
     onScrollToggleConsumed: () -> Unit = {},
     onOpenNowPlaying: () -> Unit,
@@ -83,6 +85,14 @@ fun QueueScreen(
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val highlightedEpisodeId = remember(queue, currentEpisode?.id) {
+        val currentId = currentEpisode?.id
+        if (currentId != null && queue.any { it.episode.id == currentId }) {
+            currentId
+        } else {
+            queue.firstOrNull { it.episode.positionMs > 0L && !it.episode.isPlayed }?.episode?.id
+        }
+    }
 
     LaunchedEffect(scrollToggleTrigger) {
         if (scrollToggleTrigger > 0) {
@@ -154,14 +164,15 @@ fun QueueScreen(
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
                 items(queue, key = { it.episode.id }) { item ->
-                    val isActive = item.episode.id == currentEpisode?.id
+                    val isCurrentInPlayer = item.episode.id == currentEpisode?.id
+                    val isHighlighted = item.episode.id == highlightedEpisodeId
                     val ep = item.episode
-                    val posMs = if (isActive && currentEpisode != null && currentEpisode.positionMs > 0L) {
+                    val posMs = if (isCurrentInPlayer && currentEpisode != null && currentEpisode.positionMs > 0L) {
                         currentEpisode.positionMs
                     } else {
                         ep.positionMs
                     }
-                    val durMs = if (isActive && currentEpisode != null && currentEpisode.durationMs > 0L) {
+                    val durMs = if (isCurrentInPlayer && currentEpisode != null && currentEpisode.durationMs > 0L) {
                         currentEpisode.durationMs
                     } else {
                         ep.durationMs
@@ -175,14 +186,18 @@ fun QueueScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(
-                                if (isActive) {
+                                if (isHighlighted) {
                                     Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f))
                                 } else {
                                     Modifier
                                 }
                             )
                             .clickable {
-                                if (isActive) onOpenNowPlaying() else onPlay(item.episode, item.podcast)
+                                if (isCurrentInPlayer && isPlaying) {
+                                    onOpenNowPlaying()
+                                } else {
+                                    onPlay(item.episode, item.podcast)
+                                }
                             }
                     ) {
                         Row(
@@ -204,17 +219,20 @@ fun QueueScreen(
                             )
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                if (isActive) {
+                                if (isHighlighted) {
+                                    val nowPlayingActive = isCurrentInPlayer && isPlaying
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
-                                            Icons.Default.GraphicEq,
+                                            if (nowPlayingActive) Icons.Default.GraphicEq else Icons.Default.PlayCircleOutline,
                                             contentDescription = null,
                                             modifier = Modifier.size(14.dp),
                                             tint = MaterialTheme.colorScheme.primary
                                         )
                                         Spacer(Modifier.width(4.dp))
                                         Text(
-                                            text = stringResource(R.string.queue_now_playing),
+                                            text = stringResource(
+                                                if (nowPlayingActive) R.string.queue_now_playing else R.string.queue_last_played
+                                            ),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary,
                                             fontWeight = FontWeight.SemiBold
@@ -224,8 +242,8 @@ fun QueueScreen(
                                 Text(
                                     text = item.episode.title,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
-                                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Medium,
+                                    color = if (isHighlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -248,7 +266,7 @@ fun QueueScreen(
                                 Text(
                                     text = sub,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = if (isActive) {
+                                    color = if (isHighlighted) {
                                         MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                                     } else {
                                         MaterialTheme.colorScheme.onSurfaceVariant

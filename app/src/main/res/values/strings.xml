@@ -15,24 +15,24 @@
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
-    <string name="settings_refresh_interval">Background updates (interval)</string>
+    <string name="settings_refresh_interval">Check for new episodes</string>
     <string name="interval_off">Off</string>
     <string name="interval_hours">%1$dh</string>
-    <string name="settings_wifi_only">Wi-Fi only downloads</string>
+    <string name="settings_wifi_only">Download on Wi-Fi only</string>
     <string name="settings_wifi_only_sub">Never download over mobile data</string>
-    <string name="settings_auto_download_default">Auto-download new subscriptions</string>
+    <string name="settings_auto_download_default">Auto-download new episodes for new subscriptions</string>
     <string name="settings_auto_download_default_sub">Enables auto-download from subscribe date</string>
-    <string name="settings_download_when_queued">Download when queued</string>
+    <string name="settings_download_when_queued">Auto-download episodes added to queue</string>
     <string name="settings_download_when_queued_sub">Automatically download episodes added to queue</string>
-    <string name="settings_queue_when_downloaded">Add downloads to queue</string>
+    <string name="settings_queue_when_downloaded">Auto-add downloaded episodes to queue</string>
     <string name="settings_queue_when_downloaded_sub">Automatically queue finished downloads</string>
     <string name="settings_section_downloads">Downloads</string>
     <string name="settings_section_playback">Playback &amp; Queue</string>
     <string name="settings_section_updates">Updates &amp; Backup</string>
-    <string name="settings_smart_rewind">Smart rewind on resume</string>
+    <string name="settings_smart_rewind">Rewind after pause</string>
     <string name="settings_smart_rewind_sub">Rewinds a few seconds when resuming after a pause</string>
     <string name="seconds_short">%1$ds</string>
-    <string name="settings_backup_title">Backup &amp; Restore</string>
+    <string name="settings_backup_title">Backup</string>
     <string name="settings_backup_sub">Saves subscriptions, playback positions, played status &amp; settings</string>
     <string name="action_export_backup">Export backup</string>
     <string name="action_import_backup">Restore backup</string>
@@ -90,6 +90,7 @@
     <string name="queue_empty">Queue is empty</string>
     <string name="queue_empty_sub">Long-press any episode and choose \"Add to queue\".</string>
     <string name="queue_now_playing">Now playing</string>
+    <string name="queue_last_played">Last played</string>
     <string name="action_remove">Remove</string>
 
     <!-- Player -->
@@ -139,31 +140,32 @@
     <string name="action_stop_and_delete">Stop &amp; Delete</string>
 
     <!-- Auto-remove, Limits, Audio & Language -->
-    <string name="settings_auto_remove_played">Auto-remove listened downloads</string>
+    <string name="settings_auto_remove_played">Delete played downloads</string>
     <string name="settings_auto_remove_played_sub">Moves finished downloads to trash after the configured delay.</string>
+    <string name="auto_remove_never">Never</string>
     <string name="auto_remove_immediately">Immediately</string>
     <string name="auto_remove_days">%1$dd</string>
     <string name="settings_max_downloads">Max downloads per podcast</string>
     <string name="settings_max_downloads_sub">Queued episodes are excluded from this limit</string>
     <string name="max_downloads_count">%1$d episodes</string>
-    <string name="settings_audio_normalization">Normalize audio loudness</string>
+    <string name="settings_audio_normalization">Boost quiet voices (normalize volume)</string>
     <string name="settings_audio_normalization_sub">Balances quiet voices and loud peaks across podcasts</string>
-    <string name="settings_bluetooth_skip">Bluetooth skip buttons</string>
+    <string name="settings_bluetooth_skip">Headphone skip buttons</string>
     <string name="settings_bluetooth_skip_seek">Rewind 10s / Forward 30s</string>
-    <string name="settings_bluetooth_skip_episode">Previous / Next episode in queue</string>
+    <string name="settings_bluetooth_skip_episode">Previous / Next episode</string>
     <string name="settings_language">Language</string>
     <string name="settings_language_en">English</string>
     <string name="settings_language_de">Deutsch</string>
 
     <!-- Phase 2: Preview, Gestures, Trash & Settings -->
     <string name="settings_auto_remove_delay">Wait time after listening</string>
-    <string name="settings_trash_retention">Trash retention</string>
+    <string name="settings_trash_retention">Empty trash after</string>
     <string name="settings_trash_retention_sub">How long deleted downloads can be restored before permanent removal</string>
     <string name="trash_hint_hours">Deleted downloads are permanently removed after %1$d hours.</string>
-    <string name="trash_retention_immediate">Delete immediately</string>
-    <string name="trash_retention_24h">24 hours</string>
-    <string name="trash_retention_48h">48 hours</string>
-    <string name="settings_max_downloads_unlimited_toggle">Unlimited downloads per podcast</string>
+    <string name="trash_retention_immediate">Immediately</string>
+    <string name="trash_retention_24h">24h</string>
+    <string name="trash_retention_48h">48h</string>
+    <string name="settings_max_downloads_unlimited_toggle">Limit downloads per podcast</string>
     <string name="preview_listen">Listen preview</string>
     <string name="preview_playing">Playing preview</string>
     <string name="preview_queue_next">Play next</string>
@@ -187,12 +189,12 @@
     <string name="episode_search_hint">Search episodes…</string>
     <string name="filter_source_subscribed">Subscribed</string>
     <string name="filter_source_local">Local</string>
-    <string name="settings_section_compression">Audio Compression</string>
+    <string name="settings_section_compression">Compress downloads (AAC/M4A)</string>
     <string name="settings_compression_sub">Transcode downloaded episodes to AAC (M4A) to save storage</string>
     <string name="settings_compression_off">Off</string>
-    <string name="settings_compression_auto">Auto-compress after download</string>
+    <string name="settings_compression_auto">Auto-compress new downloads</string>
     <string name="settings_compression_auto_sub">Transcodes newly downloaded episodes in the background</string>
-    <string name="settings_compression_charging_only">Only while charging</string>
+    <string name="settings_compression_charging_only">Auto-compress only while charging</string>
     <string name="settings_compression_charging_only_sub">Saves battery during transcoding</string>
     <string name="action_compress_all_now">Compress all downloads now</string>
     <string name="cd_expand_player">Open player</string>
@@ -238,4 +240,5 @@
     <string name="compressed_downloads_total_summary">%1$d episode(s) • Current: %2$s • Saved: %3$s</string>
     <string name="compressed_episode_saved_detail">%1$s → %2$s (–%3$s / –%4$d%%)</string>
     <string name="compressed_episode_size_only">%1$s (AAC/M4A compressed)</string>
+    <string name="settings_version_format">PurePodcast v%1$s (Build %2$d)</string>
 </resources>

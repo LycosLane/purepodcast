@@ -374,24 +374,21 @@ fun PurePodcastApp(app: PurePodcastApplication) {
             }
 
             composable("queue") {
-                val activePlayback by remember(app.playerController) {
-                    app.playerController.state
-                        .map { state ->
-                            val ep = state.currentEpisode?.let { current ->
-                                current.copy(
-                                    positionMs = if (state.positionMs > 0L) state.positionMs else current.positionMs,
-                                    durationMs = if (state.durationMs > 0L) state.durationMs else current.durationMs
-                                )
-                            }
-                            ep to state.currentPodcast
-                        }
-                        .distinctUntilChanged()
-                }.collectAsStateWithLifecycle(initialValue = null to null)
+                val playerState by app.playerController.state.collectAsStateWithLifecycle()
+                val activeEpisode = remember(playerState.currentEpisode, playerState.positionMs, playerState.durationMs) {
+                    playerState.currentEpisode?.let { current ->
+                        current.copy(
+                            positionMs = if (playerState.positionMs > 0L) playerState.positionMs else current.positionMs,
+                            durationMs = if (playerState.durationMs > 0L) playerState.durationMs else current.durationMs
+                        )
+                    }
+                }
 
                 QueueScreen(
                     queue = queue,
-                    currentEpisode = activePlayback.first,
-                    currentPodcast = activePlayback.second,
+                    currentEpisode = activeEpisode,
+                    currentPodcast = playerState.currentPodcast,
+                    isPlaying = playerState.isPlaying,
                     scrollToggleTrigger = queueScrollTrigger,
                     onScrollToggleConsumed = { queueScrollTrigger = 0 },
                     onOpenNowPlaying = { showFullPlayer = true },

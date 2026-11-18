@@ -129,7 +129,12 @@ class PlayerController(
             controllerFuture = null
             mc.addListener(playerListener)
             syncTiming()
-            mc.currentMediaItem?.mediaId?.toLongOrNull()?.let { syncFromEpisodeId(it) }
+            val currentItemId = mc.currentMediaItem?.mediaId?.toLongOrNull()
+            if (currentItemId != null) {
+                syncFromEpisodeId(currentItemId)
+            } else {
+                restoreLastEpisodeIfIdle()
+            }
             if (mc.isPlaying) {
                 startProgressTicker()
             }
@@ -138,6 +143,36 @@ class PlayerController(
                 playEpisode(ep, pod)
             }
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    private fun restoreLastEpisodeIfIdle() {
+        scope.launch(Dispatchers.IO) {
+            if (_state.value.currentEpisode != null) return@launch
+            val lastId = context.getSharedPreferences("playback_state", Context.MODE_PRIVATE)
+                .getLong("last_episode_id", -1L)
+            val candidate = (if (lastId > 0L) dao.getEpisodeWithPodcast(lastId) else null)
+                ?.takeIf { !it.episode.isPlayed }
+                ?: dao.getQueueEpisodesOnce().firstOrNull { it.episode.positionMs > 0L && !it.episode.isPlayed }
+                ?: dao.getMostRecentInProgressEpisode()
+                ?: return@launch
+
+            _state.update { st ->
+                if (st.currentEpisode != null) {
+                    st
+                } else {
+                    st.copy(
+                        currentEpisode = candidate.episode,
+                        currentPodcast = candidate.podcast,
+                        positionMs = candidate.episode.positionMs.coerceAtLeast(0L),
+                        durationMs = candidate.episode.durationMs.coerceAtLeast(0L),
+                        playbackSpeed = candidate.podcast.playbackSpeed.coerceIn(0.75f, 3.0f),
+                        skipSilence = candidate.podcast.skipSilence,
+                        silenceIntensity = candidate.podcast.silenceIntensity.coerceIn(0, 2),
+                        isPlaying = false
+                    )
+                }
+            }
+        }
     }
 
     private var syncJob: kotlinx.coroutines.Job? = null
@@ -150,10 +185,14 @@ class PlayerController(
             val liveDuration = withContext(Dispatchers.Main) {
                 controller?.duration?.takeIf { it > 0L }
             }
+            val livePos = withContext(Dispatchers.Main) {
+                controller?.currentPosition?.takeIf { it > 0L }
+            }
             _state.update {
                 it.copy(
                     currentEpisode = withPodcast.episode,
                     currentPodcast = withPodcast.podcast,
+                    positionMs = livePos ?: withPodcast.episode.positionMs,
                     durationMs = liveDuration ?: withPodcast.episode.durationMs,
                     playbackSpeed = withPodcast.podcast.playbackSpeed.coerceIn(0.75f, 3.0f),
                     skipSilence = withPodcast.podcast.skipSilence,
@@ -175,6 +214,10 @@ class PlayerController(
     }
 
     fun playEpisode(episode: EpisodeEntity, podcast: PodcastEntity) {
+        context.getSharedPreferences("playback_state", Context.MODE_PRIVATE)
+            .edit()
+            .putLong("last_episode_id", episode.id)
+            .apply()
         val mc = controller?.takeIf { it.isConnected }
         if (mc == null) {
             controller = null
@@ -252,7 +295,23 @@ class PlayerController(
     }
 
     fun togglePlayPause() {
-        val mc = controller ?: return
+        val mc = controller
+        if (mc == null || !mc.isConnected) {
+            val ep = _state.value.currentEpisode
+            val pod = _state.value.currentPodcast
+            if (ep != null && pod != null) {
+                playEpisode(ep, pod)
+            }
+            return
+        }
+        if (mc.currentMediaItem == null) {
+            val ep = _state.value.currentEpisode
+            val pod = _state.value.currentPodcast
+            if (ep != null && pod != null) {
+                playEpisode(ep, pod)
+            }
+            return
+        }
         if (mc.playWhenReady && mc.playbackState != Player.STATE_ENDED) {
             mc.pause()
         } else {
