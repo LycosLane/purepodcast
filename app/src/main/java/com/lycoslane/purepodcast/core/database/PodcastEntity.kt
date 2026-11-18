@@ -26,5 +26,8 @@ data class PodcastEntity(
     val silenceIntensity: Int = 1, // 0 = Soft, 1 = Medium, 2 = Strong
     val lastRefreshedMs: Long = 0L,
     val isLocal: Boolean = false,
-    val isSubscribed: Boolean = true
+    val isSubscribed: Boolean = true,
+    /** HTTP validators from the last successful feed fetch (conditional refresh). */
+    val etag: String = "",
+    val lastModified: String = ""
 )

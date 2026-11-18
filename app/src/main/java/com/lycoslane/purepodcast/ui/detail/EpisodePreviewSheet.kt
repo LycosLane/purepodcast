@@ -78,6 +78,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.lycoslane.purepodcast.core.network.ValidatedMediaDataSource
 import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
@@ -147,6 +149,7 @@ fun EpisodePreviewSheet(
 
     val previewPlayer = remember(episode.id) {
         ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(ValidatedMediaDataSource.factory(context)))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)

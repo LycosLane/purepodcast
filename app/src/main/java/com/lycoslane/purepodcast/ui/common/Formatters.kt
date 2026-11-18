@@ -38,19 +38,21 @@ fun formatDuration(ms: Long): String {
     }
 }
 
+@Synchronized
+private fun dateFormatterFor(locale: Locale): DateTimeFormatter {
+    val existing = cachedDateFormatter
+    if (cachedLocale == locale && existing != null) return existing
+    return DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+        .withLocale(locale)
+        .also {
+            cachedLocale = locale
+            cachedDateFormatter = it
+        }
+}
+
 fun formatPubDate(ms: Long): String {
     if (ms <= 0L) return ""
-    val locale = Locale.getDefault()
-    val formatter = if (cachedLocale == locale && cachedDateFormatter != null) {
-        cachedDateFormatter!!
-    } else {
-        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
-            .withLocale(locale)
-            .also {
-                cachedLocale = locale
-                cachedDateFormatter = it
-            }
-    }
+    val formatter = dateFormatterFor(Locale.getDefault())
     return Instant.ofEpochMilli(ms)
         .atZone(ZoneId.systemDefault())
         .toLocalDate()

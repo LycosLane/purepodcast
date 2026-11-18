@@ -25,6 +25,17 @@ data class ParsedEpisode(
     val chaptersUrl: String = ""
 )
 
+sealed class FeedFetchResult {
+    object NotModified : FeedFetchResult()
+    data class Parsed(
+        val feed: ParsedPodcastFeed,
+        val etag: String,
+        val lastModified: String,
+        /** Set when the feed URL was permanently redirected (301/308) to this URL. */
+        val movedToUrl: String?
+    ) : FeedFetchResult()
+}
+
 data class ParsedPodcastFeed(
     val feedUrl: String,
     val title: String,
@@ -38,6 +49,7 @@ object RssFeedParser {
 
     private const val MAX_FEED_BYTES = 10L * 1024 * 1024
     private const val MAX_EPISODES = 2_000
+    private const val MAX_PARSED_ITEMS = 6_000
     private const val MAX_TITLE_CHARS = 512
     private const val MAX_DESC_CHARS = 65_536
 
@@ -45,28 +57,54 @@ object RssFeedParser {
         DateTimeFormatter.RFC_1123_DATE_TIME,
         DateTimeFormatter.ISO_OFFSET_DATE_TIME,
         DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.ENGLISH),
-        DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm:ss Z", Locale.ENGLISH)
+        DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm:ss Z", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d MMM yyyy HH:mm:ss zzz", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d MMM yyyy HH:mm:ss Z", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm zzz", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm Z", Locale.ENGLISH)
     )
     private val localDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
 
-    suspend fun fetchAndParse(feedUrl: String): ParsedPodcastFeed = withContext(Dispatchers.IO) {
-        val conn = NetworkSecurity.openValidatedConnection(
-            rawUrl = feedUrl,
-            connectTimeoutMs = 15_000,
-            readTimeoutMs = 20_000
-        )
-        try {
-            if (conn.responseCode !in 200..299) {
-                throw IOException("HTTP ${conn.responseCode}")
-            }
-            val finalUrl = conn.url?.toString()?.takeIf { NetworkSecurity.isValidHttpUrl(it) } ?: feedUrl
-            BoundedInputStream(conn.inputStream, MAX_FEED_BYTES).use { stream ->
-                parseStream(finalUrl, stream)
-            }
-        } finally {
-            conn.disconnect()
-        }
+    suspend fun fetchAndParse(feedUrl: String): ParsedPodcastFeed {
+        val result = fetchConditional(feedUrl, "", "")
+        return (result as FeedFetchResult.Parsed).feed
     }
+
+    /** Fetches the feed using ETag / Last-Modified validators; returns NotModified on HTTP 304. */
+    suspend fun fetchConditional(feedUrl: String, etag: String, lastModified: String): FeedFetchResult =
+        withContext(Dispatchers.IO) {
+            val headers = buildMap<String, String> {
+                if (etag.isNotEmpty()) put("If-None-Match", etag)
+                if (lastModified.isNotEmpty()) put("If-Modified-Since", lastModified)
+            }
+            val tracker = RedirectTracker()
+            val conn = NetworkSecurity.openValidatedConnection(
+                rawUrl = feedUrl,
+                connectTimeoutMs = 15_000,
+                readTimeoutMs = 20_000,
+                headers = headers,
+                redirectTracker = tracker
+            )
+            try {
+                val code = conn.responseCode
+                if (code == 304 && headers.isNotEmpty()) return@withContext FeedFetchResult.NotModified
+                if (code !in 200..299) {
+                    throw IOException("HTTP $code")
+                }
+                val finalUrl = conn.url?.toString()?.takeIf { NetworkSecurity.isValidHttpUrl(it) } ?: feedUrl
+                val feed = BoundedInputStream(conn.inputStream, MAX_FEED_BYTES).use { stream ->
+                    parseStream(finalUrl, stream)
+                }
+                FeedFetchResult.Parsed(
+                    feed = feed,
+                    etag = conn.getHeaderField("ETag").orEmpty().trim(),
+                    lastModified = conn.getHeaderField("Last-Modified").orEmpty().trim(),
+                    movedToUrl = tracker.permanentUrl?.takeIf { it != feedUrl }
+                )
+            } finally {
+                conn.disconnect()
+            }
+        }
 
     fun parseStream(feedUrl: String, input: InputStream): ParsedPodcastFeed {
         val parser = NetworkSecurity.newSafeXmlPullParser().apply {
@@ -95,7 +133,7 @@ object RssFeedParser {
         val epChapters = mutableListOf<EpisodeChapter>()
 
         var eventType = parser.eventType
-        while (eventType != XmlPullParser.END_DOCUMENT && episodes.size < MAX_EPISODES) {
+        while (eventType != XmlPullParser.END_DOCUMENT && episodes.size < MAX_PARSED_ITEMS) {
             when (eventType) {
                 XmlPullParser.START_TAG -> {
                     val tag = parser.name.lowercase(Locale.ROOT)
@@ -156,8 +194,9 @@ object RssFeedParser {
                                 val urlAttr = parser.getAttributeValue(null, "url").orEmpty().trim()
                                 val typeAttr = parser.getAttributeValue(null, "type").orEmpty()
                                 val lenAttr = parser.getAttributeValue(null, "length").orEmpty()
-                                if (NetworkSecurity.isValidHttpUrl(urlAttr) &&
-                                    (typeAttr.isEmpty() || typeAttr.startsWith("audio") || typeAttr.contains("octet-stream"))
+                                val typeLc = typeAttr.lowercase(Locale.ROOT)
+                                if (epAudioUrl.isEmpty() && NetworkSecurity.isValidHttpUrl(urlAttr) &&
+                                    (typeLc.isEmpty() || typeLc.startsWith("audio") || typeLc.contains("octet-stream"))
                                 ) {
                                     epAudioUrl = urlAttr
                                     epAudioSize = (lenAttr.toLongOrNull() ?: 0L).coerceAtLeast(0L)
@@ -207,7 +246,12 @@ object RssFeedParser {
             author = channelAuthor,
             description = channelDescription,
             artworkUrl = channelArtwork,
-            episodes = episodes
+            // Oldest-first feeds: keep the newest episodes rather than the first ones in the file.
+            episodes = if (episodes.size > MAX_EPISODES) {
+                episodes.sortedByDescending { it.pubDateMs }.take(MAX_EPISODES)
+            } else {
+                episodes
+            }
         )
     }
 
@@ -215,8 +259,11 @@ object RssFeedParser {
         return runCatching { parser.nextText().trim() }.getOrDefault("")
     }
 
-    private fun parseDateMs(raw: String): Long {
-        if (raw.isEmpty()) return 0L
+    private fun parseDateMs(rawInput: String): Long {
+        if (rawInput.isEmpty()) return 0L
+        // Normalise common sloppiness: lower-case zone names, doubled spaces.
+        val raw = rawInput.trim().replace(Regex("\\s+"), " ")
+            .replace(Regex("\\b(gmt|utc|est|edt|cst|cdt|mst|mdt|pst|pdt)$"), { it.value.uppercase(Locale.ROOT) })
         for (formatter in zonedFormatters) {
             val ms = runCatching { ZonedDateTime.parse(raw, formatter).toInstant().toEpochMilli() }.getOrNull()
             if (ms != null) return ms
@@ -230,12 +277,15 @@ object RssFeedParser {
 
     private fun parseDurationMs(raw: String): Long {
         if (raw.isEmpty()) return 0L
-        raw.toLongOrNull()?.let { seconds -> return (seconds * 1000L).coerceAtLeast(0L) }
-        val parts = raw.split(":").mapNotNull { it.trim().toLongOrNull() }
+        raw.trim().toDoubleOrNull()?.let { seconds ->
+            if (seconds.isFinite()) return (seconds * 1000.0).toLong().coerceAtLeast(0L)
+        }
+        val parts = raw.split(":").mapNotNull { it.trim().toDoubleOrNull() }
+        if (parts.any { !it.isFinite() }) return 0L
         return when (parts.size) {
-            3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000L
-            2 -> (parts[0] * 60 + parts[1]) * 1000L
-            else -> 0L
-        }.coerceAtLeast(0L)
+            3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000.0
+            2 -> (parts[0] * 60 + parts[1]) * 1000.0
+            else -> 0.0
+        }.toLong().coerceAtLeast(0L)
     }
 }

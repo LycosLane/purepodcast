@@ -74,6 +74,12 @@ interface PurePodcastDao {
         lastRefreshedMs: Long
     )
 
+    @Query("UPDATE podcasts SET etag = :etag, lastModified = :lastModified WHERE id = :podcastId")
+    suspend fun updateFeedCache(podcastId: Long, etag: String, lastModified: String)
+
+    @Query("UPDATE podcasts SET feedUrl = :feedUrl WHERE id = :podcastId")
+    suspend fun updateFeedUrl(podcastId: Long, feedUrl: String)
+
     @Query("DELETE FROM podcasts WHERE id = :podcastId")
     suspend fun deletePodcast(podcastId: Long)
 

@@ -17,6 +17,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.lycoslane.purepodcast.core.network.ValidatedBitmapLoader
+import com.lycoslane.purepodcast.core.network.ValidatedMediaDataSource
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.MediaSession
@@ -86,6 +89,7 @@ class PlaybackService : MediaSessionService() {
             .build()
 
         player = ExoPlayer.Builder(this, renderersFactory)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(ValidatedMediaDataSource.factory(this)))
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
@@ -256,6 +260,7 @@ class PlaybackService : MediaSessionService() {
         )
 
         mediaSession = MediaSession.Builder(this, smartRewindPlayer)
+            .setBitmapLoader(ValidatedBitmapLoader(this))
             .setSessionActivity(sessionActivityIntent)
             .setCallback(object : MediaSession.Callback {
                 override fun onConnect(
@@ -263,7 +268,9 @@ class PlaybackService : MediaSessionService() {
                     controller: MediaSession.ControllerInfo
                 ): MediaSession.ConnectionResult {
                     val isTrusted = controller.packageName == packageName ||
-                        session.isMediaNotificationController(controller)
+                        session.isMediaNotificationController(controller) ||
+                        session.isAutoCompanionController(controller) ||
+                        controller.packageName in TRUSTED_MEDIA_CONTROLLERS
 
                     return if (isTrusted) {
                         val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
@@ -277,24 +284,7 @@ class PlaybackService : MediaSessionService() {
                             .setAvailableSessionCommands(sessionCommands)
                             .build()
                     } else {
-                        val safePlayerCommands = Player.Commands.Builder()
-                            .addAll(
-                                Player.COMMAND_PLAY_PAUSE,
-                                Player.COMMAND_SEEK_BACK,
-                                Player.COMMAND_SEEK_FORWARD,
-                                Player.COMMAND_SEEK_TO_NEXT,
-                                Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
-                                Player.COMMAND_SEEK_TO_PREVIOUS,
-                                Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
-                                Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
-                                Player.COMMAND_GET_METADATA,
-                                Player.COMMAND_GET_TIMELINE
-                            )
-                            .build()
-                        MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                            .setAvailableSessionCommands(SessionCommands.EMPTY)
-                            .setAvailablePlayerCommands(safePlayerCommands)
-                            .build()
+                        MediaSession.ConnectionResult.reject()
                     }
                 }
 
@@ -589,6 +579,13 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
+        private val TRUSTED_MEDIA_CONTROLLERS = setOf(
+            "com.android.systemui",
+            "com.android.bluetooth",
+            "com.google.android.bluetooth",
+            "com.google.android.projection.gearhead",
+            "com.google.android.wearable.app"
+        )
         private const val KEY_LAST_EPISODE_ID = "last_episode_id"
         const val CMD_SET_SKIP_SILENCE = "com.lycoslane.purepodcast.SET_SKIP_SILENCE"
         const val ARG_SKIP_SILENCE = "skip_silence"

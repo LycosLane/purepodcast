@@ -30,6 +30,7 @@ enum class DownloadState {
         Index(value = ["podcastId", "isPlayed"]),
         Index(value = ["podcastId", "downloadState"]),
         Index(value = ["isPlayed", "downloadState"]),
+        Index(value = ["isHidden", "pubDateMs"]),
         Index(value = ["podcastId", "isHidden"]),
         Index(value = ["markedForDeletionAtMs"])
     ]

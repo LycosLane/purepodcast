@@ -222,7 +222,7 @@ object LocalPodcastScanner {
             }
         }.getOrNull()
 
-        if (embeddedBytes != null && embeddedBytes.isNotEmpty()) {
+        if (embeddedBytes != null && embeddedBytes.isNotEmpty() && embeddedBytes.size <= 10 * 1024 * 1024) {
             runCatching { cachedFile.writeBytes(embeddedBytes) }
             if (cachedFile.exists() && cachedFile.length() > 0L) {
                 return cachedFile.absolutePath

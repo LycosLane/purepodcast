@@ -80,9 +80,17 @@ private object NativeImageCache {
         memoryCache.get(url)?.let { return it }
 
         if (url.startsWith("content://")) {
+            val uri = android.net.Uri.parse(url)
             val bitmap = runCatching {
-                appContext.contentResolver.openInputStream(android.net.Uri.parse(url))?.use { stream ->
-                    BitmapFactory.decodeStream(stream)
+                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                appContext.contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream, null, opts)
+                }
+                if (opts.outWidth <= 0 || opts.outHeight <= 0) return@runCatching null
+                opts.inSampleSize = calculateInSampleSize(opts.outWidth, opts.outHeight, 512, 512)
+                opts.inJustDecodeBounds = false
+                appContext.contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream, null, opts)
                 }
             }.getOrNull()
             return if (bitmap != null) {
@@ -99,7 +107,15 @@ private object NativeImageCache {
         if (url.startsWith("/") || url.startsWith("file://")) {
             val filePath = if (url.startsWith("file://")) android.net.Uri.parse(url).path ?: "" else url
             val localFile = File(filePath)
-            val bitmap = if (localFile.exists()) decodeSampledFile(localFile) else null
+            val allowedRoots = listOf(
+                File(appContext.filesDir, "local_covers").canonicalPath,
+                appContext.cacheDir.canonicalPath
+            )
+            val isAllowed = runCatching {
+                val canonical = localFile.canonicalPath
+                allowedRoots.any { canonical.startsWith("$it/") }
+            }.getOrDefault(false)
+            val bitmap = if (isAllowed && localFile.exists()) decodeSampledFile(localFile) else null
             return if (bitmap != null) {
                 failedUrls.remove(url)
                 val imageBitmap = bitmap.asImageBitmap()
@@ -183,6 +199,7 @@ private object NativeImageCache {
         return BitmapFactory.decodeFile(file.absolutePath, opts)
     }
 
+    @Synchronized
     private fun trimDiskCacheIfNeeded(cacheDir: File) {
         val files = cacheDir.listFiles()?.filter { it.isFile && !it.name.endsWith(".tmp") } ?: return
         var total = files.sumOf { it.length() }
@@ -221,7 +238,7 @@ fun PodcastImage(
     contentScale: ContentScale = ContentScale.Crop
 ) {
     val context = LocalContext.current
-    var imageBitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    var imageBitmap by remember(url) { mutableStateOf(NativeImageCache.getCached(url)) }
 
     LaunchedEffect(url) {
         imageBitmap = NativeImageCache.load(context, url)

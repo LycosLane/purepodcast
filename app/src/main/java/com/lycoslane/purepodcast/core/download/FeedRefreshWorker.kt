@@ -26,16 +26,15 @@ class FeedRefreshWorker(
         runCatching { app.repository.syncLocalFolder() }
         val podcasts = dao.getAllPodcasts().filter { !it.isLocal && it.isSubscribed }
 
-        var anySucceeded = podcasts.isEmpty()
+        var allSucceeded = true
         for (podcast in podcasts) {
             if (isStopped) break
             try {
                 app.repository.refreshPodcast(podcast.id)
-                anySucceeded = true
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                // Keep refreshing remaining feeds even if one fails
+                allSucceeded = false
             }
         }
 
@@ -43,7 +42,7 @@ class FeedRefreshWorker(
             app.repository.cleanupPlayedDownloads(app.playerController.state.value.currentEpisode?.id)
         }
 
-        if (!anySucceeded && runAttemptCount < 3) {
+        if (!allSucceeded && !isStopped && runAttemptCount < 3) {
             Result.retry()
         } else {
             Result.success()

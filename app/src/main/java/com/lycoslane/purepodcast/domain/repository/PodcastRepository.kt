@@ -20,6 +20,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
@@ -157,17 +162,23 @@ class PodcastRepository(
 
     suspend fun importOpml(input: InputStream): Int = withContext(Dispatchers.IO) {
         val entries = OpmlParser.parse(input)
-        var imported = 0
-        for (entry in entries) {
-            try {
-                subscribeByFeedUrl(entry.feedUrl)
-                imported++
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (_: Exception) {
-            }
+        val sem = Semaphore(4)
+        coroutineScope {
+            entries.map { entry ->
+                async {
+                    sem.withPermit {
+                        try {
+                            subscribeByFeedUrl(entry.feedUrl)
+                            1
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            0
+                        }
+                    }
+                }
+            }.awaitAll().sum()
         }
-        imported
     }
 
     suspend fun syncLocalFolder(): Int {
@@ -184,16 +195,36 @@ class PodcastRepository(
             syncLocalFolder()
             return
         }
-        val parsed = RssFeedParser.fetchAndParse(podcast.feedUrl)
-        insertParsedEpisodes(podcastId, parsed.episodes)
-        dao.updatePodcastMetadata(
-            podcastId = podcast.id,
-            title = parsed.title.ifEmpty { podcast.title },
-            author = parsed.author.ifEmpty { podcast.author },
-            description = parsed.description.ifEmpty { podcast.description },
-            artworkUrl = parsed.artworkUrl.ifEmpty { podcast.artworkUrl },
-            lastRefreshedMs = System.currentTimeMillis()
-        )
+        val result = RssFeedParser.fetchConditional(podcast.feedUrl, podcast.etag, podcast.lastModified)
+        when (result) {
+            is com.lycoslane.purepodcast.core.network.FeedFetchResult.NotModified -> {
+                dao.updatePodcastMetadata(
+                    podcastId = podcast.id,
+                    title = podcast.title,
+                    author = podcast.author,
+                    description = podcast.description,
+                    artworkUrl = podcast.artworkUrl,
+                    lastRefreshedMs = System.currentTimeMillis()
+                )
+            }
+            is com.lycoslane.purepodcast.core.network.FeedFetchResult.Parsed -> {
+                val parsed = result.feed
+                insertParsedEpisodes(podcastId, parsed.episodes)
+                dao.updatePodcastMetadata(
+                    podcastId = podcast.id,
+                    title = parsed.title.ifEmpty { podcast.title },
+                    author = parsed.author.ifEmpty { podcast.author },
+                    description = parsed.description.ifEmpty { podcast.description },
+                    artworkUrl = parsed.artworkUrl.ifEmpty { podcast.artworkUrl },
+                    lastRefreshedMs = System.currentTimeMillis()
+                )
+                dao.updateFeedCache(podcast.id, result.etag, result.lastModified)
+                // Permanent redirect (301/308): follow the new location from now on.
+                result.movedToUrl?.let { newUrl ->
+                    runCatching { dao.updateFeedUrl(podcast.id, newUrl) } // unique index may reject duplicates
+                }
+            }
+        }
         val latest = dao.getPodcast(podcastId) ?: return
         if (latest.autoDownloadFromPubDateMs > 0L) {
             val missing = dao.getNotDownloadedNewerThan(podcastId, latest.autoDownloadFromPubDateMs)
@@ -215,13 +246,21 @@ class PodcastRepository(
             throw e
         } catch (_: Exception) {
         }
-        dao.getAllPodcasts().filter { !it.isLocal && it.isSubscribed }.forEach { podcast ->
-            try {
-                refreshPodcast(podcast.id)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (_: Exception) {
-            }
+        val subs = dao.getAllPodcasts().filter { !it.isLocal && it.isSubscribed }
+        val sem = Semaphore(4)
+        coroutineScope {
+            subs.map { podcast ->
+                async {
+                    sem.withPermit {
+                        try {
+                            refreshPodcast(podcast.id)
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
+            }.awaitAll()
         }
     }
 
@@ -591,6 +630,18 @@ class PodcastRepository(
                 )
             }
             put("podcasts", podcastsArr)
+            val queueArr = org.json.JSONArray()
+            dao.getQueueEpisodesOnce().forEach { item ->
+                if (!item.podcast.isLocal) {
+                    queueArr.put(
+                        org.json.JSONObject().apply {
+                            put("feedUrl", item.podcast.feedUrl)
+                            put("guid", item.episode.guid)
+                        }
+                    )
+                }
+            }
+            put("queue", queueArr)
         }
         root.toString(2)
     }
@@ -673,7 +724,7 @@ class PodcastRepository(
                 if (epArr != null) {
                     for (j in 0 until minOf(epArr.length(), 5000)) {
                         val eObj = epArr.optJSONObject(j) ?: continue
-                        val guid = eObj.optString("guid", "")
+                        val guid = eObj.optString("guid", "").take(512)
                         if (guid.isEmpty()) continue
                         val ep = dao.getEpisodeByGuid(podcastId, guid) ?: continue
                         dao.updatePosition(ep.id, eObj.optLong("positionMs", ep.positionMs).coerceAtLeast(0L))
@@ -695,6 +746,18 @@ class PodcastRepository(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
+            }
+        }
+        val queueArr = root.optJSONArray("queue")
+        if (queueArr != null && dao.getQueueEpisodesOnce().isEmpty()) {
+            for (k in 0 until minOf(queueArr.length(), 500)) {
+                val qObj = queueArr.optJSONObject(k) ?: continue
+                val feedUrl = qObj.optString("feedUrl", "").trim()
+                val guid = qObj.optString("guid", "").take(512)
+                if (feedUrl.isEmpty() || guid.isEmpty()) continue
+                val pod = dao.getPodcastByFeedUrl(feedUrl) ?: continue
+                val ep = dao.getEpisodeByGuid(pod.id, guid) ?: continue
+                dao.enqueueToQueue(ep.id)
             }
         }
         restored
