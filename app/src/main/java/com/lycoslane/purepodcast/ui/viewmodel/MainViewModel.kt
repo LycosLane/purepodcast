@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -33,7 +34,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val queue: StateFlow<List<EpisodeWithPodcast>> = app.repository.observeQueue()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
 
+    // Debounced: playback position writes invalidate the episodes table every few seconds.
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
     val allEpisodes: StateFlow<List<EpisodeWithPodcast>> = app.repository.observeAllEpisodes()
+        .debounce(400L)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
 
     val settings: StateFlow<AppSettings> = app.preferences.settings

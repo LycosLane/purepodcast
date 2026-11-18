@@ -144,6 +144,7 @@ interface PurePodcastDao {
         INNER JOIN podcasts p ON e.podcastId = p.id
         WHERE (p.isSubscribed = 1 OR p.isLocal = 1) AND e.isHidden = 0
         ORDER BY e.pubDateMs DESC
+        LIMIT 1000
         """
     )
     fun observeAllEpisodesWithPodcast(): Flow<List<EpisodeWithPodcast>>

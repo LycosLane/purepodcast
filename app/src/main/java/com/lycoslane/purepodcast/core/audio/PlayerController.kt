@@ -121,8 +121,12 @@ class PlayerController(
         }, ContextCompat.getMainExecutor(context))
     }
 
+    private var syncJob: kotlinx.coroutines.Job? = null
+    private var playJob: kotlinx.coroutines.Job? = null
+
     private fun syncFromEpisodeId(episodeId: Long) {
-        scope.launch(Dispatchers.IO) {
+        syncJob?.cancel()
+        syncJob = scope.launch(Dispatchers.IO) {
             val withPodcast = dao.getEpisodeWithPodcast(episodeId) ?: return@launch
             _state.update {
                 it.copy(
@@ -145,7 +149,8 @@ class PlayerController(
             return
         }
 
-        scope.launch {
+        playJob?.cancel()
+        playJob = scope.launch {
             val freshEpisode = withContext(Dispatchers.IO) {
                 dao.getEpisode(episode.id) ?: episode
             }

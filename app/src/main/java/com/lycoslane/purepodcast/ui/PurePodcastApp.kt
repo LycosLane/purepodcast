@@ -181,7 +181,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     backupStatus = backupStatus,
                     onRefreshAll = mainViewModel::refreshAll,
                     onPodcastClick = { podcastId ->
-                        navController.navigate("detail/$podcastId")
+                        navController.navigate("detail/$podcastId") { launchSingleTop = true }
                     },
                     onAddClick = { navigateTopLevel("search") },
                     onToggleFavorite = mainViewModel::toggleFavorite,
@@ -357,7 +357,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     currentPodcast = activePair.second,
                     scrollToggleTrigger = queueScrollTrigger,
                     onOpenNowPlaying = { showFullPlayer = true },
-                    onOpenPodcast = { podcastId -> navController.navigate("detail/$podcastId") },
+                    onOpenPodcast = { podcastId -> navController.navigate("detail/$podcastId") { launchSingleTop = true } },
                     onPlay = { ep, pod -> app.playerController.playEpisode(ep, pod) },
                     onDownload = mainViewModel::downloadEpisode,
                     onRemove = mainViewModel::removeFromQueue,
@@ -389,7 +389,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onLoadFeedPreview = searchViewModel::loadFeedPreview,
                     onSubscribeFeedUrl = { url ->
                         searchViewModel.subscribeFeedUrl(url) { podcastId ->
-                            navController.navigate("detail/$podcastId")
+                            navController.navigate("detail/$podcastId") { launchSingleTop = true }
                         }
                     },
                     onUnsubscribeById = searchViewModel::unsubscribeById,
@@ -401,7 +401,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     },
                     onOpenPreviewPodcast = { feed ->
                         searchViewModel.openPreviewPodcast(feed) { podcastId ->
-                            navController.navigate("detail/$podcastId")
+                            navController.navigate("detail/$podcastId") { launchSingleTop = true }
                         }
                     },
                     onImportOpmlUri = searchViewModel::importOpmlUri
