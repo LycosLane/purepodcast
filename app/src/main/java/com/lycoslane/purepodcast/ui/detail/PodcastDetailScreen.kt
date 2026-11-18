@@ -1008,7 +1008,7 @@ private fun EpisodeSwipeRow(
             }
         }
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface)
@@ -1030,136 +1030,142 @@ private fun EpisodeSwipeRow(
                         }
                     )
                 }
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .alpha(if (episode.isPlayed && !isActive) 0.6f else 1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = episode.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
-                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val dateStr = remember(episode.pubDateMs) { formatPubDate(episode.pubDateMs) }
-                    if (dateStr.isNotEmpty()) {
-                        Text(
-                            text = dateStr,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (episode.durationMs > 0L) {
-                        Text(
-                            text = formatDuration(episode.durationMs),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (episode.positionMs > 0L && !episode.isPlayed) {
-                        val remainingMs = (episode.durationMs - episode.positionMs).coerceAtLeast(0L)
-                        val progressText = if (episode.durationMs > 0L && remainingMs > 0L) {
-                            androidx.compose.ui.res.stringResource(
-                                com.lycoslane.purepodcast.R.string.episode_remaining,
-                                formatDuration(remainingMs)
-                            )
-                        } else {
-                            androidx.compose.ui.res.stringResource(
-                                com.lycoslane.purepodcast.R.string.at_position,
-                                formatDuration(episode.positionMs)
-                            )
-                        }
-                        Text(
-                            text = progressText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-                if (episode.positionMs > 0L && !episode.isPlayed && episode.durationMs > 0L) {
-                    Spacer(Modifier.height(6.dp))
-                    val progressFraction = (episode.positionMs.toFloat() / episode.durationMs.toFloat()).coerceIn(0.02f, 1f)
-                    androidx.compose.material3.LinearProgressIndicator(
-                        progress = { progressFraction },
-                        modifier = Modifier
-                            .width(120.dp)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .alpha(if (episode.isPlayed && !isActive) 0.6f else 1f)
+                ) {
+                    Text(
+                        text = episode.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
+                        color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
-                }
-            }
-
-            if (showDownloadAction) {
-                Spacer(Modifier.width(8.dp))
-
-                when (episode.downloadState) {
-                    DownloadState.DOWNLOADING -> {
-                        Box(
-                            modifier = Modifier.size(48.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(
-                                progress = { episode.downloadProgress / 100f },
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.5.dp
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val dateStr = remember(episode.pubDateMs) { formatPubDate(episode.pubDateMs) }
+                        if (dateStr.isNotEmpty()) {
+                            Text(
+                                text = dateStr,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
-                    DownloadState.QUEUED -> {
-                        Box(
-                            modifier = Modifier.size(48.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(22.dp),
-                                strokeWidth = 2.dp
+                        if (episode.durationMs > 0L) {
+                            Text(
+                                text = formatDuration(episode.durationMs),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
-                    DownloadState.DOWNLOADED -> {
-                        IconButton(onClick = onDownloadClick) {
-                            if (episode.markedForDeletionAtMs > 0L) {
-                                Icon(
-                                    Icons.Default.RestoreFromTrash,
-                                    contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_restore_trash),
-                                    tint = MaterialTheme.colorScheme.error
+                        if (episode.positionMs > 0L && !episode.isPlayed) {
+                            val remainingMs = (episode.durationMs - episode.positionMs).coerceAtLeast(0L)
+                            val progressText = if (episode.durationMs > 0L && remainingMs > 0L) {
+                                androidx.compose.ui.res.stringResource(
+                                    com.lycoslane.purepodcast.R.string.episode_remaining,
+                                    formatDuration(remainingMs)
                                 )
                             } else {
+                                androidx.compose.ui.res.stringResource(
+                                    com.lycoslane.purepodcast.R.string.at_position,
+                                    formatDuration(episode.positionMs)
+                                )
+                            }
+                            Text(
+                                text = progressText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+
+                if (showDownloadAction) {
+                    Spacer(Modifier.width(8.dp))
+
+                    when (episode.downloadState) {
+                        DownloadState.DOWNLOADING -> {
+                            Box(
+                                modifier = Modifier.size(48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    progress = { episode.downloadProgress / 100f },
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.5.dp
+                                )
+                            }
+                        }
+                        DownloadState.QUEUED -> {
+                            Box(
+                                modifier = Modifier.size(48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(22.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                        }
+                        DownloadState.DOWNLOADED -> {
+                            IconButton(onClick = onDownloadClick) {
+                                if (episode.markedForDeletionAtMs > 0L) {
+                                    Icon(
+                                        Icons.Default.RestoreFromTrash,
+                                        contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_restore_trash),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.DownloadDone,
+                                        contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_downloaded),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                        DownloadState.FAILED -> {
+                            IconButton(onClick = onDownloadClick) {
                                 Icon(
-                                    Icons.Default.DownloadDone,
-                                    contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_downloaded),
-                                    tint = MaterialTheme.colorScheme.primary
+                                    Icons.Default.ErrorOutline,
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_download_failed),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                        else -> {
+                            IconButton(onClick = onDownloadClick) {
+                                Icon(
+                                    Icons.Default.Download,
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_download)
                                 )
                             }
                         }
                     }
-                    DownloadState.FAILED -> {
-                        IconButton(onClick = onDownloadClick) {
-                            Icon(
-                                Icons.Default.ErrorOutline,
-                                contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_download_failed),
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                    else -> {
-                        IconButton(onClick = onDownloadClick) {
-                            Icon(
-                                Icons.Default.Download,
-                                contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.cd_download)
-                            )
-                        }
-                    }
                 }
+            }
+            if (episode.positionMs > 0L && !episode.isPlayed && episode.durationMs > 0L) {
+                val progressFraction = (episode.positionMs.toFloat() / episode.durationMs.toFloat()).coerceIn(0.02f, 1f)
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { progressFraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 8.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
             }
         }
     }

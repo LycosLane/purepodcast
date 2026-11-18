@@ -1274,61 +1274,51 @@ private fun HomeEpisodeRow(
     val pubDateText = remember(ep.pubDateMs) { formatPubDate(ep.pubDateMs) }
     val durationText = remember(ep.durationMs) { formatDuration(ep.durationMs) }
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        PodcastImage(
-            url = artworkUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
+        Row(
             modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .alpha(if (ep.isPlayed) 0.55f else 1f)
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = ep.title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PodcastImage(
+                url = artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .alpha(if (ep.isPlayed) 0.55f else 1f)
             )
-            Spacer(Modifier.height(2.dp))
-            val meta = listOfNotNull(
-                pod.title.takeIf { it.isNotBlank() },
-                pubDateText.takeIf { it.isNotBlank() },
-                durationText.takeIf { it.isNotBlank() }
-            ).joinToString(" • ")
-            Text(
-                text = meta,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (ep.positionMs > 0L && !ep.isPlayed && ep.durationMs > 0L) {
-                val progressFraction = (ep.positionMs.toFloat() / ep.durationMs.toFloat()).coerceIn(0.02f, 1f)
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    androidx.compose.material3.LinearProgressIndicator(
-                        progress = { progressFraction },
-                        modifier = Modifier
-                            .width(120.dp)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = ep.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(2.dp))
+                val meta = listOfNotNull(
+                    pod.title.takeIf { it.isNotBlank() },
+                    pubDateText.takeIf { it.isNotBlank() },
+                    durationText.takeIf { it.isNotBlank() }
+                ).joinToString(" • ")
+                Text(
+                    text = meta,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (ep.positionMs > 0L && !ep.isPlayed && ep.durationMs > 0L) {
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = stringResource(
                             R.string.episode_remaining,
@@ -1339,73 +1329,87 @@ private fun HomeEpisodeRow(
                     )
                 }
             }
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    imageVector = if (ep.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                    contentDescription = stringResource(R.string.action_favorite),
+                    tint = if (ep.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            when (ep.downloadState) {
+                DownloadState.DOWNLOADING -> {
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            progress = { ep.downloadProgress / 100f },
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
+                DownloadState.QUEUED -> {
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
+                DownloadState.FAILED -> {
+                    if (!pod.isLocal) {
+                        IconButton(onClick = onDownload) {
+                            Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = stringResource(R.string.cd_download_failed),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+                DownloadState.DOWNLOADED -> {
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DownloadDone,
+                            contentDescription = stringResource(R.string.cd_downloaded),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                else -> {
+                    if (!pod.isLocal) {
+                        IconButton(onClick = onDownload) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = stringResource(R.string.cd_download),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
         }
-        IconButton(onClick = onToggleFavorite) {
-            Icon(
-                imageVector = if (ep.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                contentDescription = stringResource(R.string.action_favorite),
-                tint = if (ep.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+        if (ep.positionMs > 0L && !ep.isPlayed && ep.durationMs > 0L) {
+            val progressFraction = (ep.positionMs.toFloat() / ep.durationMs.toFloat()).coerceIn(0.02f, 1f)
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { progressFraction },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 8.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
-        }
-        when (ep.downloadState) {
-            DownloadState.DOWNLOADING -> {
-                Box(
-                    modifier = Modifier.size(48.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        progress = { ep.downloadProgress / 100f },
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp
-                    )
-                }
-            }
-            DownloadState.QUEUED -> {
-                Box(
-                    modifier = Modifier.size(48.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp
-                    )
-                }
-            }
-            DownloadState.FAILED -> {
-                if (!pod.isLocal) {
-                    IconButton(onClick = onDownload) {
-                        Icon(
-                            imageVector = Icons.Default.ErrorOutline,
-                            contentDescription = stringResource(R.string.cd_download_failed),
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            }
-            DownloadState.DOWNLOADED -> {
-                Box(
-                    modifier = Modifier.size(48.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DownloadDone,
-                        contentDescription = stringResource(R.string.cd_downloaded),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-            else -> {
-                if (!pod.isLocal) {
-                    IconButton(onClick = onDownload) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = stringResource(R.string.cd_download),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
         }
     }
 }

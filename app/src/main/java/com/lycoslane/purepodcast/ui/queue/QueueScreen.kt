@@ -171,7 +171,7 @@ fun QueueScreen(
                         posMs > 0L && durMs > 0L -> (posMs.toFloat() / durMs.toFloat()).coerceIn(0.02f, 1f)
                         else -> 0f
                     }
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(
@@ -184,157 +184,163 @@ fun QueueScreen(
                             .clickable {
                                 if (isActive) onOpenNowPlaying() else onPlay(item.episode, item.podcast)
                             }
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        PodcastImage(
-                            url = item.episode.artworkUrl.ifEmpty { item.podcast.artworkUrl },
-                            contentDescription = item.podcast.title,
-                            contentScale = ContentScale.Crop,
+                        Row(
                             modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable(onClickLabel = stringResource(R.string.action_open_podcast)) {
-                                    onOpenPodcast(item.podcast.id)
-                                }
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            if (isActive) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.GraphicEq,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        text = stringResource(R.string.queue_now_playing),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
-                            Text(
-                                text = item.episode.title,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
-                                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            PodcastImage(
+                                url = item.episode.artworkUrl.ifEmpty { item.podcast.artworkUrl },
+                                contentDescription = item.podcast.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(onClickLabel = stringResource(R.string.action_open_podcast)) {
+                                        onOpenPodcast(item.podcast.id)
+                                    }
                             )
-                            val sub = buildString {
-                                append(item.podcast.title)
-                                if (durMs > 0L) {
-                                    append(" • ")
-                                    if (posMs > 0L && !ep.isPlayed) {
-                                        append(
-                                            stringResource(
-                                                R.string.episode_remaining,
-                                                formatDuration((durMs - posMs).coerceAtLeast(0L))
-                                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                if (isActive) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Default.GraphicEq,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.primary
                                         )
-                                    } else {
-                                        append(formatDuration(durMs))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            text = stringResource(R.string.queue_now_playing),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
                                     }
                                 }
-                            }
-                            Text(
-                                text = sub,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (isActive) {
-                                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (progressFraction > 0f) {
-                                Spacer(Modifier.height(5.dp))
-                                LinearProgressIndicator(
-                                    progress = { progressFraction },
-                                    modifier = Modifier
-                                        .width(120.dp)
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(2.dp)),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                Text(
+                                    text = item.episode.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
+                                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val sub = buildString {
+                                    append(item.podcast.title)
+                                    if (durMs > 0L) {
+                                        append(" • ")
+                                        if (posMs > 0L && !ep.isPlayed) {
+                                            append(
+                                                stringResource(
+                                                    R.string.episode_remaining,
+                                                    formatDuration((durMs - posMs).coerceAtLeast(0L))
+                                                )
+                                            )
+                                        } else {
+                                            append(formatDuration(durMs))
+                                        }
+                                    }
+                                }
+                                Text(
+                                    text = sub,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isActive) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
-                        }
-                        if (!item.podcast.isLocal) {
-                            when (item.episode.downloadState) {
-                                DownloadState.DOWNLOADING -> {
-                                    Box(
-                                        modifier = Modifier.size(48.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        CircularProgressIndicator(
-                                            progress = { item.episode.downloadProgress / 100f },
-                                            modifier = Modifier.size(20.dp),
-                                            strokeWidth = 2.dp
-                                        )
+                            if (!item.podcast.isLocal) {
+                                when (item.episode.downloadState) {
+                                    DownloadState.DOWNLOADING -> {
+                                        Box(
+                                            modifier = Modifier.size(48.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                progress = { item.episode.downloadProgress / 100f },
+                                                modifier = Modifier.size(20.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        }
                                     }
-                                }
-                                DownloadState.QUEUED -> {
-                                    Box(
-                                        modifier = Modifier.size(48.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(18.dp),
-                                            strokeWidth = 2.dp
-                                        )
+                                    DownloadState.QUEUED -> {
+                                        Box(
+                                            modifier = Modifier.size(48.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        }
                                     }
-                                }
-                                DownloadState.DOWNLOADED -> {
-                                    Box(
-                                        modifier = Modifier.size(48.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (item.episode.markedForDeletionAtMs > 0L) {
+                                    DownloadState.DOWNLOADED -> {
+                                        Box(
+                                            modifier = Modifier.size(48.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (item.episode.markedForDeletionAtMs > 0L) {
+                                                Icon(
+                                                    Icons.Default.RestoreFromTrash,
+                                                    contentDescription = stringResource(R.string.action_restore_trash),
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            } else {
+                                                Icon(
+                                                    Icons.Default.DownloadDone,
+                                                    contentDescription = stringResource(R.string.cd_downloaded),
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    DownloadState.FAILED -> {
+                                        IconButton(onClick = { onDownload(item.episode.id) }) {
                                             Icon(
-                                                Icons.Default.RestoreFromTrash,
-                                                contentDescription = stringResource(R.string.action_restore_trash),
+                                                Icons.Default.ErrorOutline,
+                                                contentDescription = stringResource(R.string.cd_download_failed),
                                                 tint = MaterialTheme.colorScheme.error,
                                                 modifier = Modifier.size(20.dp)
                                             )
-                                        } else {
+                                        }
+                                    }
+                                    DownloadState.NONE -> {
+                                        IconButton(onClick = { onDownload(item.episode.id) }) {
                                             Icon(
-                                                Icons.Default.DownloadDone,
-                                                contentDescription = stringResource(R.string.cd_downloaded),
-                                                tint = MaterialTheme.colorScheme.primary,
+                                                Icons.Default.Download,
+                                                contentDescription = stringResource(R.string.cd_download),
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         }
                                     }
                                 }
-                                DownloadState.FAILED -> {
-                                    IconButton(onClick = { onDownload(item.episode.id) }) {
-                                        Icon(
-                                            Icons.Default.ErrorOutline,
-                                            contentDescription = stringResource(R.string.cd_download_failed),
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
-                                DownloadState.NONE -> {
-                                    IconButton(onClick = { onDownload(item.episode.id) }) {
-                                        Icon(
-                                            Icons.Default.Download,
-                                            contentDescription = stringResource(R.string.cd_download),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
+                            }
+                            IconButton(onClick = { onRemove(item.episode.id) }) {
+                                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_remove))
                             }
                         }
-                        IconButton(onClick = { onRemove(item.episode.id) }) {
-                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_remove))
+                        if (progressFraction > 0f) {
+                            LinearProgressIndicator(
+                                progress = { progressFraction },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 8.dp)
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp)),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
                         }
                     }
                     HorizontalDivider(modifier = Modifier.alpha(0.35f))
