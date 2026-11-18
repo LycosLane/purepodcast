@@ -161,7 +161,7 @@ fun EpisodePreviewSheet(
             .build()
     }
 
-    DisposableEffect(episode.id, lifecycleOwner) {
+    DisposableEffect(previewPlayer, lifecycleOwner) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 isPreviewPlaying = isPlaying
@@ -191,6 +191,11 @@ fun EpisodePreviewSheet(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
             previewPlayer.removeListener(listener)
+        }
+    }
+
+    DisposableEffect(previewPlayer) {
+        onDispose {
             previewPlayer.release()
         }
     }

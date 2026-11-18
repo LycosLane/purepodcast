@@ -256,7 +256,19 @@ object RssFeedParser {
     }
 
     private fun safeNextText(parser: XmlPullParser): String {
-        return runCatching { parser.nextText().trim() }.getOrDefault("")
+        return runCatching {
+            val sb = StringBuilder()
+            var depth = 1
+            while (depth > 0) {
+                when (parser.next()) {
+                    XmlPullParser.TEXT, XmlPullParser.CDSECT -> sb.append(parser.text.orEmpty())
+                    XmlPullParser.START_TAG -> depth++
+                    XmlPullParser.END_TAG -> depth--
+                    XmlPullParser.END_DOCUMENT -> break
+                }
+            }
+            sb.toString().trim()
+        }.getOrDefault("")
     }
 
     private fun parseDateMs(rawInput: String): Long {

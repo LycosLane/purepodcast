@@ -356,6 +356,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     currentEpisode = activePair.first,
                     currentPodcast = activePair.second,
                     scrollToggleTrigger = queueScrollTrigger,
+                    onScrollToggleConsumed = { queueScrollTrigger = 0 },
                     onOpenNowPlaying = { showFullPlayer = true },
                     onOpenPodcast = { podcastId -> navController.navigate("detail/$podcastId") { launchSingleTop = true } },
                     onPlay = { ep, pod -> app.playerController.playEpisode(ep, pod) },
@@ -385,6 +386,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     textScale = settings.textScale,
                     onTextScaleChange = mainViewModel::setTextScale,
                     focusSearchTrigger = focusSearchTrigger,
+                    onFocusSearchConsumed = { focusSearchTrigger = 0 },
                     onSearch = searchViewModel::search,
                     onLoadFeedPreview = searchViewModel::loadFeedPreview,
                     onSubscribeFeedUrl = { url ->

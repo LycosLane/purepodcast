@@ -76,8 +76,7 @@ class PlayerController(
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_ENDED) {
                 progressJob?.cancel()
-                sleepTimerJob?.cancel()
-                _state.value = PlayerUiState()
+                _state.update { it.copy(isPlaying = false) }
                 return
             }
             syncTiming()
@@ -96,10 +95,28 @@ class PlayerController(
         }
     }
 
+    private val controllerListener = object : MediaController.Listener {
+        override fun onDisconnected(controller: MediaController) {
+            if (this@PlayerController.controller === controller) {
+                this@PlayerController.controller = null
+                controllerFuture = null
+                progressJob?.cancel()
+                _state.update { it.copy(isPlaying = false) }
+            }
+        }
+    }
+
     fun connect() {
-        if (controller != null || controllerFuture != null) return
+        val current = controller
+        if (current != null) {
+            if (current.isConnected) return
+            controller = null
+        }
+        if (controllerFuture != null) return
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        val future = MediaController.Builder(context, token).buildAsync()
+        val future = MediaController.Builder(context, token)
+            .setListener(controllerListener)
+            .buildAsync()
         controllerFuture = future
         future.addListener({
             val mc = runCatching { future.get() }.getOrNull()
@@ -108,6 +125,7 @@ class PlayerController(
                 return@addListener
             }
             controller = mc
+            controllerFuture = null
             mc.addListener(playerListener)
             syncTiming()
             mc.currentMediaItem?.mediaId?.toLongOrNull()?.let { syncFromEpisodeId(it) }
@@ -128,11 +146,14 @@ class PlayerController(
         syncJob?.cancel()
         syncJob = scope.launch(Dispatchers.IO) {
             val withPodcast = dao.getEpisodeWithPodcast(episodeId) ?: return@launch
+            val liveDuration = withContext(Dispatchers.Main) {
+                controller?.duration?.takeIf { it > 0L }
+            }
             _state.update {
                 it.copy(
                     currentEpisode = withPodcast.episode,
                     currentPodcast = withPodcast.podcast,
-                    durationMs = withPodcast.episode.durationMs,
+                    durationMs = liveDuration ?: withPodcast.episode.durationMs,
                     playbackSpeed = withPodcast.podcast.playbackSpeed.coerceIn(0.75f, 3.0f),
                     skipSilence = withPodcast.podcast.skipSilence,
                     silenceIntensity = withPodcast.podcast.silenceIntensity.coerceIn(0, 2)
@@ -153,8 +174,9 @@ class PlayerController(
     }
 
     fun playEpisode(episode: EpisodeEntity, podcast: PodcastEntity) {
-        val mc = controller
+        val mc = controller?.takeIf { it.isConnected }
         if (mc == null) {
+            controller = null
             pendingPlay = episode to podcast
             connect()
             return
@@ -222,8 +244,7 @@ class PlayerController(
                     skipSilence = freshPodcast.skipSilence,
                     silenceIntensity = intensity,
                     durationMs = freshEpisode.durationMs,
-                    positionMs = startPos,
-                    isPlaying = true
+                    positionMs = startPos
                 )
             }
         }

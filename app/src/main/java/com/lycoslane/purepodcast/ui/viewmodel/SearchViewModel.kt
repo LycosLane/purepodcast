@@ -57,18 +57,21 @@ class SearchViewModel(
         searchJob?.cancel()
         lastSearchedQuery = trimmed
         searchJob = viewModelScope.launch {
+            val currentJob = coroutineContext[kotlinx.coroutines.Job]
             _isSearching.value = true
             _statusMessage.value = null
             try {
                 _results.value = runCatching {
                     app.repository.searchPodcasts(trimmed).distinctBy { it.feedUrl }
-                }.getOrElse { err ->
+                }.getOrElse { _ ->
                     lastSearchedQuery = null
                     _statusMessage.value = app.getString(R.string.status_search_failed, app.getString(R.string.error_generic_network))
                     emptyList()
                 }
             } finally {
-                _isSearching.value = false
+                if (searchJob === currentJob) {
+                    _isSearching.value = false
+                }
             }
         }
     }
@@ -158,6 +161,8 @@ class SearchViewModel(
                 )
             }.onSuccess { (podcastId, _) ->
                 onOpenPodcast(podcastId)
+            }.onFailure { _ ->
+                _statusMessage.value = app.getString(R.string.status_search_failed, app.getString(R.string.error_generic_network))
             }
         }
     }

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -124,6 +125,7 @@ fun SearchScreen(
     textScale: Float,
     onTextScaleChange: (Float) -> Unit,
     focusSearchTrigger: Int = 0,
+    onFocusSearchConsumed: () -> Unit = {},
     onSearch: (String) -> Unit,
     onLoadFeedPreview: suspend (String) -> ParsedPodcastFeed?,
     onSubscribeFeedUrl: (String) -> Unit,
@@ -163,6 +165,7 @@ fun SearchScreen(
                 runCatching { focusRequester.requestFocus() }
                 keyboardController?.show()
             }
+            onFocusSearchConsumed()
         }
     }
 
@@ -211,6 +214,7 @@ fun SearchScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding()
                 .padding(horizontal = 16.dp)
         ) {
             AnimatedVisibility(
@@ -239,7 +243,7 @@ fun SearchScreen(
                                     textFieldValue = TextFieldValue("")
                                     onQueryChange("")
                                 }) {
-                                    Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.action_cancel))
+                                    Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.action_close))
                                 }
                             }
                         },
@@ -309,7 +313,7 @@ fun SearchScreen(
                 contentPadding = PaddingValues(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                itemsIndexed(results, key = { index, item -> "${item.feedUrl}#$index" }) { index, item ->
+                itemsIndexed(results, key = { _, item -> item.feedUrl }) { index, item ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -402,7 +406,7 @@ fun SearchScreen(
                             IconButton(onClick = { previewIndex = null }) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = stringResource(R.string.action_cancel)
+                                    contentDescription = stringResource(R.string.action_close)
                                 )
                             }
                         }
@@ -452,7 +456,9 @@ fun SearchScreen(
                                     withContext(Dispatchers.Default) { htmlToPlainText(rawDesc) }
                                 }
                             }
-                            val episodes = feed?.episodes.orEmpty()
+                            val episodes = remember(feed) {
+                                feed?.episodes.orEmpty().distinctBy { it.guid.ifBlank { it.audioUrl } }
+                            }
 
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
@@ -577,7 +583,7 @@ fun SearchScreen(
 
                                     itemsIndexed(
                                         items = episodes,
-                                        key = { epIdx, ep -> "${item.feedUrl}#ep#${ep.guid.ifBlank { ep.audioUrl }}#$epIdx" }
+                                        key = { _, ep -> "${item.feedUrl}#ep#${ep.guid.ifBlank { ep.audioUrl }}" }
                                     ) { _, ep ->
                                         val titleStyle = MaterialTheme.typography.bodyMedium
                                         val metaStyle = MaterialTheme.typography.labelSmall
@@ -627,7 +633,6 @@ fun SearchScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .navigationBarsPadding()
                                     .padding(horizontal = 20.dp, vertical = 12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically

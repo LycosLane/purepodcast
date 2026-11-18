@@ -1,8 +1,11 @@
 package com.lycoslane.purepodcast.core.network
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayInputStream
+import java.io.IOException
 import java.net.InetAddress
 
 class NetworkSecurityTest {
@@ -40,5 +43,20 @@ class NetworkSecurityTest {
         assertFalse(NetworkSecurity.isPublicAddress(InetAddress.getByName("fc00::1")))
         assertTrue(NetworkSecurity.isPublicAddress(InetAddress.getByName("8.8.8.8")))
         assertTrue(NetworkSecurity.isPublicAddress(InetAddress.getByName("1.1.1.1")))
+    }
+
+    @Test
+    fun boundedInputStreamAllowsWithinLimitAndRejectsOverflow() {
+        val ok = BoundedInputStream(ByteArrayInputStream(ByteArray(10)), 10L)
+        assertEquals(10, ok.readBytes().size)
+
+        val overflow = BoundedInputStream(ByteArrayInputStream(ByteArray(11)), 10L)
+        var threw = false
+        try {
+            overflow.readBytes()
+        } catch (_: IOException) {
+            threw = true
+        }
+        assertTrue(threw)
     }
 }

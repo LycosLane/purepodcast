@@ -699,13 +699,25 @@ class PodcastRepository(
 
         val podcastsArr = root.optJSONArray("podcasts") ?: return@withContext 0
         var restored = 0
+        val feedUrlToPodcastId = mutableMapOf<String, Long>()
         val maxPodcasts = minOf(podcastsArr.length(), 500)
         for (i in 0 until maxPodcasts) {
             val pObj = podcastsArr.optJSONObject(i) ?: continue
             val feedUrl = pObj.optString("feedUrl", "").trim()
             if (!NetworkSecurity.isValidHttpUrl(feedUrl)) continue
             try {
-                val podcastId = subscribeByFeedUrl(feedUrl)
+                val podcastId = runCatching { subscribeByFeedUrl(feedUrl) }.getOrElse { err ->
+                    if (err is kotlinx.coroutines.CancellationException) throw err
+                    dao.getPodcastByFeedUrl(feedUrl)?.id ?: dao.insertPodcast(
+                        PodcastEntity(
+                            feedUrl = feedUrl,
+                            title = pObj.optString("title", "").ifBlank { feedUrl },
+                            isSubscribed = true
+                        )
+                    )
+                }
+                if (podcastId <= 0L) continue
+                feedUrlToPodcastId[feedUrl] = podcastId
                 val existing = dao.getPodcast(podcastId)
                 if (existing != null) {
                     val rawSpeed = pObj.optDouble("playbackSpeed", existing.playbackSpeed.toDouble())
@@ -755,8 +767,8 @@ class PodcastRepository(
                 val feedUrl = qObj.optString("feedUrl", "").trim()
                 val guid = qObj.optString("guid", "").take(512)
                 if (feedUrl.isEmpty() || guid.isEmpty()) continue
-                val pod = dao.getPodcastByFeedUrl(feedUrl) ?: continue
-                val ep = dao.getEpisodeByGuid(pod.id, guid) ?: continue
+                val podId = feedUrlToPodcastId[feedUrl] ?: dao.getPodcastByFeedUrl(feedUrl)?.id ?: continue
+                val ep = dao.getEpisodeByGuid(podId, guid) ?: continue
                 dao.enqueueToQueue(ep.id)
             }
         }

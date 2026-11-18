@@ -204,7 +204,17 @@ fun PodcastDetailScreen(
             )
         }
     ) { innerPadding ->
-        if (podcast == null) return@Scaffold
+        if (podcast == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.CircularProgressIndicator()
+            }
+            return@Scaffold
+        }
 
         val plainDescription = remember(podcast.description) {
             htmlToPlainText(podcast.description)
@@ -237,6 +247,7 @@ fun PodcastDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding()
         ) {
             if (showEpisodeSearch) {
                 OutlinedTextField(
@@ -248,7 +259,7 @@ fun PodcastDetailScreen(
                     trailingIcon = {
                         if (episodeSearchQuery.isNotEmpty()) {
                             IconButton(onClick = { episodeSearchQuery = "" }) {
-                                Icon(Icons.Default.Clear, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cancel))
+                                Icon(Icons.Default.Clear, contentDescription = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_close))
                             }
                         }
                     },

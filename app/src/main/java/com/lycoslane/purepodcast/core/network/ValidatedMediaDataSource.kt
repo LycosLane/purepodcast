@@ -56,23 +56,45 @@ class ValidatedHttpDataSource : BaseDataSource(/* isNetwork = */ true) {
             headers = headers
         )
         connection = conn
-        val code = conn.responseCode
-        if (code !in 200..299) {
-            closeConnectionQuietly()
-            throw IOException("HTTP $code")
-        }
+        try {
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                throw IOException("HTTP $code")
+            }
 
-        currentUri = conn.url?.toString()?.let { Uri.parse(it) } ?: dataSpec.uri
-        inputStream = conn.inputStream
-        val contentLen = conn.contentLengthLong
-        bytesRemaining = when {
-            dataSpec.length != C.LENGTH_UNSET.toLong() -> dataSpec.length
-            contentLen >= 0L -> contentLen
-            else -> C.LENGTH_UNSET.toLong()
+            currentUri = conn.url?.toString()?.let { Uri.parse(it) } ?: dataSpec.uri
+            val stream = conn.inputStream
+            if (dataSpec.position > 0L && code == HttpURLConnection.HTTP_OK) {
+                var toSkip = dataSpec.position
+                val skipBuf = ByteArray(8192)
+                while (toSkip > 0L) {
+                    val read = stream.read(skipBuf, 0, min(toSkip, skipBuf.size.toLong()).toInt())
+                    if (read == -1) break
+                    toSkip -= read
+                }
+                if (toSkip > 0L) {
+                    runCatching { stream.close() }
+                    throw IOException("Unexpected EOF while skipping to position ${dataSpec.position}")
+                }
+            }
+            inputStream = stream
+            val contentLen = conn.contentLengthLong
+            bytesRemaining = when {
+                dataSpec.length != C.LENGTH_UNSET.toLong() -> dataSpec.length
+                contentLen >= 0L && !(dataSpec.position > 0L && code == HttpURLConnection.HTTP_OK) -> contentLen
+                contentLen >= 0L && dataSpec.position > 0L && code == HttpURLConnection.HTTP_OK ->
+                    (contentLen - dataSpec.position).coerceAtLeast(0L)
+                else -> C.LENGTH_UNSET.toLong()
+            }
+            opened = true
+            transferStarted(dataSpec)
+            return bytesRemaining
+        } catch (e: Throwable) {
+            runCatching { inputStream?.close() }
+            inputStream = null
+            closeConnectionQuietly()
+            throw e
         }
-        opened = true
-        transferStarted(dataSpec)
-        return bytesRemaining
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {

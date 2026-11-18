@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -57,6 +58,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -354,6 +357,8 @@ fun FullPlayerSheet(
                 )
 
                 val silenceSelected = state.skipSilence
+                val silenceStateText = stringResource(if (silenceSelected) R.string.state_on else R.string.state_off)
+                val silenceLongClickLabel = stringResource(R.string.silence_intensity_title)
                 androidx.compose.foundation.layout.Box(
                     modifier = Modifier.height(48.dp),
                     contentAlignment = Alignment.Center
@@ -367,10 +372,15 @@ fun FullPlayerSheet(
                         },
                         border = if (silenceSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         modifier = Modifier
-                            .defaultMinSize(minHeight = 40.dp)
+                            .defaultMinSize(minHeight = 48.dp)
                             .clip(RoundedCornerShape(8.dp))
+                            .semantics {
+                                role = Role.Button
+                                stateDescription = silenceStateText
+                            }
                             .combinedClickable(
                                 onClick = onToggleSkipSilence,
+                                onLongClickLabel = silenceLongClickLabel,
                                 onLongClick = {
                                     showSilenceIntensityRow = !showSilenceIntensityRow
                                     showSpeedRow = false
@@ -533,6 +543,7 @@ fun FullPlayerSheet(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(
                                 if (isCurrent) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)

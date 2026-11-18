@@ -109,6 +109,12 @@ interface PurePodcastDao {
     @Query("SELECT * FROM episodes WHERE podcastId = :podcastId ORDER BY pubDateMs ASC")
     fun observeEpisodesAsc(podcastId: Long): Flow<List<EpisodeEntity>>
 
+    @Query("SELECT * FROM episodes WHERE podcastId = :podcastId")
+    suspend fun getEpisodesForPodcast(podcastId: Long): List<EpisodeEntity>
+
+    @Query("DELETE FROM episodes WHERE id IN (:episodeIds)")
+    suspend fun deleteEpisodesByIds(episodeIds: List<Long>)
+
     @Query("SELECT id FROM episodes WHERE podcastId = :podcastId")
     suspend fun getEpisodeIdsForPodcast(podcastId: Long): List<Long>
 
@@ -150,7 +156,7 @@ interface PurePodcastDao {
         INNER JOIN podcasts p ON e.podcastId = p.id
         WHERE (p.isSubscribed = 1 OR p.isLocal = 1) AND e.isHidden = 0
         ORDER BY e.pubDateMs DESC
-        LIMIT 1000
+        LIMIT 5000
         """
     )
     fun observeAllEpisodesWithPodcast(): Flow<List<EpisodeWithPodcast>>
@@ -173,6 +179,7 @@ interface PurePodcastDao {
         SELECT * FROM episodes
         WHERE markedForDeletionAtMs > 0 AND markedForDeletionAtMs <= :cutoffMs
           AND downloadState = 'DOWNLOADED' AND localFilePath IS NOT NULL
+          AND id NOT IN (SELECT episodeId FROM queue_items)
         """
     )
     suspend fun getTrashedDownloadsOlderThan(cutoffMs: Long): List<EpisodeEntity>
@@ -294,6 +301,7 @@ interface PurePodcastDao {
 
     @Transaction
     suspend fun enqueueToQueue(episodeId: Long) {
+        markForDeletion(episodeId, 0L)
         removeFromQueue(episodeId)
         val nextOrder = getMaxQueueOrder() + 1
         insertQueueItem(QueueItemEntity(episodeId = episodeId, sortOrder = nextOrder))
@@ -301,6 +309,7 @@ interface PurePodcastDao {
 
     @Transaction
     suspend fun enqueueToQueueFront(episodeId: Long) {
+        markForDeletion(episodeId, 0L)
         removeFromQueue(episodeId)
         val firstOrder = getMinQueueOrder() - 1
         insertQueueItem(QueueItemEntity(episodeId = episodeId, sortOrder = firstOrder))

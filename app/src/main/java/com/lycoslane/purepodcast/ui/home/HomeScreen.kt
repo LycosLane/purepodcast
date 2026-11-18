@@ -1127,7 +1127,7 @@ private fun HomeEpisodeRow(
                     IconButton(onClick = onDownload) {
                         Icon(
                             imageVector = Icons.Default.ErrorOutline,
-                            contentDescription = stringResource(R.string.cd_download),
+                            contentDescription = stringResource(R.string.cd_download_failed),
                             tint = MaterialTheme.colorScheme.error
                         )
                     }

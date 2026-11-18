@@ -144,7 +144,10 @@ object AudioTranscoder {
                         if (f.containsKey(MediaFormat.KEY_SAMPLE_RATE)) decRate = f.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                         if (f.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) decChannels = f.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                         // Encoder was configured from the input format; a mismatch would produce garbage.
-                        if (decRate != sampleRate || decChannels != channelCount) return false
+                        if (decRate != sampleRate || decChannels != channelCount) {
+                            tempOutputFile.delete()
+                            return false
+                        }
                     } else if (outIdx >= 0) {
                         val outBuf = decoder.getOutputBuffer(outIdx)
                         if (outBuf != null && decInfo.size > 0) {
@@ -166,14 +169,23 @@ object AudioTranscoder {
                     val encInIdx = encoder.dequeueInputBuffer(TIMEOUT_US)
                     if (encInIdx < 0) break
 
-                    val encInBuf: ByteBuffer = encoder.getInputBuffer(encInIdx) ?: break
+                    val encInBuf: ByteBuffer? = encoder.getInputBuffer(encInIdx)
+                    if (encInBuf == null) {
+                        val ptsUs = encodedFrames * 1_000_000L / decRate
+                        encoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, 0)
+                        break
+                    }
                     encInBuf.clear()
 
                     if (pcmQueue.isNotEmpty()) {
                         val chunk = pcmQueue.first()
                         val bytesPerFrame = 2 * decChannels
                         val capacity = (encInBuf.remaining() / bytesPerFrame) * bytesPerFrame
-                        if (capacity <= 0) break
+                        if (capacity <= 0) {
+                            val ptsUs = encodedFrames * 1_000_000L / decRate
+                            encoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, 0)
+                            break
+                        }
                         val take = minOf(chunk.size, capacity)
                         val ptsUs = encodedFrames * 1_000_000L / decRate
                         encInBuf.put(chunk, 0, take)

@@ -17,6 +17,8 @@ import com.lycoslane.purepodcast.core.audio.AudioTranscoder
 import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -191,6 +193,7 @@ class TranscodeWorker(
         private const val UNIQUE_BATCH_WORK = "transcode_all_downloads"
         private const val CHANNEL_ID = "purepodcast_transcode"
         private const val NOTIFICATION_ID = 4102
+        private val transcodeMutex = Mutex()
 
         fun cancelForEpisode(context: Context, episodeId: Long) {
             WorkManager.getInstance(context).cancelUniqueWork("transcode_ep_$episodeId")

@@ -72,6 +72,7 @@ fun QueueScreen(
     currentEpisode: EpisodeEntity?,
     currentPodcast: PodcastEntity?,
     scrollToggleTrigger: Int = 0,
+    onScrollToggleConsumed: () -> Unit = {},
     onOpenNowPlaying: () -> Unit,
     onOpenPodcast: (Long) -> Unit = {},
     onPlay: (EpisodeEntity, PodcastEntity) -> Unit,
@@ -93,6 +94,7 @@ fun QueueScreen(
                     listState.animateScrollToItem(0)
                 }
             }
+            onScrollToggleConsumed()
         }
     }
 

@@ -301,12 +301,23 @@ class PlaybackService : MediaSessionService() {
                                 PurePodcastDatabase.getInstance(applicationContext).dao().getEpisodeWithPodcast(id)
                             }
                             val item = withPodcast?.let { buildMediaItem(it.episode, it.podcast) }
-                            if (item == null) {
+                            if (item == null || withPodcast == null) {
                                 future.setException(UnsupportedOperationException("Nothing to resume"))
                             } else {
+                                withContext(Dispatchers.Main) {
+                                    player.playbackParameters = PlaybackParameters(
+                                        withPodcast.podcast.playbackSpeed.coerceIn(0.75f, 3.0f)
+                                    )
+                                    updateSilenceProcessors(
+                                        withPodcast.podcast.skipSilence,
+                                        withPodcast.podcast.silenceIntensity
+                                    )
+                                    val isLocal = item.localConfiguration?.uri?.scheme in setOf("file", "content")
+                                    player.setWakeMode(if (isLocal) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
+                                }
                                 future.set(
                                     MediaSession.MediaItemsWithStartPosition(
-                                        listOf(item), 0, (withPodcast?.episode?.positionMs ?: 0L).coerceAtLeast(0L)
+                                        listOf(item), 0, withPodcast.episode.positionMs.coerceAtLeast(0L)
                                     )
                                 )
                             }

@@ -36,17 +36,17 @@ class AppPreferences(context: Context) {
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
     private fun load(): AppSettings = AppSettings(
-        refreshIntervalHours = prefs.getInt(KEY_REFRESH_INTERVAL_HOURS, 6),
+        refreshIntervalHours = prefs.getInt(KEY_REFRESH_INTERVAL_HOURS, 6).coerceIn(0, 168),
         wifiOnlyDownloads = prefs.getBoolean(KEY_WIFI_ONLY, true),
         autoDownloadNewByDefault = prefs.getBoolean(KEY_AUTO_DOWNLOAD_DEFAULT, false),
         downloadWhenQueued = prefs.getBoolean(KEY_DOWNLOAD_WHEN_QUEUED, false),
         addToQueueWhenDownloaded = prefs.getBoolean(KEY_QUEUE_WHEN_DOWNLOADED, false),
-        autoRemovePlayedDays = prefs.getInt(KEY_AUTO_REMOVE_PLAYED_DAYS, 1),
+        autoRemovePlayedDays = prefs.getInt(KEY_AUTO_REMOVE_PLAYED_DAYS, 1).coerceIn(-1, 365),
         trashRetentionHours = prefs.getInt(KEY_TRASH_RETENTION_HOURS, 24).let {
             if (it in listOf(0, 24, 48)) it else 24
         },
         maxDownloadsPerPodcast = prefs.getInt(KEY_MAX_DOWNLOADS_PER_PODCAST, 0).coerceIn(0, 30),
-        smartRewindSeconds = prefs.getInt(KEY_SMART_REWIND_SECONDS, 10),
+        smartRewindSeconds = prefs.getInt(KEY_SMART_REWIND_SECONDS, 10).coerceIn(0, 120),
         audioNormalizationEnabled = prefs.getBoolean(KEY_AUDIO_NORMALIZATION, false),
         bluetoothNextPrevSeeks = prefs.getBoolean(KEY_BLUETOOTH_NEXT_PREV_SEEKS, true),
         textScale = prefs.getFloat(KEY_TEXT_SCALE, 1.0f).coerceIn(0.8f, 1.8f),
@@ -62,8 +62,9 @@ class AppPreferences(context: Context) {
     )
 
     fun setRefreshIntervalHours(hours: Int) {
-        prefs.edit().putInt(KEY_REFRESH_INTERVAL_HOURS, hours).apply()
-        _settings.update { it.copy(refreshIntervalHours = hours) }
+        val clamped = hours.coerceIn(0, 168)
+        prefs.edit().putInt(KEY_REFRESH_INTERVAL_HOURS, clamped).apply()
+        _settings.update { it.copy(refreshIntervalHours = clamped) }
     }
 
     fun setWifiOnlyDownloads(wifiOnly: Boolean) {
@@ -87,8 +88,9 @@ class AppPreferences(context: Context) {
     }
 
     fun setAutoRemovePlayedDays(days: Int) {
-        prefs.edit().putInt(KEY_AUTO_REMOVE_PLAYED_DAYS, days).apply()
-        _settings.update { it.copy(autoRemovePlayedDays = days) }
+        val clamped = days.coerceIn(-1, 365)
+        prefs.edit().putInt(KEY_AUTO_REMOVE_PLAYED_DAYS, clamped).apply()
+        _settings.update { it.copy(autoRemovePlayedDays = clamped) }
     }
 
     fun setTrashRetentionHours(hours: Int) {
@@ -104,8 +106,9 @@ class AppPreferences(context: Context) {
     }
 
     fun setSmartRewindSeconds(seconds: Int) {
-        prefs.edit().putInt(KEY_SMART_REWIND_SECONDS, seconds).apply()
-        _settings.update { it.copy(smartRewindSeconds = seconds) }
+        val clamped = seconds.coerceIn(0, 120)
+        prefs.edit().putInt(KEY_SMART_REWIND_SECONDS, clamped).apply()
+        _settings.update { it.copy(smartRewindSeconds = clamped) }
     }
 
     fun setAudioNormalizationEnabled(enabled: Boolean) {

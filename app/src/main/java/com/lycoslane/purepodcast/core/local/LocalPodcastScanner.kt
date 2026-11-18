@@ -64,7 +64,7 @@ object LocalPodcastScanner {
         val rootDocId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
             ?: return@withContext 0
 
-        val rootChildren = queryChildren(context, treeUri, rootDocId)
+        val rootChildren = queryChildren(context, treeUri, rootDocId) ?: return@withContext 0
         val folders = rootChildren.filter { it.isDirectory }
         val rootAudioFiles = rootChildren.filter { !it.isDirectory && isAudioFile(it) }
 
@@ -73,11 +73,16 @@ object LocalPodcastScanner {
 
         // 1. Each subfolder becomes a local Podcast
         for (folder in folders) {
+            val feedUrl = "local://${folder.docId}"
             val children = queryChildren(context, treeUri, folder.docId)
+            if (children == null) {
+                // Keep existing local podcast if this subfolder temporarily failed to query
+                discoveredFeedUrls += feedUrl
+                continue
+            }
             val audioFiles = children.filter { !it.isDirectory && isAudioFile(it) }
             if (audioFiles.isEmpty()) continue
 
-            val feedUrl = "local://${folder.docId}"
             discoveredFeedUrls += feedUrl
             val coverUri = findCoverUri(context, folder.docId, children, audioFiles)
             upsertLocalPodcast(
@@ -154,10 +159,13 @@ object LocalPodcastScanner {
 
         if (podcastId <= 0L) return
 
+        val existingByGuid = dao.getEpisodesForPodcast(podcastId).associateBy { it.guid }
+        val activeGuids = HashSet<String>(audioFiles.size)
         val toInsert = mutableListOf<EpisodeEntity>()
         for (doc in audioFiles) {
             val guid = doc.docId
-            val existingEp = dao.getEpisodeByGuid(podcastId, guid)
+            activeGuids += guid
+            val existingEp = existingByGuid[guid]
             if (existingEp != null) {
                 val docUriStr = doc.uri.toString()
                 if (existingEp.localFilePath != docUriStr || existingEp.downloadState != DownloadState.DOWNLOADED) {
@@ -187,6 +195,15 @@ object LocalPodcastScanner {
                 fileSizeBytes = doc.sizeBytes,
                 isTranscoded = true
             )
+        }
+
+        val removedIds = existingByGuid.values
+            .filter { it.guid !in activeGuids }
+            .map { it.id }
+        if (removedIds.isNotEmpty()) {
+            removedIds.chunked(500).forEach { chunk ->
+                dao.deleteEpisodesByIds(chunk)
+            }
         }
 
         if (toInsert.isNotEmpty()) {

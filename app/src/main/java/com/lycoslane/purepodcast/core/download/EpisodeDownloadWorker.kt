@@ -129,7 +129,9 @@ class EpisodeDownloadWorker(
                     while (true) {
                         if (isStopped) {
                             // Keep the partial file so the download can resume later.
-                            dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+                            withContext(NonCancellable) {
+                                dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+                            }
                             return@withContext Result.failure()
                         }
                         val read = input.read(buffer)
@@ -148,7 +150,7 @@ class EpisodeDownloadWorker(
             }
 
             val latest = dao.getEpisode(episodeId)
-            if (isStopped || latest == null || latest.isHidden || latest.skipAutoDownload) {
+            if (latest == null || latest.isHidden || latest.skipAutoDownload) {
                 tempFile.delete()
                 etagFile.delete()
                 if (latest != null) {
@@ -204,7 +206,9 @@ class EpisodeDownloadWorker(
             throw e
         } catch (_: Exception) {
             if (isStopped) {
-                dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+                withContext(NonCancellable) {
+                    dao.updateDownloadState(episodeId, DownloadState.NONE, 0, null)
+                }
                 Result.failure()
             } else {
                 dao.updateDownloadState(episodeId, DownloadState.FAILED, 0, null)
