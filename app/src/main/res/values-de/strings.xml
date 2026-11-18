@@ -228,4 +228,8 @@
     <string name="error_generic_network">Netzwerk- oder Serverfehler</string>
     <string name="state_on">Ein</string>
     <string name="state_off">Aus</string>
+    <string name="compression_status_summary">Downloads: %1$d komprimiert • %2$d offen</string>
+    <string name="compression_done_saved">Fertig: %1$d Episode(n) komprimiert (%2$s MB gespart)</string>
+    <string name="compression_no_downloads">Keine heruntergeladenen Episoden vorhanden</string>
+    <string name="compression_failed_summary">%1$d Episode(n) übersprungen (wird abgespielt oder bereits optimal)</string>
 </resources>

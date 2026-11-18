@@ -759,6 +759,29 @@ fun HomeScreen(
                         checked = settings.transcodeChargingOnly,
                         onCheckedChange = onToggleTranscodeChargingOnly
                     )
+                    val downloadedNonLocal = remember(allEpisodes) {
+                        allEpisodes.filter { item ->
+                            !item.podcast.isLocal &&
+                                item.episode.downloadState == DownloadState.DOWNLOADED &&
+                                item.episode.markedForDeletionAtMs == 0L &&
+                                item.episode.localFilePath?.startsWith("content://") != true
+                        }
+                    }
+                    val compressedCount = remember(downloadedNonLocal) {
+                        downloadedNonLocal.count { it.episode.isTranscoded }
+                    }
+                    val pendingCount = (downloadedNonLocal.size - compressedCount).coerceAtLeast(0)
+
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = if (downloadedNonLocal.isEmpty()) {
+                            stringResource(R.string.compression_no_downloads)
+                        } else {
+                            stringResource(R.string.compression_status_summary, compressedCount, pendingCount)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Spacer(Modifier.height(6.dp))
                     if (transcodeStatus.isActive) {
                         Column(
@@ -813,6 +836,14 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(stringResource(R.string.action_compress_all_now))
+                        }
+                        if (transcodeStatus.statusMessage.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = transcodeStatus.statusMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                 }

@@ -10,10 +10,11 @@ import java.nio.ByteBuffer
 
 object AudioTranscoder {
 
-    private const val TIMEOUT_US = 10_000L
+    private const val TIMEOUT_US = 2_000L
 
-    /** True if [file] is already AAC (mp4a) with a declared bitrate at or below [targetKbps]. */
+    /** True if [file] is already AAC (mp4a) with a declared or effective bitrate at or below [targetKbps]. */
     fun isAlreadyCompact(file: File, targetKbps: Int): Boolean {
+        if (!file.exists() || file.length() <= 0L) return false
         val extractor = MediaExtractor()
         return try {
             extractor.setDataSource(file.absolutePath)
@@ -22,14 +23,37 @@ object AudioTranscoder {
                 val mime = fmt.getString(MediaFormat.KEY_MIME) ?: continue
                 if (!mime.startsWith("audio/")) continue
                 if (mime != "audio/mp4a-latm") return false
-                if (!fmt.containsKey(MediaFormat.KEY_BIT_RATE)) return false
-                return fmt.getInteger(MediaFormat.KEY_BIT_RATE) <= targetKbps * 1000
+                val bitrate = when {
+                    fmt.containsKey(MediaFormat.KEY_BIT_RATE) -> fmt.getInteger(MediaFormat.KEY_BIT_RATE)
+                    fmt.containsKey(MediaFormat.KEY_DURATION) -> {
+                        val durUs = fmt.getLong(MediaFormat.KEY_DURATION)
+                        if (durUs > 0L) ((file.length() * 8L * 1_000_000L) / durUs).toInt() else Int.MAX_VALUE
+                    }
+                    else -> Int.MAX_VALUE
+                }
+                return bitrate <= (targetKbps * 1080)
             }
             false
         } catch (_: Exception) {
             false
         } finally {
             runCatching { extractor.release() }
+        }
+    }
+
+    private fun createAacEncoder(sampleRate: Int, channelCount: Int, targetBitrateKbps: Int): MediaCodec {
+        val outputFormat = MediaFormat.createAudioFormat(
+            MediaFormat.MIMETYPE_AUDIO_AAC,
+            sampleRate,
+            channelCount
+        ).apply {
+            setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+            setInteger(MediaFormat.KEY_BIT_RATE, targetBitrateKbps * 1000)
+            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384)
+        }
+        return MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply {
+            configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            start()
         }
     }
 
@@ -88,19 +112,10 @@ object AudioTranscoder {
             decoder.configure(inputFormat, null, null, 0)
             decoder.start()
 
-            val outputFormat = MediaFormat.createAudioFormat(
-                MediaFormat.MIMETYPE_AUDIO_AAC,
-                sampleRate,
-                channelCount
-            ).apply {
-                setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
-                setInteger(MediaFormat.KEY_BIT_RATE, targetBitrateKbps * 1000)
-                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 64 * 1024)
-            }
-
-            encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
-            encoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            encoder.start()
+            var currentEncRate = sampleRate
+            var currentEncChannels = channelCount
+            var activeEncoder = createAacEncoder(currentEncRate, currentEncChannels, targetBitrateKbps)
+            encoder = activeEncoder
 
             if (tempOutputFile.exists()) tempOutputFile.delete()
             muxer = MediaMuxer(tempOutputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
@@ -118,7 +133,7 @@ object AudioTranscoder {
 
             // Keep a simple FIFO of decoded PCM chunks to feed the encoder cleanly
             val pcmQueue = ArrayDeque<ByteArray>()
-            val maxQueuedChunks = 64
+            val maxQueuedChunks = 32
 
             while (!encoderDone) {
                 if (shouldCancel()) {
@@ -160,10 +175,22 @@ object AudioTranscoder {
                         val f = decoder.outputFormat
                         if (f.containsKey(MediaFormat.KEY_SAMPLE_RATE)) decRate = f.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                         if (f.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) decChannels = f.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-                        // Encoder was configured from the input format; a mismatch would produce garbage.
-                        if (decRate != sampleRate || decChannels != channelCount) {
+                        if (decChannels !in 1..2 || decRate <= 0) {
                             tempOutputFile.delete()
                             return false
+                        }
+                        if (decRate != currentEncRate || decChannels != currentEncChannels) {
+                            if (!muxerStarted && encodedFrames == 0L) {
+                                runCatching { activeEncoder.stop() }
+                                runCatching { activeEncoder.release() }
+                                currentEncRate = decRate
+                                currentEncChannels = decChannels
+                                activeEncoder = createAacEncoder(currentEncRate, currentEncChannels, targetBitrateKbps)
+                                encoder = activeEncoder
+                            } else {
+                                tempOutputFile.delete()
+                                return false
+                            }
                         }
                     } else if (outIdx >= 0) {
                         madeProgress = true
@@ -184,26 +211,29 @@ object AudioTranscoder {
                     }
                 }
 
-                // 3. Feed pcmQueue -> encoder (sample-accurate, strictly monotonic timestamps)
-                while ((pcmQueue.isNotEmpty() || decoderDone) && !encoderEosSent) {
-                    val encInIdx = encoder.dequeueInputBuffer(0L)
+                // 3. Feed pcmQueue -> encoder (1 AAC frame = 1024 samples per buffer so encoder output pool never saturates)
+                var fedBuffersThisTurn = 0
+                while ((pcmQueue.isNotEmpty() || decoderDone) && !encoderEosSent && fedBuffersThisTurn < 2) {
+                    val encInIdx = activeEncoder.dequeueInputBuffer(0L)
                     if (encInIdx < 0) break
                     madeProgress = true
 
-                    val encInBuf: ByteBuffer? = encoder.getInputBuffer(encInIdx)
+                    val encInBuf: ByteBuffer? = activeEncoder.getInputBuffer(encInIdx)
                     if (encInBuf == null) {
                         val ptsUs = encodedFrames * 1_000_000L / decRate
-                        encoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, 0)
+                        activeEncoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, 0)
                         break
                     }
                     encInBuf.clear()
 
                     if (pcmQueue.isNotEmpty()) {
                         val bytesPerFrame = 2 * decChannels
-                        val capacity = (encInBuf.remaining() / bytesPerFrame) * bytesPerFrame
+                        val rawCapacity = (encInBuf.remaining() / bytesPerFrame) * bytesPerFrame
+                        // Feed at most 1024 samples (1 AAC-LC frame = 4096B stereo / 2048B mono) per input buffer
+                        val capacity = minOf(rawCapacity, 1024 * bytesPerFrame)
                         if (capacity <= 0) {
                             val ptsUs = encodedFrames * 1_000_000L / decRate
-                            encoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, 0)
+                            activeEncoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, 0)
                             break
                         }
                         val ptsUs = encodedFrames * 1_000_000L / decRate
@@ -222,7 +252,8 @@ object AudioTranscoder {
                             }
                         }
                         encodedFrames += (totalPut / bytesPerFrame).toLong()
-                        encoder.queueInputBuffer(encInIdx, 0, totalPut, ptsUs, 0)
+                        activeEncoder.queueInputBuffer(encInIdx, 0, totalPut, ptsUs, 0)
+                        fedBuffersThisTurn++
                         if (totalDurationUs > 0L) {
                             val currentUs = encodedFrames * 1_000_000L / decRate
                             val pct = ((currentUs * 100L) / totalDurationUs).toInt().coerceIn(0, 99)
@@ -233,7 +264,7 @@ object AudioTranscoder {
                         }
                     } else {
                         val ptsUs = encodedFrames * 1_000_000L / decRate
-                        encoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        activeEncoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                         encoderEosSent = true
                         break
                     }
@@ -242,25 +273,25 @@ object AudioTranscoder {
                 // 4. Drain encoder -> muxer
                 while (true) {
                     val timeoutUs = if (!madeProgress) TIMEOUT_US else 0L
-                    val encOutIdx = encoder.dequeueOutputBuffer(encInfo, timeoutUs)
+                    val encOutIdx = activeEncoder.dequeueOutputBuffer(encInfo, timeoutUs)
                     if (encOutIdx == MediaCodec.INFO_TRY_AGAIN_LATER) {
                         break
                     } else if (encOutIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                         madeProgress = true
                         if (!muxerStarted) {
-                            muxerTrackIndex = muxer.addTrack(encoder.outputFormat)
+                            muxerTrackIndex = muxer.addTrack(activeEncoder.outputFormat)
                             muxer.start()
                             muxerStarted = true
                         }
                     } else if (encOutIdx >= 0) {
                         madeProgress = true
-                        val outBuf = encoder.getOutputBuffer(encOutIdx)
+                        val outBuf = activeEncoder.getOutputBuffer(encOutIdx)
                         if (outBuf != null && (encInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0 && encInfo.size > 0 && muxerStarted) {
                             outBuf.position(encInfo.offset)
                             outBuf.limit(encInfo.offset + encInfo.size)
                             muxer.writeSampleData(muxerTrackIndex, outBuf, encInfo)
                         }
-                        encoder.releaseOutputBuffer(encOutIdx, false)
+                        activeEncoder.releaseOutputBuffer(encOutIdx, false)
                         if ((encInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                             encoderDone = true
                             break

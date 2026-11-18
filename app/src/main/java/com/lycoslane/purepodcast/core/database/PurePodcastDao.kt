@@ -219,7 +219,8 @@ interface PurePodcastDao {
     @Query(
         """
         UPDATE episodes
-        SET downloadState = :state, downloadProgress = :progress, localFilePath = :localPath, markedForDeletionAtMs = 0
+        SET downloadState = :state, downloadProgress = :progress, localFilePath = :localPath,
+            markedForDeletionAtMs = 0, isTranscoded = 0
         WHERE id = :episodeId
         """
     )
@@ -338,6 +339,15 @@ interface PurePodcastDao {
         """
     )
     suspend fun getUntranscodedDownloads(): List<EpisodeEntity>
+
+    @Query(
+        """
+        SELECT * FROM episodes
+        WHERE downloadState = 'DOWNLOADED' AND localFilePath IS NOT NULL
+          AND markedForDeletionAtMs = 0
+        """
+    )
+    suspend fun getAllDownloadedEpisodes(): List<EpisodeEntity>
 
     @Query(
         """

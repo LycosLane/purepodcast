@@ -104,33 +104,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setBluetoothNextPrevSeeks(seeks: Boolean) = app.preferences.setBluetoothNextPrevSeeks(seeks)
     fun setTextScale(scale: Float) = app.preferences.setTextScale(scale)
 
-    fun setTranscodeBitrateKbps(kbps: Int) = app.preferences.setTranscodeBitrateKbps(kbps)
-    fun setTranscodeAutoEnabled(enabled: Boolean) = app.preferences.setTranscodeAutoEnabled(enabled)
-    fun setTranscodeChargingOnly(chargingOnly: Boolean) = app.preferences.setTranscodeChargingOnly(chargingOnly)
+    fun setTranscodeBitrateKbps(kbps: Int) {
+        app.preferences.setTranscodeBitrateKbps(kbps)
+        val s = app.preferences.settings.value
+        if (kbps > 0 && s.transcodeAutoEnabled) {
+            com.lycoslane.purepodcast.core.download.TranscodeWorker.enqueueAllNow(app, s.transcodeChargingOnly)
+        }
+    }
+
+    fun setTranscodeAutoEnabled(enabled: Boolean) {
+        app.preferences.setTranscodeAutoEnabled(enabled)
+        val s = app.preferences.settings.value
+        if (enabled && s.transcodeBitrateKbps > 0) {
+            com.lycoslane.purepodcast.core.download.TranscodeWorker.enqueueAllNow(app, s.transcodeChargingOnly)
+        }
+    }
+
+    fun setTranscodeChargingOnly(chargingOnly: Boolean) {
+        app.preferences.setTranscodeChargingOnly(chargingOnly)
+        val s = app.preferences.settings.value
+        if (s.transcodeAutoEnabled && s.transcodeBitrateKbps > 0) {
+            com.lycoslane.purepodcast.core.download.TranscodeWorker.enqueueAllNow(app, chargingOnly)
+        }
+    }
 
     fun transcodeAllNow(onStatus: (String) -> Unit) {
-        val settings = app.preferences.settings.value
-        if (settings.transcodeBitrateKbps <= 0) {
-            onStatus(app.getString(com.lycoslane.purepodcast.R.string.snackbar_compression_select_bitrate))
-            return
-        }
-        viewModelScope.launch {
-            val pending = withContext(Dispatchers.IO) {
-                com.lycoslane.purepodcast.core.database.PurePodcastDatabase.getInstance(app)
-                    .dao()
-                    .getUntranscodedDownloads()
-                    .filter { it.localFilePath?.startsWith("content://") != true }
-            }
-            if (pending.isEmpty()) {
-                onStatus(app.getString(com.lycoslane.purepodcast.R.string.snackbar_compression_nothing_to_do))
-            } else {
-                com.lycoslane.purepodcast.core.download.TranscodeWorker.enqueueAllNow(
-                    context = app,
-                    chargingOnly = settings.transcodeChargingOnly
-                )
-                onStatus(app.getString(com.lycoslane.purepodcast.R.string.snackbar_compression_queued_count, pending.size))
-            }
-        }
+        com.lycoslane.purepodcast.core.download.TranscodeWorker.runAllNowImmediate(
+            context = app,
+            onFinished = onStatus
+        )
     }
 
     fun setLocalFolderUri(uri: String) {
