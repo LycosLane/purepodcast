@@ -41,6 +41,29 @@ object AudioTranscoder {
         }
     }
 
+    /** Reads the audio track duration in milliseconds from a local media file, or 0L if unavailable. */
+    fun readDurationMs(file: File): Long {
+        if (!file.exists() || file.length() <= 0L) return 0L
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(file.absolutePath)
+            for (i in 0 until extractor.trackCount) {
+                val fmt = extractor.getTrackFormat(i)
+                val mime = fmt.getString(MediaFormat.KEY_MIME) ?: continue
+                if (!mime.startsWith("audio/")) continue
+                if (fmt.containsKey(MediaFormat.KEY_DURATION)) {
+                    val durUs = fmt.getLong(MediaFormat.KEY_DURATION)
+                    if (durUs > 0L) return durUs / 1_000L
+                }
+            }
+            0L
+        } catch (_: Exception) {
+            0L
+        } finally {
+            runCatching { extractor.release() }
+        }
+    }
+
     private fun createAacEncoder(sampleRate: Int, channelCount: Int, targetBitrateKbps: Int): MediaCodec {
         val outputFormat = MediaFormat.createAudioFormat(
             MediaFormat.MIMETYPE_AUDIO_AAC,

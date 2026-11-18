@@ -122,9 +122,14 @@ class TranscodeWorker(
                         }
                     }
                 }
-                if (originalSize <= currentLen && ep.durationMs > 0L) {
+                val effectiveDurationMs = if (ep.durationMs > 0L) {
+                    ep.durationMs
+                } else {
+                    AudioTranscoder.readDurationMs(file)
+                }
+                if (originalSize <= currentLen && effectiveDurationMs > 0L) {
                     // Fallback estimate based on standard 128 kbps MP3 source
-                    val est128 = (ep.durationMs * 128_000L) / 8_000L
+                    val est128 = (effectiveDurationMs * 128_000L) / 8_000L
                     if (est128 > currentLen) {
                         originalSize = est128
                     }

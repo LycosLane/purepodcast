@@ -80,4 +80,43 @@ class PurePodcastDaoTest {
         dao.enqueueToQueueFront(ep2)
         assertEquals(listOf(ep2, ep1), dao.getQueueEpisodesOnce().map { it.episode.id })
     }
+
+    @Test
+    fun transcodeMetadataPersistsAndResetsOnRedownload() = runTest {
+        val podcastId = dao.insertPodcast(
+            PodcastEntity(feedUrl = "https://example.com/feed2.xml", title = "Show 2")
+        )
+        val epId = dao.insertEpisodes(
+            listOf(
+                EpisodeEntity(
+                    podcastId = podcastId,
+                    guid = "g-transcode",
+                    title = "Ep Transcode",
+                    audioUrl = "https://example.com/ep.mp3",
+                    pubDateMs = 1_000L,
+                    fileSizeBytes = 50_000_000L,
+                    downloadState = DownloadState.DOWNLOADED,
+                    localFilePath = "/tmp/ep.mp3"
+                )
+            )
+        ).first()
+
+        dao.markEpisodeTranscoded(
+            episodeId = epId,
+            newPath = "/tmp/ep.m4a",
+            newSizeBytes = 25_000_000L,
+            savedBytes = 25_000_000L
+        )
+        val afterTranscode = dao.getEpisode(epId)!!
+        assertTrue(afterTranscode.isTranscoded)
+        assertEquals("/tmp/ep.m4a", afterTranscode.localFilePath)
+        assertEquals(25_000_000L, afterTranscode.fileSizeBytes)
+        assertEquals(25_000_000L, afterTranscode.transcodeSavedBytes)
+
+        // Resetting or re-downloading clears isTranscoded and transcodeSavedBytes
+        dao.updateDownloadState(epId, DownloadState.NONE, 0, null)
+        val afterReset = dao.getEpisode(epId)!!
+        assertEquals(false, afterReset.isTranscoded)
+        assertEquals(0L, afterReset.transcodeSavedBytes)
+    }
 }

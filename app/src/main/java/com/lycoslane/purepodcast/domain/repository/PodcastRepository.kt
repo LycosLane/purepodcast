@@ -291,11 +291,17 @@ class PodcastRepository(
             if (alive) stillActive.add(ep.id) else dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
         }
         val cutoff = System.currentTimeMillis() - 2L * 86_400_000L
+        val transcodeIdle = !com.lycoslane.purepodcast.core.download.TranscodeWorker.status.value.isActive
         File(context.filesDir, "episodes").listFiles()?.forEach { dir ->
             dir.listFiles()?.forEach { f ->
+                val isTranscodeTmp = f.name.endsWith(".m4a.tmp")
                 val isPartial = f.name.endsWith(".tmp") || f.name.endsWith(".etag")
                 val id = f.name.substringBefore('.').toLongOrNull()
-                if (isPartial && id !in stillActive && f.lastModified() < cutoff) f.delete()
+                if (isTranscodeTmp && transcodeIdle) {
+                    f.delete()
+                } else if (isPartial && id !in stillActive && f.lastModified() < cutoff) {
+                    f.delete()
+                }
             }
         }
     }
