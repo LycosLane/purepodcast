@@ -408,6 +408,14 @@ fun SearchScreen(
                         }
 
                         HorizontalDivider()
+                        if (!statusMessage.isNullOrBlank()) {
+                            Text(
+                                text = statusMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            )
+                        }
 
                         HorizontalPager(
                             state = pagerState,

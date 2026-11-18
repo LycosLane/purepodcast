@@ -318,7 +318,7 @@ fun EpisodePreviewSheet(
                             fontWeight = FontWeight.SemiBold
                         )
                         TextButton(
-                            onClick = { dismissAnimated { onPlayInMainPlayer() } },
+                            onClick = { previewPlayer.stop(); isPreviewPlaying = false; dismissAnimated { onPlayInMainPlayer() } },
                             enabled = hasValidMedia
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
