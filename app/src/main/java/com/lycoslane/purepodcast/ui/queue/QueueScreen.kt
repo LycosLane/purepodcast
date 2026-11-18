@@ -257,9 +257,11 @@ fun QueueScreen(
                                 LinearProgressIndicator(
                                     progress = { progressFraction },
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(3.dp)
-                                        .clip(RoundedCornerShape(2.dp))
+                                        .width(120.dp)
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
                             }
                         }
@@ -267,7 +269,7 @@ fun QueueScreen(
                             when (item.episode.downloadState) {
                                 DownloadState.DOWNLOADING -> {
                                     Box(
-                                        modifier = Modifier.size(36.dp),
+                                        modifier = Modifier.size(48.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         CircularProgressIndicator(
@@ -279,7 +281,7 @@ fun QueueScreen(
                                 }
                                 DownloadState.QUEUED -> {
                                     Box(
-                                        modifier = Modifier.size(36.dp),
+                                        modifier = Modifier.size(48.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         CircularProgressIndicator(
@@ -290,7 +292,7 @@ fun QueueScreen(
                                 }
                                 DownloadState.DOWNLOADED -> {
                                     Box(
-                                        modifier = Modifier.size(36.dp),
+                                        modifier = Modifier.size(48.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (item.episode.markedForDeletionAtMs > 0L) {

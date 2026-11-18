@@ -1173,18 +1173,19 @@ private fun HomeEpisodeRow(
             )
             if (ep.positionMs > 0L && !ep.isPlayed && ep.durationMs > 0L) {
                 val progressFraction = (ep.positionMs.toFloat() / ep.durationMs.toFloat()).coerceIn(0.02f, 1f)
-                Spacer(Modifier.height(3.dp))
+                Spacer(Modifier.height(4.dp))
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     androidx.compose.material3.LinearProgressIndicator(
                         progress = { progressFraction },
                         modifier = Modifier
-                            .weight(1f)
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(2.dp))
+                            .width(120.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                     Text(
                         text = stringResource(
@@ -1207,7 +1208,7 @@ private fun HomeEpisodeRow(
         when (ep.downloadState) {
             DownloadState.DOWNLOADING -> {
                 Box(
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(
@@ -1219,7 +1220,7 @@ private fun HomeEpisodeRow(
             }
             DownloadState.QUEUED -> {
                 Box(
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(
@@ -1241,7 +1242,7 @@ private fun HomeEpisodeRow(
             }
             DownloadState.DOWNLOADED -> {
                 Box(
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(

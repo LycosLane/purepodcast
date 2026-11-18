@@ -1089,8 +1089,8 @@ private fun EpisodeSwipeRow(
                     androidx.compose.material3.LinearProgressIndicator(
                         progress = { progressFraction },
                         modifier = Modifier
-                            .fillMaxWidth(0.75f)
-                            .height(3.dp)
+                            .width(120.dp)
+                            .height(4.dp)
                             .clip(RoundedCornerShape(2.dp)),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
