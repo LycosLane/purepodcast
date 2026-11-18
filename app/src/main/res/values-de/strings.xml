@@ -30,7 +30,7 @@
     <string name="settings_section_playback">Wiedergabe &amp; Warteschlange</string>
     <string name="settings_section_updates">Updates &amp; Backup</string>
     <string name="settings_smart_rewind">Smart Rewind beim Fortsetzen</string>
-    <string name="settings_smart_rewind_sub">Spult nach Pausen oder Neustart kurz zurück</string>
+    <string name="settings_smart_rewind_sub">Spult nach einer Pause kurz zurück</string>
     <string name="seconds_short">%1$ds</string>
     <string name="settings_backup_title">Backup &amp; Wiederherstellen</string>
     <string name="settings_backup_sub">Sichert Abos, Hörpositionen, Status &amp; Einstellungen</string>
@@ -232,4 +232,5 @@
     <string name="episode_remaining">Noch %1$s</string>
     <string name="notif_download_channel">Downloads</string>
     <string name="notif_downloading">Lade Episode herunter…</string>
+    <string name="error_generic_network">Netzwerk- oder Serverfehler</string>
 </resources>

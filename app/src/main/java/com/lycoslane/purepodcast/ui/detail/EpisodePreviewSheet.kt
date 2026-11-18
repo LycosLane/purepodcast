@@ -1,5 +1,6 @@
 package com.lycoslane.purepodcast.ui.detail
 
+import androidx.compose.foundation.layout.heightIn
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -119,8 +120,8 @@ fun EpisodePreviewSheet(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var showCoverLightbox by remember { mutableStateOf(false) }
-    var showReaderDialog by remember { mutableStateOf(false) }
+    var showCoverLightbox by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showReaderDialog by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     val artworkUrl = episode.artworkUrl.ifEmpty { podcast.artworkUrl }
     val pubDateText = remember(episode.pubDateMs) { formatPubDate(episode.pubDateMs) }
@@ -375,7 +376,7 @@ fun EpisodePreviewSheet(
                         FilledIconButton(
                             onClick = { togglePreviewPlay() },
                             enabled = hasValidMedia,
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 imageVector = if (isPreviewPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -509,6 +510,7 @@ fun EpisodePreviewSheet(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .clickable(enabled = hasValidMedia) {
                                 seekPreviewTo(ch.startMs)

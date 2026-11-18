@@ -180,12 +180,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun toggleHidden(ep: com.lycoslane.purepodcast.core.database.EpisodeEntity) {
-        viewModelScope.launch {
-            app.repository.toggleHidden(ep.id, !ep.isHidden, app.playerController.state.value.currentEpisode?.id)
-        }
-    }
-
     fun setHidden(episodeId: Long, hidden: Boolean, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             app.repository.toggleHidden(episodeId, hidden, app.playerController.state.value.currentEpisode?.id)
@@ -227,7 +221,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }.onSuccess {
                 _backupStatus.value = app.getString(R.string.backup_exported)
             }.onFailure { err ->
-                _backupStatus.value = app.getString(R.string.backup_failed, err.javaClass.simpleName)
+                _backupStatus.value = app.getString(R.string.backup_failed, app.getString(R.string.error_generic_network))
             }
         }
     }
@@ -257,7 +251,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }.onSuccess { count ->
                 _backupStatus.value = app.getString(R.string.backup_imported, count)
             }.onFailure { err ->
-                _backupStatus.value = app.getString(R.string.backup_failed, err.javaClass.simpleName)
+                _backupStatus.value = app.getString(R.string.backup_failed, app.getString(R.string.error_generic_network))
             }
         }
     }

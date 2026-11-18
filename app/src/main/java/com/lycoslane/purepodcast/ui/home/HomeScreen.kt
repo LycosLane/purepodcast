@@ -1,5 +1,6 @@
 package com.lycoslane.purepodcast.ui.home
 
+import androidx.compose.material.icons.filled.ErrorOutline
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -161,10 +162,10 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     var showSettings by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    var showLocalGuideDialog by remember { mutableStateOf(false) }
+    var showLocalGuideDialog by rememberSaveable { mutableStateOf(false) }
     var showEpisodesView by rememberSaveable { mutableStateOf(false) }
     var activeEpisodeFilter by rememberSaveable { mutableStateOf(HomeEpisodeFilter.ALL) }
-    var previewEpisodeId by remember { mutableStateOf<Long?>(null) }
+    var previewEpisodeId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -1121,6 +1122,17 @@ private fun HomeEpisodeRow(
                     )
                 }
             }
+            DownloadState.FAILED -> {
+                if (!pod.isLocal) {
+                    IconButton(onClick = onDownload) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = stringResource(R.string.cd_download),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
             DownloadState.DOWNLOADED -> {
                 Box(
                     modifier = Modifier.size(40.dp),
@@ -1128,7 +1140,7 @@ private fun HomeEpisodeRow(
                 ) {
                     Icon(
                         imageVector = Icons.Default.DownloadDone,
-                        contentDescription = null,
+                        contentDescription = stringResource(R.string.cd_downloaded),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )

@@ -4,7 +4,7 @@
 
 # PurePodcast
 
-> Pure, fast, ad-free & open-source Android podcast player.  
+> Pure, fast, ad-free & open-source Android podcast player.
 > Built natively with Kotlin, Jetpack Compose, Room, WorkManager, and AndroidX Media3 (ExoPlayer) — zero ads, zero tracking, zero bloatware.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -14,18 +14,17 @@
 
 ---
 
-## Why I Built This
+## Features
 
-Traditional podcast apps like Podcast Addict have become bloated with ads, tracking, and deeply nested menus.  
-**PurePodcast** focuses purely on listening to free, open RSS podcasts:
-
-* **Thumbnail Overview:** Switch between your subscribed podcasts in one tap.
-* **Direct Gestures (No 15 Submenus):**
+* **Thumbnail Overview & Unified Episodes View:** Switch between your subscribed podcasts and a unified episode feed with filters (Recent, In Progress, Downloaded, Favorites).
+* **Local Folder Support:** Point PurePodcast at any local folder (SAF) to play offline audio files alongside online podcasts.
+* **Direct Gestures:**
   * **Swipe right:** Add episode to queue.
-  * **Swipe left:** Delete download or mark as played.
-  * **Long-press:** Instant bottom sheet with *Download newer from here*, *Delete & mark all older as played*, *Show Notes*, and more.
-* **Battery-Friendly & Offline-First:** Uses native `WorkManager` for scheduled feed refreshes and offline downloads, and `Media3 MediaSessionService` for background playback, lockscreen controls, **Silence-Skipping**, **variable speed**, and **Sleep Timer**.
-* **Easy Discovery & Migration:** Search via iTunes Search API, paste any RSS URL, or import an **OPML** export directly from Podcast Addict.
+  * **Swipe left:** Hide / unhide episode (or delete permanently in Trash).
+  * **Double-tap:** Toggle played status.
+  * **Long-press:** Action sheet (*Download newer from here*, *Delete & mark older as played*, *Show Notes*, *Favorite*, *Hide*).
+* **Battery-Friendly & Offline-First:** Native `WorkManager` for conditional feed refreshes, resumable offline downloads, and optional AAC audio compression; `Media3 MediaSessionService` with **Silence-Skipping**, **variable speed**, **Chapters**, **Audio Normalization**, **Smart Rewind**, and **Sleep Timer**.
+* **Easy Discovery & Backup:** Search via iTunes Search API with in-app feed preview, paste any RSS URL, import **OPML**, and export/import full JSON backups.
 
 ---
 
@@ -34,16 +33,21 @@ Traditional podcast apps like Podcast Addict have become bloated with ads, track
 ```text
 app/src/main/java/com/lycoslane/purepodcast/
 ├── core/
-│   ├── audio/      # Media3 ExoPlayer + MediaSessionService + PlayerController
-│   ├── database/   # Room entities, DAO, batch cleanup & queue queries
-│   ├── download/   # WorkManager workers for offline MP3 downloads & feed refresh
-│   └── network/    # Native HttpURLConnection + XmlPullParser (RSS/OPML) + iTunes Search
+│   ├── audio/       # Media3 ExoPlayer + MediaSessionService + PlayerController + AudioTranscoder
+│   ├── database/    # Room entities, migrations, DAO, batch cleanup & queue queries
+│   ├── download/    # WorkManager workers (resumable downloads, feed refresh, audio compression)
+│   ├── local/       # SAF local folder scanner & embedded cover extractor
+│   ├── network/     # SSRF-hardened HttpURLConnection, XmlPullParser (RSS/OPML/Chapters), Media3 DataSource
+│   └── preferences/ # SharedPreferences-backed AppSettings StateFlow
 ├── domain/
-│   └── repository/ # PodcastRepository facade
+│   └── repository/  # PodcastRepository facade
 └── ui/
-    ├── home/       # Thumbnail grid overview
-    ├── detail/     # Episode list, swipe gestures, long-press sheet, show notes
-    ├── search/     # Podcast search, RSS URL & OPML import
-    ├── queue/      # Playback queue
-    └── player/     # Persistent mini-player & expandable full player
+    ├── common/      # Shared image cache, formatters, zoomable reader & lightbox
+    ├── home/        # Podcast grid, unified episode view & settings sheet
+    ├── detail/      # Episode list, swipe gestures, preview sheet & trash
+    ├── search/      # Podcast search, pager preview, RSS URL & OPML import
+    ├── queue/       # Playback queue
+    ├── player/      # Persistent mini-player & expandable full player
+    ├── theme/       # Material 3 theming
+    └── viewmodel/   # MainViewModel, SearchViewModel, PodcastDetailViewModel
 ```

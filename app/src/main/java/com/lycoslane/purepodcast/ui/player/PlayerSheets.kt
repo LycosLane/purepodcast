@@ -1,5 +1,6 @@
 package com.lycoslane.purepodcast.ui.player
 
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -175,13 +176,13 @@ fun FullPlayerSheet(
 
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    var showNotes by remember { mutableStateOf(false) }
-    var showChapters by remember { mutableStateOf(false) }
-    var showSpeedRow by remember { mutableStateOf(false) }
-    var showSleepRow by remember { mutableStateOf(false) }
-    var showSilenceIntensityRow by remember { mutableStateOf(false) }
-    var showCoverLightbox by remember { mutableStateOf(false) }
-    var showReaderDialog by remember { mutableStateOf(false) }
+    var showNotes by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showChapters by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showSpeedRow by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showSleepRow by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showSilenceIntensityRow by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showCoverLightbox by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showReaderDialog by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var scrubPos by remember(ep.id) { mutableStateOf<Float?>(null) }
 
     fun expandSheet() {
@@ -366,7 +367,7 @@ fun FullPlayerSheet(
                         },
                         border = if (silenceSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         modifier = Modifier
-                            .height(32.dp)
+                            .defaultMinSize(minHeight = 40.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .combinedClickable(
                                 onClick = onToggleSkipSilence,

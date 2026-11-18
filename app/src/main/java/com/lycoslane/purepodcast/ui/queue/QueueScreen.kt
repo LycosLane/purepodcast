@@ -170,7 +170,7 @@ fun QueueScreen(
                     ) {
                         PodcastImage(
                             url = item.episode.artworkUrl.ifEmpty { item.podcast.artworkUrl },
-                            contentDescription = null,
+                            contentDescription = item.podcast.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .size(48.dp)

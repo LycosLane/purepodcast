@@ -232,4 +232,5 @@
     <string name="episode_remaining">%1$s left</string>
     <string name="notif_download_channel">Downloads</string>
     <string name="notif_downloading">Downloading episode…</string>
+    <string name="error_generic_network">Network or server error</string>
 </resources>

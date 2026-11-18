@@ -143,15 +143,15 @@ fun PodcastDetailScreen(
     var expandDescription by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showEpisodeSearch by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var episodeSearchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
-    var showUnsubscribeDialog by remember { mutableStateOf(false) }
-    var showEmptyTrashDialog by remember { mutableStateOf(false) }
-    var deleteActiveTarget by remember { mutableStateOf<EpisodeEntity?>(null) }
-    var deletePermanentlyTarget by remember { mutableStateOf<EpisodeEntity?>(null) }
+    var showUnsubscribeDialog by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showEmptyTrashDialog by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var deleteActiveEpisodeId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
+    var deletePermanentlyEpisodeId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
     var activeFilter by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(EpisodeFilter.ALL) }
 
     fun requestDeleteDownload(ep: EpisodeEntity) {
         if (ep.id == activeEpisodeId) {
-            deleteActiveTarget = ep
+            deleteActiveEpisodeId = ep.id
         } else {
             onDeleteDownload(ep)
         }
@@ -258,7 +258,7 @@ fun PodcastDetailScreen(
             }
 
             val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-            var lastHiddenEpisodeId by remember { mutableStateOf<Long?>(null) }
+            var lastHiddenEpisodeId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
             var sawHiddenRemoved by remember { mutableStateOf(false) }
 
             androidx.compose.runtime.LaunchedEffect(filteredEpisodes, lastHiddenEpisodeId) {
@@ -463,7 +463,7 @@ fun PodcastDetailScreen(
                     onSwipeRightQueue = { onAddToQueue(episode) },
                     onSwipeLeftAction = {
                         if (isTrashFilter) {
-                            deletePermanentlyTarget = episode
+                            deletePermanentlyEpisodeId = ep.idisode
                         } else {
                             if (!episode.isHidden) {
                                 lastHiddenEpisodeId = episode.id
@@ -542,7 +542,7 @@ fun PodcastDetailScreen(
                         headlineContent = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_delete_now)) },
                         leadingContent = { Icon(Icons.Default.DeleteForever, null) },
                         modifier = Modifier.clickable(onClick = {
-                            deletePermanentlyTarget = ep
+                            deletePermanentlyEpisodeId = ep.id
                             selectedEpisodeForMenuId = null
                         })
                     )
@@ -754,9 +754,10 @@ fun PodcastDetailScreen(
         )
     }
 
+    val deletePermanentlyTarget = deletePermanentlyEpisodeId?.let { id -> episodes.firstOrNull { it.id == id } }
     deletePermanentlyTarget?.let { target ->
         AlertDialog(
-            onDismissRequest = { deletePermanentlyTarget = null },
+            onDismissRequest = { deletePermanentlyEpisodeId = null },
             title = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_delete_now)) },
             text = { Text(target.title) },
             confirmButton = {
@@ -771,7 +772,7 @@ fun PodcastDetailScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deletePermanentlyTarget = null }) {
+                TextButton(onClick = { deletePermanentlyEpisodeId = null }) {
                     Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cancel))
                 }
             }
@@ -804,9 +805,10 @@ fun PodcastDetailScreen(
         }
     }
 
+    val deleteActiveTarget = deleteActiveEpisodeId?.let { id -> episodes.firstOrNull { it.id == id } }
     deleteActiveTarget?.let { target ->
         AlertDialog(
-            onDismissRequest = { deleteActiveTarget = null },
+            onDismissRequest = { deleteActiveEpisodeId = null },
             title = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_delete_active_title)) },
             text = { Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.dialog_delete_active_body)) },
             confirmButton = {
@@ -821,7 +823,7 @@ fun PodcastDetailScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteActiveTarget = null }) {
+                TextButton(onClick = { deleteActiveEpisodeId = null }) {
                     Text(androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_cancel))
                 }
             }
@@ -875,7 +877,7 @@ private fun EpisodeSwipeRow(
             }
             val bgColor = when (dir) {
                 SwipeToDismissBoxValue.StartToEnd -> Color(0xFF2E7D32)
-                SwipeToDismissBoxValue.EndToStart -> if (isTrashMode) MaterialTheme.colorScheme.error else Color(0xFFE65100)
+                SwipeToDismissBoxValue.EndToStart -> if (isTrashMode) MaterialTheme.colorScheme.error else Color(0xFFBF360C)
                 else -> MaterialTheme.colorScheme.surfaceVariant
             }
             val icon = when (dir) {

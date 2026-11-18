@@ -140,14 +140,16 @@ fun SearchScreen(
     val previewCache = remember { mutableStateMapOf<String, ParsedPodcastFeed>() }
 
     val listState = rememberLazyListState()
-    var showSearchControls by remember { mutableStateOf(true) }
+    var showSearchControls by rememberSaveable { mutableStateOf(true) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     var textFieldValue by remember {
         mutableStateOf(TextFieldValue(text = query, selection = TextRange(query.length)))
     }
-    if (textFieldValue.text != query) {
-        textFieldValue = textFieldValue.copy(text = query, selection = TextRange(query.length))
+    LaunchedEffect(query) {
+        if (textFieldValue.text != query) {
+            textFieldValue = textFieldValue.copy(text = query, selection = TextRange(query.length))
+        }
     }
 
     LaunchedEffect(focusSearchTrigger) {
@@ -617,6 +619,7 @@ fun SearchScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .navigationBarsPadding()
                                     .padding(horizontal = 20.dp, vertical = 12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
