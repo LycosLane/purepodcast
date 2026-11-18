@@ -233,4 +233,6 @@
     <string name="notif_download_channel">Downloads</string>
     <string name="notif_downloading">Lade Episode herunter…</string>
     <string name="error_generic_network">Netzwerk- oder Serverfehler</string>
+    <string name="state_on">Ein</string>
+    <string name="state_off">Aus</string>
 </resources>
