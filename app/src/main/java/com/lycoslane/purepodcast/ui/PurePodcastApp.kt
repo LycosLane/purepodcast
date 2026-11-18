@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Podcasts
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -171,7 +171,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                                     }
                                 }
                             ) {
-                                Icon(Icons.Default.QueueMusic, null)
+                                Icon(Icons.AutoMirrored.Filled.QueueMusic, null)
                             }
                         },
                         label = { Text(stringResource(R.string.nav_queue)) }
@@ -387,7 +387,6 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                 QueueScreen(
                     queue = queue,
                     currentEpisode = activeEpisode,
-                    currentPodcast = playerState.currentPodcast,
                     isPlaying = playerState.isPlaying,
                     scrollToggleTrigger = queueScrollTrigger,
                     onScrollToggleConsumed = { queueScrollTrigger = 0 },
@@ -437,7 +436,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     },
                     onOpenPreviewPodcast = { feed ->
                         searchViewModel.openPreviewPodcast(feed) { podcastId ->
-                            navController.navigate("detail/$podcastId") { launchSingleTop = true }
+                            openDetail(podcastId, "search")
                         }
                     },
                     onImportOpmlUri = searchViewModel::importOpmlUri

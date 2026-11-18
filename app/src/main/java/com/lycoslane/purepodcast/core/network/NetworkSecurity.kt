@@ -29,8 +29,8 @@ object NetworkSecurity {
         if (uri.userInfo != null) return false // no credentials-in-URL / host confusion tricks
         val host = uri.host?.lowercase()?.trim() ?: return false
         if (host.isEmpty()) return false
-        val bare = host.removePrefix("[").removeSuffix("]")
-        if (bare == "localhost" || bare.endsWith(".localhost") || bare.endsWith(".local") ||
+        val bare = host.removePrefix("[").removeSuffix("]").trimEnd('.')
+        if (bare.isEmpty() || bare == "localhost" || bare.endsWith(".localhost") || bare.endsWith(".local") ||
             bare.endsWith(".internal")
         ) return false
         // Literal IPs (v4 or v6) are checked directly; names are checked on connect via DNS.
@@ -64,7 +64,38 @@ object NetworkSecurity {
             val b1 = b[1].toInt() and 0xFF
             if ((b0 and 0xFE) == 0xFC) return false // fc00::/7 unique local
             if (b0 == 0xFE && (b1 and 0xC0) == 0xC0) return false // fec0::/10 deprecated site-local
-            if (b0 == 0x20 && b1 == 0x01 && b[2].toInt() == 0x0D && (b[3].toInt() and 0xFF) == 0xB8) return false // documentation
+            if (b0 == 0x01 && b1 == 0x00 && (2..7).all { b[it].toInt() == 0 }) return false // 100::/64 discard-only
+            if (b0 == 0x20 && b1 == 0x01) {
+                val b2 = b[2].toInt() and 0xFF
+                val b3 = b[3].toInt() and 0xFF
+                if (b2 == 0x0D && b3 == 0xB8) return false // 2001:db8::/32 documentation
+                if (b2 == 0x00 && b3 == 0x00) {
+                    // Teredo 2001:0000::/32 embeds obfuscated client IPv4 in last 4 bytes (~bytes)
+                    val embedded = byteArrayOf(
+                        (b[12].toInt() xor 0xFF).toByte(),
+                        (b[13].toInt() xor 0xFF).toByte(),
+                        (b[14].toInt() xor 0xFF).toByte(),
+                        (b[15].toInt() xor 0xFF).toByte()
+                    )
+                    return runCatching { isPublicAddress(InetAddress.getByAddress(embedded)) }.getOrDefault(false)
+                }
+            }
+            // 6to4 2002::/16 embeds IPv4 in bytes 2..5
+            if (b0 == 0x20 && b1 == 0x02) {
+                return runCatching {
+                    isPublicAddress(InetAddress.getByAddress(byteArrayOf(b[2], b[3], b[4], b[5])))
+                }.getOrDefault(false)
+            }
+            // IPv4-compatible / IPv4-mapped ::/96 or ::ffff:0:0/96
+            if ((0..9).all { b[it].toInt() == 0 }) {
+                val b10 = b[10].toInt() and 0xFF
+                val b11 = b[11].toInt() and 0xFF
+                if ((b10 == 0 && b11 == 0) || (b10 == 0xFF && b11 == 0xFF)) {
+                    return runCatching {
+                        isPublicAddress(InetAddress.getByAddress(byteArrayOf(b[12], b[13], b[14], b[15])))
+                    }.getOrDefault(false)
+                }
+            }
             // NAT64 64:ff9b::/96 embeds an IPv4 address: validate that one.
             val nat64 = b0 == 0x00 && b1 == 0x64 && (b[2].toInt() and 0xFF) == 0xFF && (b[3].toInt() and 0xFF) == 0x9B &&
                 (4..11).all { b[it].toInt() == 0 }
@@ -78,7 +109,7 @@ object NetworkSecurity {
     }
 
     private fun requirePublicHost(rawUrl: String) {
-        val host = runCatching { URI(rawUrl).host }.getOrNull()?.removePrefix("[")?.removeSuffix("]")
+        val host = runCatching { URI(rawUrl).host }.getOrNull()?.removePrefix("[")?.removeSuffix("]")?.trimEnd('.')
             ?: throw IOException("Invalid URL host")
         val addrs = runCatching { InetAddress.getAllByName(host) }.getOrNull()
             ?: throw IOException("Host could not be resolved")
@@ -111,6 +142,11 @@ object NetworkSecurity {
             headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
 
             val code = conn.responseCode
+            // Re-verify DNS after connect to guard against TTL=0 DNS rebinding between pre-check and socket connect
+            runCatching { requirePublicHost(currentUrl) }.onFailure { e ->
+                conn.disconnect()
+                throw (e as? IOException ?: IOException("Blocked non-public address", e))
+            }
             if (code in listOf(301, 302, 303, 307, 308)) {
                 val location = conn.getHeaderField("Location")
                 conn.disconnect()
@@ -134,24 +170,6 @@ object NetworkSecurity {
             return conn
         }
         throw IOException("Too many redirects")
-    }
-
-    /**
-     * Follows redirects through [openValidatedConnection] (each hop validated) and returns the final
-     * URL, so a media player can then fetch it without being redirected to an internal address.
-     */
-    fun resolveFinalUrl(rawUrl: String): String {
-        val conn = openValidatedConnection(
-            rawUrl = rawUrl,
-            connectTimeoutMs = 10_000,
-            readTimeoutMs = 10_000,
-            headers = mapOf("Range" to "bytes=0-0")
-        )
-        return try {
-            conn.url?.toString()?.takeIf { isValidHttpUrl(it) } ?: rawUrl
-        } finally {
-            conn.disconnect()
-        }
     }
 
     fun newSafeXmlPullParser(): XmlPullParser {

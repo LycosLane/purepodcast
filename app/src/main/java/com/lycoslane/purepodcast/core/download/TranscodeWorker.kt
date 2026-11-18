@@ -67,6 +67,7 @@ class TranscodeWorker(
         private const val UNIQUE_BATCH_WORK = "transcode_all_downloads"
         private const val NOTIFICATION_ID = 4102
         private val transcodeMutex = Mutex()
+        private val cancelledEpisodeIds = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
 
         private val _status = MutableStateFlow(TranscodeStatus())
         val status: StateFlow<TranscodeStatus> = _status.asStateFlow()
@@ -82,7 +83,22 @@ class TranscodeWorker(
             }.getOrDefault(false)
         }
 
-        suspend fun backfillLegacySavedBytes(dao: com.lycoslane.purepodcast.core.database.PurePodcastDao) {
+        private fun canUseNetworkForProbe(context: Context, wifiOnly: Boolean): Boolean {
+            if (!wifiOnly) return true
+            return runCatching {
+                val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                    ?: return@runCatching false
+                val net = cm.activeNetwork ?: return@runCatching false
+                val caps = cm.getNetworkCapabilities(net) ?: return@runCatching false
+                caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+            }.getOrDefault(false)
+        }
+
+        suspend fun backfillLegacySavedBytes(
+            context: Context,
+            dao: com.lycoslane.purepodcast.core.database.PurePodcastDao,
+            wifiOnly: Boolean
+        ) {
             val legacyCompressed = runCatching { dao.getAllDownloadedEpisodes() }
                 .getOrDefault(emptyList())
                 .filter { ep ->
@@ -90,13 +106,14 @@ class TranscodeWorker(
                         ep.transcodeSavedBytes <= 0L &&
                         ep.localFilePath?.endsWith(".m4a", ignoreCase = true) == true
                 }
+            val allowNetworkProbe = canUseNetworkForProbe(context, wifiOnly)
             for (ep in legacyCompressed) {
                 val path = ep.localFilePath ?: continue
                 val file = File(path)
                 val currentLen = if (file.exists() && file.length() > 0L) file.length() else ep.fileSizeBytes
                 if (currentLen <= 0L) continue
                 var originalSize = 0L
-                if (ep.audioUrl.startsWith("http", ignoreCase = true)) {
+                if (allowNetworkProbe && ep.audioUrl.startsWith("http", ignoreCase = true)) {
                     runCatching {
                         val conn = com.lycoslane.purepodcast.core.network.NetworkSecurity.openValidatedConnection(
                             rawUrl = ep.audioUrl,
@@ -171,7 +188,7 @@ class TranscodeWorker(
                     }
 
                     val dao = PurePodcastDatabase.getInstance(app).dao()
-                    backfillLegacySavedBytes(dao)
+                    backfillLegacySavedBytes(app, dao, settings.wifiOnlyDownloads)
 
                     val candidates = when {
                         singleEpisodeId > 0L -> listOfNotNull(dao.getEpisode(singleEpisodeId))
@@ -233,6 +250,7 @@ class TranscodeWorker(
 
                     for (ep in targets) {
                         if (shouldStop()) break
+                        cancelledEpisodeIds.remove(ep.id)
                         processed++
                         _status.value = TranscodeStatus(
                             isActive = true,
@@ -281,7 +299,7 @@ class TranscodeWorker(
                             sourceFile = sourceFile,
                             tempOutputFile = tempFile,
                             targetBitrateKbps = bitrateKbps,
-                            shouldCancel = shouldStop,
+                            shouldCancel = { shouldStop() || ep.id in cancelledEpisodeIds },
                             onProgress = { pct ->
                                 _status.value = TranscodeStatus(
                                     isActive = true,
@@ -298,6 +316,7 @@ class TranscodeWorker(
                             val fresh = dao.getEpisode(ep.id)
                             val playingNow = app.playerController.state.value.currentEpisode?.id == ep.id
                             if (playingNow || fresh == null ||
+                                ep.id in cancelledEpisodeIds ||
                                 fresh.downloadState != DownloadState.DOWNLOADED ||
                                 fresh.markedForDeletionAtMs > 0L ||
                                 fresh.localFilePath != path
@@ -363,10 +382,12 @@ class TranscodeWorker(
         }
 
         fun cancelForEpisode(context: Context, episodeId: Long) {
+            cancelledEpisodeIds.add(episodeId)
             WorkManager.getInstance(context).cancelUniqueWork("transcode_ep_$episodeId")
         }
 
         fun enqueueSingle(context: Context, episodeId: Long, chargingOnly: Boolean) {
+            cancelledEpisodeIds.remove(episodeId)
             val app = context.applicationContext as? PurePodcastApplication
             if (app != null && (!chargingOnly || isDeviceCharging(app))) {
                 app.appScope.launch {

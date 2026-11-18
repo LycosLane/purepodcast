@@ -313,12 +313,24 @@ fun HomeScreen(
                         ) {
                             FilterChip(
                                 selected = settings.showSubscribedPodcasts,
-                                onClick = { onToggleShowSubscribed(!settings.showSubscribedPodcasts) },
+                                onClick = {
+                                    val next = !settings.showSubscribedPodcasts
+                                    onToggleShowSubscribed(next)
+                                    if (!next && !settings.showLocalPodcasts) {
+                                        onToggleShowLocal(true)
+                                    }
+                                },
                                 label = { Text(stringResource(R.string.filter_source_subscribed)) }
                             )
                             FilterChip(
                                 selected = settings.showLocalPodcasts,
-                                onClick = { onToggleShowLocal(!settings.showLocalPodcasts) },
+                                onClick = {
+                                    val next = !settings.showLocalPodcasts
+                                    onToggleShowLocal(next)
+                                    if (!next && !settings.showSubscribedPodcasts) {
+                                        onToggleShowSubscribed(true)
+                                    }
+                                },
                                 label = { Text(stringResource(R.string.filter_source_local)) }
                             )
                         }
@@ -1048,7 +1060,7 @@ fun HomeScreen(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(340.dp),
+                            .heightIn(max = 340.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(compressedList, key = { it.episode.id }) { item ->

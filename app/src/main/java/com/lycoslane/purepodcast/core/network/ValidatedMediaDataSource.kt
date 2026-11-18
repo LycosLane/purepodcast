@@ -152,9 +152,14 @@ object ValidatedMediaDataSource {
  * and bounds decoded bitmap size to 512x512.
  */
 @UnstableApi
-class ValidatedBitmapLoader(private val context: Context) : BitmapLoader {
+class ValidatedBitmapLoader(context: Context) : BitmapLoader {
 
+    private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    fun close() {
+        scope.cancel()
+    }
 
     override fun supportsMimeType(mimeType: String): Boolean =
         mimeType.startsWith("image/")
@@ -182,22 +187,40 @@ class ValidatedBitmapLoader(private val context: Context) : BitmapLoader {
         scope.launch {
             try {
                 val scheme = uri.scheme?.lowercase()
-                val bytes = if (scheme == "http" || scheme == "https") {
-                    val conn = NetworkSecurity.openValidatedConnection(
-                        rawUrl = uri.toString(),
-                        connectTimeoutMs = 10_000,
-                        readTimeoutMs = 15_000
-                    )
-                    try {
-                        if (conn.responseCode !in 200..299) throw IOException("HTTP ${conn.responseCode}")
-                        BoundedInputStream(conn.inputStream, 10L * 1024 * 1024).use { it.readBytes() }
-                    } finally {
-                        conn.disconnect()
+                val bytes = when (scheme) {
+                    "http", "https" -> {
+                        val conn = NetworkSecurity.openValidatedConnection(
+                            rawUrl = uri.toString(),
+                            connectTimeoutMs = 10_000,
+                            readTimeoutMs = 15_000
+                        )
+                        try {
+                            if (conn.responseCode !in 200..299) throw IOException("HTTP ${conn.responseCode}")
+                            BoundedInputStream(conn.inputStream, 10L * 1024 * 1024).use { it.readBytes() }
+                        } finally {
+                            conn.disconnect()
+                        }
                     }
-                } else {
-                    context.contentResolver.openInputStream(uri)?.use {
-                        BoundedInputStream(it, 10L * 1024 * 1024).readBytes()
-                    } ?: throw IOException("Cannot open $uri")
+                    "content" -> {
+                        appContext.contentResolver.openInputStream(uri)?.use {
+                            BoundedInputStream(it, 10L * 1024 * 1024).readBytes()
+                        } ?: throw IOException("Cannot open $uri")
+                    }
+                    "file" -> {
+                        val path = uri.path ?: throw IOException("Missing file path")
+                        val file = java.io.File(path).canonicalFile
+                        val allowedCovers = java.io.File(appContext.filesDir, "local_covers").canonicalFile
+                        val allowedCache = appContext.cacheDir.canonicalFile
+                        val inCovers = file.path.startsWith(allowedCovers.path + java.io.File.separator)
+                        val inCache = file.path.startsWith(allowedCache.path + java.io.File.separator)
+                        if ((!inCovers && !inCache) || !file.isFile) {
+                            throw IOException("Disallowed local artwork path")
+                        }
+                        file.inputStream().use {
+                            BoundedInputStream(it, 10L * 1024 * 1024).readBytes()
+                        }
+                    }
+                    else -> throw IOException("Unsupported artwork URI scheme: $scheme")
                 }
                 val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)

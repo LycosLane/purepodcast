@@ -28,7 +28,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.RestoreFromTrash
@@ -412,7 +412,7 @@ fun EpisodePreviewSheet(
                     onClick = { dismissAnimated { onAddToQueueFront() } },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.PlaylistPlay, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(stringResource(R.string.preview_queue_next), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

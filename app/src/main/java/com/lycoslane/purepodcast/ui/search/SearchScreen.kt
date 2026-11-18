@@ -644,7 +644,7 @@ fun SearchScreen(
                                         },
                                         modifier = Modifier.height(52.dp)
                                     ) {
-                                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(6.dp))
                                         Text(stringResource(R.string.action_open_podcast))
                                     }
@@ -730,7 +730,7 @@ fun SearchScreen(
                                 },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.PlaylistPlay, null, modifier = Modifier.size(18.dp))
+                                Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text(stringResource(R.string.preview_queue_next), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
@@ -770,7 +770,7 @@ fun SearchScreen(
                                 },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.OpenInNew, null, modifier = Modifier.size(18.dp))
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text(stringResource(R.string.action_open_podcast), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }

@@ -138,11 +138,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setLocalFolderUri(uri: String) {
         val old = app.preferences.settings.value.localFolderUri
         if (old.isNotBlank() && old != uri) {
+            val oldUri = android.net.Uri.parse(old)
             runCatching {
                 app.contentResolver.releasePersistableUriPermission(
-                    android.net.Uri.parse(old),
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    oldUri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            runCatching {
+                app.contentResolver.releasePersistableUriPermission(
+                    oldUri,
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
             }
         }

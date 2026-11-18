@@ -26,7 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
@@ -190,14 +190,6 @@ fun FullPlayerSheet(
     var showCoverLightbox by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showReaderDialog by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var scrubPos by remember(ep.id) { mutableStateOf<Float?>(null) }
-    var pendingSeekPos by remember(ep.id) { mutableStateOf<Float?>(null) }
-
-    androidx.compose.runtime.LaunchedEffect(pendingSeekPos) {
-        if (pendingSeekPos != null) {
-            kotlinx.coroutines.delay(450L)
-            pendingSeekPos = null
-        }
-    }
 
     fun expandSheet() {
         scope.launch { runCatching { sheetState.expand() } }
@@ -355,6 +347,11 @@ fun FullPlayerSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                val currentSpeedLabel = if (kotlin.math.abs(state.playbackSpeed - 0.75f) < 0.01f) {
+                    String.format(Locale.getDefault(), "%.2fx", state.playbackSpeed)
+                } else {
+                    String.format(Locale.getDefault(), "%.1fx", state.playbackSpeed)
+                }
                 FilterChip(
                     selected = showSpeedRow,
                     onClick = {
@@ -363,7 +360,7 @@ fun FullPlayerSheet(
                         showSilenceIntensityRow = false
                         if (showSpeedRow) expandSheet()
                     },
-                    label = { Text(String.format(Locale.getDefault(), "%.1fx", state.playbackSpeed)) },
+                    label = { Text(currentSpeedLabel) },
                     leadingIcon = { Icon(Icons.Default.Speed, null, modifier = Modifier.size(16.dp)) }
                 )
 
@@ -471,7 +468,7 @@ fun FullPlayerSheet(
                             }
                         },
                         label = { Text(stringResource(R.string.player_chapters_count, chapters.size)) },
-                        leadingIcon = { Icon(Icons.Default.FormatListBulleted, null, modifier = Modifier.size(16.dp)) }
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.FormatListBulleted, null, modifier = Modifier.size(16.dp)) }
                     )
                 }
             }

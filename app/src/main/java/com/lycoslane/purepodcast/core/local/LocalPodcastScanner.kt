@@ -55,8 +55,9 @@ object LocalPodcastScanner {
         treeUriString: String
     ): Int = withContext(Dispatchers.IO) {
         if (treeUriString.isBlank()) {
-            // Remove previously scanned local podcasts if folder was disconnected
+            // Remove previously scanned local podcasts and cached embedded covers if folder was disconnected
             dao.getLocalPodcasts().forEach { dao.deletePodcast(it.id) }
+            runCatching { File(context.filesDir, "local_covers").deleteRecursively() }
             return@withContext 0
         }
 

@@ -59,6 +59,7 @@ class PlaybackService : MediaSessionService() {
     private var dynamicsProcessing: DynamicsProcessing? = null
     private var currentAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
     private var attachedAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
+    private var bitmapLoader: ValidatedBitmapLoader? = null
 
     @OptIn(UnstableApi::class)
     private lateinit var silenceProcessor: DelegatingSilenceAudioProcessor
@@ -259,8 +260,11 @@ class PlaybackService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val loader = ValidatedBitmapLoader(applicationContext)
+        bitmapLoader = loader
+
         mediaSession = MediaSession.Builder(this, smartRewindPlayer)
-            .setBitmapLoader(ValidatedBitmapLoader(this))
+            .setBitmapLoader(loader)
             .setSessionActivity(sessionActivityIntent)
             .setCallback(object : MediaSession.Callback {
                 override fun onConnect(
@@ -300,8 +304,12 @@ class PlaybackService : MediaSessionService() {
                             val withPodcast = if (id < 0) null else withContext(Dispatchers.IO) {
                                 PurePodcastDatabase.getInstance(applicationContext).dao().getEpisodeWithPodcast(id)
                             }
-                            val item = withPodcast?.let { buildMediaItem(it.episode, it.podcast) }
-                            if (item == null || withPodcast == null) {
+                            if (withPodcast == null) {
+                                future.setException(UnsupportedOperationException("Nothing to resume"))
+                                return@launch
+                            }
+                            val item = buildMediaItem(withPodcast.episode, withPodcast.podcast)
+                            if (item == null) {
                                 future.setException(UnsupportedOperationException("Nothing to resume"))
                             } else {
                                 withContext(Dispatchers.Main) {
@@ -348,11 +356,13 @@ class PlaybackService : MediaSessionService() {
                                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                             }
                             CMD_SKIP_QUEUE_NEXT -> {
-                                skipQueueEpisode(forward = true)
+                                val fallbackId = args.getLong(ARG_CURRENT_EPISODE_ID, -1L).takeIf { it > 0L }
+                                skipQueueEpisode(forward = true, fallbackEpisodeId = fallbackId)
                                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                             }
                             CMD_SKIP_QUEUE_PREV -> {
-                                skipQueueEpisode(forward = false)
+                                val fallbackId = args.getLong(ARG_CURRENT_EPISODE_ID, -1L).takeIf { it > 0L }
+                                skipQueueEpisode(forward = false, fallbackEpisodeId = fallbackId)
                                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                             }
                         }
@@ -379,6 +389,10 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    /**
+     * Configures a single-band multiband compressor + brickwall limiter via Android's [DynamicsProcessing]
+     * to lift quiet speech (below -20 dBFS, 3.5 dB makeup gain) while preventing clipping above -1.5 dBFS.
+     */
     private fun applyAudioNormalization(enabled: Boolean) {
         runCatching {
             if (!enabled || currentAudioSessionId == C.AUDIO_SESSION_ID_UNSET || currentAudioSessionId == 0) {
@@ -466,9 +480,14 @@ class PlaybackService : MediaSessionService() {
             if (!NetworkSecurity.isValidHttpUrl(ep.audioUrl)) return null
             Uri.parse(ep.audioUrl)
         }
-        val artworkUri = ep.artworkUrl.ifEmpty { pod.artworkUrl }
-            .takeIf { NetworkSecurity.isValidHttpUrl(it) }
-            ?.let { Uri.parse(it) }
+        val rawArtwork = ep.artworkUrl.ifEmpty { pod.artworkUrl }
+        val artworkUri = when {
+            rawArtwork.isBlank() -> null
+            rawArtwork.startsWith("content://") || rawArtwork.startsWith("file://") -> Uri.parse(rawArtwork)
+            rawArtwork.startsWith("/") -> Uri.fromFile(File(rawArtwork))
+            NetworkSecurity.isValidHttpUrl(rawArtwork) -> Uri.parse(rawArtwork)
+            else -> null
+        }
         val metadata = MediaMetadata.Builder()
             .setTitle(ep.title)
             .setArtist(pod.title)
@@ -481,9 +500,9 @@ class PlaybackService : MediaSessionService() {
             .build()
     }
 
-    private fun skipQueueEpisode(forward: Boolean) {
+    private fun skipQueueEpisode(forward: Boolean, fallbackEpisodeId: Long? = null) {
         saveCurrentPosition()
-        val currentId = player.currentMediaItem?.mediaId?.toLongOrNull()
+        val currentId = player.currentMediaItem?.mediaId?.toLongOrNull() ?: fallbackEpisodeId
         skipQueueJob?.cancel()
         skipQueueJob = serviceScope.launch {
             val queue = withContext(Dispatchers.IO) {
@@ -502,7 +521,7 @@ class PlaybackService : MediaSessionService() {
             val ep = target.episode
             val pod = target.podcast
             val mediaItem = buildMediaItem(ep, pod) ?: return@launch
-            val mediaUri = mediaItem.localConfiguration!!.uri
+            val mediaUri = mediaItem.localConfiguration?.uri ?: return@launch
 
             val speed = pod.playbackSpeed.coerceIn(0.75f, 3.0f)
             val rewindMs = (applicationContext as PurePodcastApplication)
@@ -571,6 +590,8 @@ class PlaybackService : MediaSessionService() {
             mediaSession = null
         }
 
+        bitmapLoader?.close()
+        bitmapLoader = null
         releaseDynamicsProcessing()
 
         if (episodeId != null) {
@@ -605,5 +626,6 @@ class PlaybackService : MediaSessionService() {
         const val ARG_AUDIO_NORMALIZATION = "audio_normalization"
         const val CMD_SKIP_QUEUE_NEXT = "com.lycoslane.purepodcast.SKIP_QUEUE_NEXT"
         const val CMD_SKIP_QUEUE_PREV = "com.lycoslane.purepodcast.SKIP_QUEUE_PREV"
+        const val ARG_CURRENT_EPISODE_ID = "current_episode_id"
     }
 }

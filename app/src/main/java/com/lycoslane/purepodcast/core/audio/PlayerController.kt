@@ -172,11 +172,26 @@ class PlayerController(
                     )
                 }
             }
+            val marker = candidate.episode.chaptersJson
+            if (marker.startsWith("url:")) {
+                val json = com.lycoslane.purepodcast.core.network.ChaptersParser
+                    .fetchPodcasting2ChaptersJson(marker.removePrefix("url:"))
+                dao.updateChaptersJson(candidate.episode.id, json)
+                _state.update { st ->
+                    val cur = st.currentEpisode
+                    if (cur != null && cur.id == candidate.episode.id) {
+                        st.copy(currentEpisode = cur.copy(chaptersJson = json))
+                    } else {
+                        st
+                    }
+                }
+            }
         }
     }
 
     private var syncJob: kotlinx.coroutines.Job? = null
     private var playJob: kotlinx.coroutines.Job? = null
+    private var hasExplicitIdleSeek: Boolean = false
 
     private fun syncFromEpisodeId(episodeId: Long) {
         syncJob?.cancel()
@@ -226,6 +241,19 @@ class PlayerController(
             return
         }
 
+        // If the user already has this exact episode loaded in the MediaController and paused,
+        // simply resume playback rather than re-preparing and re-applying smart rewind.
+        if (mc.currentMediaItem?.mediaId == episode.id.toString() && mc.playbackState != Player.STATE_ENDED) {
+            if (!mc.isPlaying) {
+                mc.play()
+            }
+            return
+        }
+
+        val useExplicitIdlePos = hasExplicitIdleSeek && _state.value.currentEpisode?.id == episode.id
+        val explicitPosMs = _state.value.positionMs
+        hasExplicitIdleSeek = false
+
         playJob?.cancel()
         playJob = scope.launch {
             val freshEpisode = withContext(Dispatchers.IO) {
@@ -249,9 +277,14 @@ class PlayerController(
                 Uri.parse(freshEpisode.audioUrl)
             }
 
-            val artworkUri = freshEpisode.artworkUrl.ifEmpty { freshPodcast.artworkUrl }
-                .takeIf { NetworkSecurity.isValidHttpUrl(it) }
-                ?.let { Uri.parse(it) }
+            val rawArtwork = freshEpisode.artworkUrl.ifEmpty { freshPodcast.artworkUrl }
+            val artworkUri = when {
+                rawArtwork.isBlank() -> null
+                rawArtwork.startsWith("content://") || rawArtwork.startsWith("file://") -> Uri.parse(rawArtwork)
+                rawArtwork.startsWith("/") -> Uri.fromFile(File(rawArtwork))
+                NetworkSecurity.isValidHttpUrl(rawArtwork) -> Uri.parse(rawArtwork)
+                else -> null
+            }
 
             val metadata = MediaMetadata.Builder()
                 .setTitle(freshEpisode.title)
@@ -268,10 +301,10 @@ class PlayerController(
             val speed = freshPodcast.playbackSpeed.coerceIn(0.75f, 3.0f)
             val intensity = freshPodcast.silenceIntensity.coerceIn(0, 2)
             val rewindMs = preferences.settings.value.smartRewindSeconds * 1000L
-            val startPos = if (freshEpisode.positionMs > 0L) {
-                (freshEpisode.positionMs - rewindMs).coerceAtLeast(0L)
-            } else {
-                0L
+            val startPos = when {
+                useExplicitIdlePos -> explicitPosMs.coerceAtLeast(0L)
+                freshEpisode.positionMs > 0L -> (freshEpisode.positionMs - rewindMs).coerceAtLeast(0L)
+                else -> 0L
             }
 
             mc.setMediaItem(mediaItem, startPos)
@@ -296,15 +329,7 @@ class PlayerController(
 
     fun togglePlayPause() {
         val mc = controller
-        if (mc == null || !mc.isConnected) {
-            val ep = _state.value.currentEpisode
-            val pod = _state.value.currentPodcast
-            if (ep != null && pod != null) {
-                playEpisode(ep, pod)
-            }
-            return
-        }
-        if (mc.currentMediaItem == null) {
+        if (mc == null || !mc.isConnected || mc.currentMediaItem == null) {
             val ep = _state.value.currentEpisode
             val pod = _state.value.currentPodcast
             if (ep != null && pod != null) {
@@ -327,32 +352,58 @@ class PlayerController(
     }
 
     fun seekTo(positionMs: Long) {
-        val mc = controller ?: return
-        val clamped = positionMs.coerceAtLeast(0L)
-        mc.seekTo(clamped)
-        _state.update { it.copy(positionMs = clamped) }
+        val dur = _state.value.durationMs
+        val clamped = if (dur > 0L) positionMs.coerceIn(0L, dur) else positionMs.coerceAtLeast(0L)
+        val mc = controller
+        if (mc != null && mc.currentMediaItem != null) {
+            mc.seekTo(clamped)
+        } else {
+            hasExplicitIdleSeek = true
+        }
+        _state.update {
+            it.copy(
+                positionMs = clamped,
+                currentEpisode = it.currentEpisode?.copy(positionMs = clamped)
+            )
+        }
+        val epId = _state.value.currentEpisode?.id ?: return
+        scope.launch(Dispatchers.IO) { dao.updatePosition(epId, clamped) }
     }
 
     fun seekBy(deltaMs: Long) {
-        val mc = controller ?: return
-        val target = (mc.currentPosition + deltaMs).coerceAtLeast(0L)
-        mc.seekTo(target)
-        _state.update { it.copy(positionMs = target) }
+        val mc = controller
+        val basePos = if (mc != null && mc.currentMediaItem != null) {
+            mc.currentPosition
+        } else {
+            _state.value.positionMs
+        }
+        seekTo(basePos + deltaMs)
     }
 
     fun skipToNextInQueue() {
         val mc = controller ?: return
-        mc.sendCustomCommand(SessionCommand(PlaybackService.CMD_SKIP_QUEUE_NEXT, Bundle.EMPTY), Bundle.EMPTY)
+        val args = Bundle().apply {
+            _state.value.currentEpisode?.id?.let { putLong(PlaybackService.ARG_CURRENT_EPISODE_ID, it) }
+        }
+        mc.sendCustomCommand(SessionCommand(PlaybackService.CMD_SKIP_QUEUE_NEXT, Bundle.EMPTY), args)
     }
 
     fun skipToPreviousInQueue() {
         val mc = controller ?: return
-        mc.sendCustomCommand(SessionCommand(PlaybackService.CMD_SKIP_QUEUE_PREV, Bundle.EMPTY), Bundle.EMPTY)
+        val args = Bundle().apply {
+            _state.value.currentEpisode?.id?.let { putLong(PlaybackService.ARG_CURRENT_EPISODE_ID, it) }
+        }
+        mc.sendCustomCommand(SessionCommand(PlaybackService.CMD_SKIP_QUEUE_PREV, Bundle.EMPTY), args)
     }
 
     fun stopAndClear() {
         progressJob?.cancel()
         sleepTimerJob?.cancel()
+        hasExplicitIdleSeek = false
+        context.getSharedPreferences("playback_state", Context.MODE_PRIVATE)
+            .edit()
+            .remove("last_episode_id")
+            .apply()
         controller?.let { mc ->
             mc.stop()
             mc.clearMediaItems()

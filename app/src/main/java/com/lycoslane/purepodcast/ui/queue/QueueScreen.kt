@@ -29,7 +29,7 @@ import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.PlayCircleOutline
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -72,7 +72,6 @@ import com.lycoslane.purepodcast.ui.common.formatDuration
 fun QueueScreen(
     queue: List<EpisodeWithPodcast>,
     currentEpisode: EpisodeEntity?,
-    currentPodcast: PodcastEntity?,
     isPlaying: Boolean = false,
     scrollToggleTrigger: Int = 0,
     onScrollToggleConsumed: () -> Unit = {},
@@ -134,7 +133,7 @@ fun QueueScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Default.QueueMusic,
+                        Icons.AutoMirrored.Filled.QueueMusic,
                         contentDescription = null,
                         modifier = Modifier.size(56.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -167,12 +166,12 @@ fun QueueScreen(
                     val isCurrentInPlayer = item.episode.id == currentEpisode?.id
                     val isHighlighted = item.episode.id == highlightedEpisodeId
                     val ep = item.episode
-                    val posMs = if (isCurrentInPlayer && currentEpisode != null && currentEpisode.positionMs > 0L) {
+                    val posMs = if (isCurrentInPlayer && currentEpisode.positionMs > 0L) {
                         currentEpisode.positionMs
                     } else {
                         ep.positionMs
                     }
-                    val durMs = if (isCurrentInPlayer && currentEpisode != null && currentEpisode.durationMs > 0L) {
+                    val durMs = if (isCurrentInPlayer && currentEpisode.durationMs > 0L) {
                         currentEpisode.durationMs
                     } else {
                         ep.durationMs
