@@ -164,6 +164,7 @@ fun HomeScreen(
     val context = LocalContext.current
     var showSettings by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showLocalGuideDialog by rememberSaveable { mutableStateOf(false) }
+    var showCompressedDownloadsDialog by rememberSaveable { mutableStateOf(false) }
     var showEpisodesView by rememberSaveable { mutableStateOf(false) }
     var activeEpisodeFilter by rememberSaveable { mutableStateOf(HomeEpisodeFilter.ALL) }
     var previewEpisodeId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -767,17 +768,26 @@ fun HomeScreen(
                                 item.episode.localFilePath?.startsWith("content://") != true
                         }
                     }
-                    val compressedCount = remember(downloadedNonLocal) {
-                        downloadedNonLocal.count { it.episode.isTranscoded }
+                    val compressedEpisodes = remember(downloadedNonLocal) {
+                        downloadedNonLocal.filter { it.episode.isTranscoded }
                     }
+                    val compressedCount = compressedEpisodes.size
                     val pendingCount = (downloadedNonLocal.size - compressedCount).coerceAtLeast(0)
+                    val totalSavedBytes = remember(compressedEpisodes) {
+                        compressedEpisodes.sumOf { it.episode.transcodeSavedBytes.coerceAtLeast(0L) }
+                    }
 
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = if (downloadedNonLocal.isEmpty()) {
-                            stringResource(R.string.compression_no_downloads)
-                        } else {
-                            stringResource(R.string.compression_status_summary, compressedCount, pendingCount)
+                        text = when {
+                            downloadedNonLocal.isEmpty() -> stringResource(R.string.compression_no_downloads)
+                            totalSavedBytes > 0L -> stringResource(
+                                R.string.compression_status_summary_with_saved,
+                                compressedCount,
+                                pendingCount,
+                                formatSizeMb(totalSavedBytes)
+                            )
+                            else -> stringResource(R.string.compression_status_summary, compressedCount, pendingCount)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -844,6 +854,15 @@ fun HomeScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
+                        }
+                    }
+                    if (compressedCount > 0) {
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = { showCompressedDownloadsDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.action_show_compressed_downloads, compressedCount))
                         }
                     }
                 }
@@ -981,6 +1000,129 @@ fun HomeScreen(
             text = { Text(stringResource(R.string.local_guide_body)) },
             confirmButton = {
                 TextButton(onClick = { showLocalGuideDialog = false }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            }
+        )
+    }
+
+    if (showCompressedDownloadsDialog) {
+        val compressedList = remember(allEpisodes) {
+            allEpisodes.filter { item ->
+                !item.podcast.isLocal &&
+                    item.episode.downloadState == DownloadState.DOWNLOADED &&
+                    item.episode.markedForDeletionAtMs == 0L &&
+                    item.episode.isTranscoded &&
+                    item.episode.localFilePath?.startsWith("content://") != true
+            }.sortedByDescending { it.episode.pubDateMs }
+        }
+        val totalCurrentBytes = remember(compressedList) {
+            compressedList.sumOf { item ->
+                item.episode.fileSizeBytes.takeIf { it > 0L }
+                    ?: runCatching { java.io.File(item.episode.localFilePath.orEmpty()).length() }.getOrDefault(0L)
+            }
+        }
+        val totalSavedBytes = remember(compressedList) {
+            compressedList.sumOf { it.episode.transcodeSavedBytes.coerceAtLeast(0L) }
+        }
+
+        AlertDialog(
+            onDismissRequest = { showCompressedDownloadsDialog = false },
+            title = { Text(stringResource(R.string.dialog_compressed_downloads_title)) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(
+                            R.string.compressed_downloads_total_summary,
+                            compressedList.size,
+                            formatSizeMb(totalCurrentBytes),
+                            formatSizeMb(totalSavedBytes)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(6.dp))
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(340.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(compressedList, key = { it.episode.id }) { item ->
+                            val ep = item.episode
+                            val pod = item.podcast
+                            val currentBytes = ep.fileSizeBytes.takeIf { it > 0L }
+                                ?: runCatching { java.io.File(ep.localFilePath.orEmpty()).length() }.getOrDefault(0L)
+                            val savedBytes = ep.transcodeSavedBytes.coerceAtLeast(0L)
+                            val origBytes = currentBytes + savedBytes
+                            val savedPct = if (origBytes > 0L && savedBytes > 0L) {
+                                ((savedBytes * 100L) / origBytes).toInt().coerceIn(1, 99)
+                            } else {
+                                0
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                PodcastImage(
+                                    url = ep.artworkUrl.ifEmpty { pod.artworkUrl },
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = ep.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = pod.title,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = if (savedBytes > 0L) {
+                                            stringResource(
+                                                R.string.compressed_episode_saved_detail,
+                                                formatSizeMb(origBytes),
+                                                formatSizeMb(currentBytes),
+                                                formatSizeMb(savedBytes),
+                                                savedPct
+                                            )
+                                        } else {
+                                            stringResource(
+                                                R.string.compressed_episode_size_only,
+                                                formatSizeMb(currentBytes)
+                                            )
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            HorizontalDivider(modifier = Modifier.alpha(0.35f))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCompressedDownloadsDialog = false }) {
                     Text(stringResource(android.R.string.ok))
                 }
             }
@@ -1265,5 +1407,14 @@ private fun HomeEpisodeRow(
                 }
             }
         }
+    }
+}
+
+private fun formatSizeMb(bytes: Long): String {
+    val mb = bytes.coerceAtLeast(0L) / (1024.0 * 1024.0)
+    return if (mb >= 100.0) {
+        String.format(java.util.Locale.getDefault(), "%.0f MB", mb)
+    } else {
+        String.format(java.util.Locale.getDefault(), "%.1f MB", mb)
     }
 }

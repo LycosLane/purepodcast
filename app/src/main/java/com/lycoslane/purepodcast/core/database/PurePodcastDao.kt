@@ -220,7 +220,7 @@ interface PurePodcastDao {
         """
         UPDATE episodes
         SET downloadState = :state, downloadProgress = :progress, localFilePath = :localPath,
-            markedForDeletionAtMs = 0, isTranscoded = 0
+            markedForDeletionAtMs = 0, isTranscoded = 0, transcodeSavedBytes = 0
         WHERE id = :episodeId
         """
     )
@@ -352,11 +352,17 @@ interface PurePodcastDao {
     @Query(
         """
         UPDATE episodes
-        SET localFilePath = :newPath, fileSizeBytes = :newSizeBytes, isTranscoded = 1
+        SET localFilePath = :newPath, fileSizeBytes = :newSizeBytes,
+            isTranscoded = 1, transcodeSavedBytes = :savedBytes
         WHERE id = :episodeId
         """
     )
-    suspend fun markEpisodeTranscoded(episodeId: Long, newPath: String, newSizeBytes: Long)
+    suspend fun markEpisodeTranscoded(
+        episodeId: Long,
+        newPath: String,
+        newSizeBytes: Long,
+        savedBytes: Long = 0L
+    )
 
     @Query("SELECT * FROM podcasts WHERE isLocal = 1")
     suspend fun getLocalPodcasts(): List<PodcastEntity>

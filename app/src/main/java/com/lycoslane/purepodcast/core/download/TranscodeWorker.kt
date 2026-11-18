@@ -82,6 +82,64 @@ class TranscodeWorker(
             }.getOrDefault(false)
         }
 
+        suspend fun backfillLegacySavedBytes(dao: com.lycoslane.purepodcast.core.database.PurePodcastDao) {
+            val legacyCompressed = runCatching { dao.getAllDownloadedEpisodes() }
+                .getOrDefault(emptyList())
+                .filter { ep ->
+                    ep.isTranscoded &&
+                        ep.transcodeSavedBytes <= 0L &&
+                        ep.localFilePath?.endsWith(".m4a", ignoreCase = true) == true
+                }
+            for (ep in legacyCompressed) {
+                val path = ep.localFilePath ?: continue
+                val file = File(path)
+                val currentLen = if (file.exists() && file.length() > 0L) file.length() else ep.fileSizeBytes
+                if (currentLen <= 0L) continue
+                var originalSize = 0L
+                if (ep.audioUrl.startsWith("http", ignoreCase = true)) {
+                    runCatching {
+                        val conn = com.lycoslane.purepodcast.core.network.NetworkSecurity.openValidatedConnection(
+                            rawUrl = ep.audioUrl,
+                            connectTimeoutMs = 4_000,
+                            readTimeoutMs = 4_000,
+                            headers = mapOf("Range" to "bytes=0-0")
+                        )
+                        try {
+                            val contentRange = conn.getHeaderField("Content-Range").orEmpty()
+                            val slashIdx = contentRange.lastIndexOf('/')
+                            val rangeTotal = if (slashIdx >= 0) {
+                                contentRange.substring(slashIdx + 1).trim().toLongOrNull() ?: 0L
+                            } else {
+                                0L
+                            }
+                            originalSize = if (rangeTotal > 0L) {
+                                rangeTotal
+                            } else {
+                                conn.contentLengthLong.coerceAtLeast(0L)
+                            }
+                        } finally {
+                            runCatching { conn.disconnect() }
+                        }
+                    }
+                }
+                if (originalSize <= currentLen && ep.durationMs > 0L) {
+                    // Fallback estimate based on standard 128 kbps MP3 source
+                    val est128 = (ep.durationMs * 128_000L) / 8_000L
+                    if (est128 > currentLen) {
+                        originalSize = est128
+                    }
+                }
+                if (originalSize > currentLen) {
+                    dao.markEpisodeTranscoded(
+                        episodeId = ep.id,
+                        newPath = path,
+                        newSizeBytes = currentLen,
+                        savedBytes = originalSize - currentLen
+                    )
+                }
+            }
+        }
+
         suspend fun executeBatch(
             appContext: Context,
             singleEpisodeId: Long = -1L,
@@ -108,6 +166,8 @@ class TranscodeWorker(
                     }
 
                     val dao = PurePodcastDatabase.getInstance(app).dao()
+                    backfillLegacySavedBytes(dao)
+
                     val candidates = when {
                         singleEpisodeId > 0L -> listOfNotNull(dao.getEpisode(singleEpisodeId))
                         manualTrigger -> dao.getAllDownloadedEpisodes()
@@ -137,7 +197,7 @@ class TranscodeWorker(
                         if (!file.exists() || file.length() <= 0L) return@filter false
                         if (AudioTranscoder.isAlreadyCompact(file, bitrateKbps)) {
                             if (!ep.isTranscoded) {
-                                dao.markEpisodeTranscoded(ep.id, file.absolutePath, file.length())
+                                dao.markEpisodeTranscoded(ep.id, file.absolutePath, file.length(), ep.transcodeSavedBytes)
                             }
                             return@filter false
                         }
@@ -200,7 +260,7 @@ class TranscodeWorker(
                             continue
                         }
                         if (AudioTranscoder.isAlreadyCompact(sourceFile, bitrateKbps)) {
-                            dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length())
+                            dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length(), ep.transcodeSavedBytes)
                             _status.value = _status.value.copy(episodePercent = 100)
                             continue
                         }
@@ -252,19 +312,21 @@ class TranscodeWorker(
                                     true
                                 }
                                 if (moved) {
-                                    dao.markEpisodeTranscoded(ep.id, targetM4a.absolutePath, targetM4a.length())
+                                    val savedForEp = (originalSize - newSize).coerceAtLeast(0L)
+                                    val totalSavedForEp = ep.transcodeSavedBytes + savedForEp
+                                    dao.markEpisodeTranscoded(ep.id, targetM4a.absolutePath, targetM4a.length(), totalSavedForEp)
                                     if (sourceFile.absolutePath != targetM4a.absolutePath) {
                                         sourceFile.delete()
                                     }
                                     compressedCount++
-                                    savedBytes += (originalSize - newSize).coerceAtLeast(0L)
+                                    savedBytes += savedForEp
                                 } else {
                                     skippedCount++
                                 }
                             } else {
                                 // Transcoded file wasn't smaller (source already low-bitrate); keep original
                                 tempFile.delete()
-                                dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length())
+                                dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length(), ep.transcodeSavedBytes)
                             }
                         } else {
                             tempFile.delete()

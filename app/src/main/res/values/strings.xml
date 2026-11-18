@@ -229,7 +229,13 @@
     <string name="state_on">On</string>
     <string name="state_off">Off</string>
     <string name="compression_status_summary">Downloads: %1$d compressed • %2$d pending</string>
+    <string name="compression_status_summary_with_saved">Downloads: %1$d compressed • %2$d pending • %3$s saved</string>
     <string name="compression_done_saved">Done: %1$d episode(s) compressed (%2$s MB saved)</string>
     <string name="compression_no_downloads">No downloaded episodes available</string>
     <string name="compression_failed_summary">%1$d episode(s) skipped (playing or already optimal)</string>
+    <string name="action_show_compressed_downloads">Show compressed downloads (%1$d)</string>
+    <string name="dialog_compressed_downloads_title">Compressed Downloads</string>
+    <string name="compressed_downloads_total_summary">%1$d episode(s) • Current: %2$s • Saved: %3$s</string>
+    <string name="compressed_episode_saved_detail">%1$s → %2$s (–%3$s / –%4$d%%)</string>
+    <string name="compressed_episode_size_only">%1$s (AAC/M4A compressed)</string>
 </resources>

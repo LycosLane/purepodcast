@@ -36,6 +36,12 @@ class PurePodcastApplication : Application() {
         appScope.launch {
             runCatching { repository.sweepOrphanedDownloads() }
             runCatching { repository.cleanupPlayedDownloads(playerController.state.value.currentEpisode?.id) }
+            runCatching {
+                val dao = com.lycoslane.purepodcast.core.database.PurePodcastDatabase
+                    .getInstance(this@PurePodcastApplication)
+                    .dao()
+                com.lycoslane.purepodcast.core.download.TranscodeWorker.backfillLegacySavedBytes(dao)
+            }
             val s = preferences.settings.value
             if (s.transcodeAutoEnabled && s.transcodeBitrateKbps > 0) {
                 runCatching {

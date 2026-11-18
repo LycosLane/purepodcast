@@ -229,7 +229,13 @@
     <string name="state_on">Ein</string>
     <string name="state_off">Aus</string>
     <string name="compression_status_summary">Downloads: %1$d komprimiert • %2$d offen</string>
+    <string name="compression_status_summary_with_saved">Downloads: %1$d komprimiert • %2$d offen • %3$s gespart</string>
     <string name="compression_done_saved">Fertig: %1$d Episode(n) komprimiert (%2$s MB gespart)</string>
     <string name="compression_no_downloads">Keine heruntergeladenen Episoden vorhanden</string>
     <string name="compression_failed_summary">%1$d Episode(n) übersprungen (wird abgespielt oder bereits optimal)</string>
+    <string name="action_show_compressed_downloads">Komprimierte Downloads anzeigen (%1$d)</string>
+    <string name="dialog_compressed_downloads_title">Komprimierte Downloads</string>
+    <string name="compressed_downloads_total_summary">%1$d Episode(n) • Aktuell: %2$s • Gespart: %3$s</string>
+    <string name="compressed_episode_saved_detail">%1$s → %2$s (–%3$s / –%4$d%%)</string>
+    <string name="compressed_episode_size_only">%1$s (AAC/M4A komprimiert)</string>
 </resources>
