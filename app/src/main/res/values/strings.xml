@@ -145,7 +145,6 @@
     <string name="auto_remove_days">%1$dd</string>
     <string name="settings_max_downloads">Max downloads per podcast</string>
     <string name="settings_max_downloads_sub">Queued episodes are excluded from this limit</string>
-    <string name="max_downloads_unlimited">Unlimited</string>
     <string name="max_downloads_count">%1$d episodes</string>
     <string name="settings_audio_normalization">Normalize audio loudness</string>
     <string name="settings_audio_normalization_sub">Balances quiet voices and loud peaks across podcasts</string>
@@ -196,7 +195,7 @@
     <string name="settings_compression_charging_only">Only while charging</string>
     <string name="settings_compression_charging_only_sub">Saves battery during transcoding</string>
     <string name="action_compress_all_now">Compress all downloads now</string>
-    <string name="snackbar_compression_queued">Compression queued in background</string>
+    <string name="cd_expand_player">Open player</string>
     <string name="settings_section_local_folder">Local Podcast Folder</string>
     <string name="action_local_folder_guide">How it works</string>
     <string name="settings_local_folder_rw">Connected (read &amp; delete enabled)</string>

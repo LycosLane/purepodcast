@@ -93,7 +93,10 @@ fun MiniPlayer(
         shadowElevation = 6.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onExpand)
+            .clickable(
+                onClickLabel = stringResource(R.string.cd_expand_player),
+                onClick = onExpand
+            )
     ) {
         Column {
             val progress = if (state.durationMs > 0L) {
@@ -187,6 +190,15 @@ fun FullPlayerSheet(
     var showCoverLightbox by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showReaderDialog by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var scrubPos by remember(ep.id) { mutableStateOf<Float?>(null) }
+    var pendingSeekPos by remember(ep.id) { mutableStateOf<Float?>(null) }
+    var activeSleepPreset by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
+
+    androidx.compose.runtime.LaunchedEffect(pendingSeekPos) {
+        if (pendingSeekPos != null) {
+            kotlinx.coroutines.delay(450L)
+            pendingSeekPos = null
+        }
+    }
 
     fun expandSheet() {
         scope.launch { runCatching { sheetState.expand() } }
@@ -504,11 +516,16 @@ fun FullPlayerSheet(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf(1.0f, 1.2f, 1.5f, 1.8f, 2.0f).forEach { speed ->
+                    listOf(0.75f, 1.0f, 1.2f, 1.5f, 1.8f, 2.0f, 2.5f, 3.0f).forEach { speed ->
+                        val speedLabel = if (speed == 0.75f) {
+                            String.format(Locale.getDefault(), "%.2fx", speed)
+                        } else {
+                            String.format(Locale.getDefault(), "%.1fx", speed)
+                        }
                         FilterChip(
-                            selected = state.playbackSpeed == speed,
+                            selected = kotlin.math.abs(state.playbackSpeed - speed) < 0.01f,
                             onClick = { onSetSpeed(speed) },
-                            label = { Text(String.format(Locale.getDefault(), "%.1fx", speed)) }
+                            label = { Text(speedLabel) }
                         )
                     }
                 }
@@ -524,9 +541,18 @@ fun FullPlayerSheet(
                     val offLabel = stringResource(R.string.sleep_off)
                     listOf(0, 15, 30, 45, 60).forEach { mins ->
                         val label = if (mins == 0) offLabel else stringResource(R.string.sleep_minutes_short, mins)
+                        val selected = if (state.sleepTimerRemainingMs <= 0L) {
+                            mins == 0
+                        } else {
+                            mins == activeSleepPreset
+                        }
                         FilterChip(
-                            selected = mins == 0 && state.sleepTimerRemainingMs <= 0L,
-                            onClick = { onSetSleepTimer(mins); showSleepRow = false },
+                            selected = selected,
+                            onClick = {
+                                activeSleepPreset = mins
+                                onSetSleepTimer(mins)
+                                showSleepRow = false
+                            },
                             label = { Text(label) }
                         )
                     }

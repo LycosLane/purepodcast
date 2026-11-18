@@ -221,7 +221,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }.onSuccess {
                 _backupStatus.value = app.getString(R.string.backup_exported)
             }.onFailure { err ->
-                _backupStatus.value = app.getString(R.string.backup_failed, app.getString(R.string.error_generic_network))
+                _backupStatus.value = app.getString(
+                    R.string.backup_failed,
+                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                )
             }
         }
     }
@@ -251,7 +254,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }.onSuccess { count ->
                 _backupStatus.value = app.getString(R.string.backup_imported, count)
             }.onFailure { err ->
-                _backupStatus.value = app.getString(R.string.backup_failed, app.getString(R.string.error_generic_network))
+                _backupStatus.value = app.getString(
+                    R.string.backup_failed,
+                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                )
             }
         }
     }

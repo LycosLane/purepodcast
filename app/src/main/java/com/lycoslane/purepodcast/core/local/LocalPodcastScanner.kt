@@ -287,7 +287,7 @@ object LocalPodcastScanner {
         }.getOrNull()
     }
 
-    private fun queryChildren(context: Context, treeUri: Uri, parentDocId: String): List<DocEntry> {
+    private fun queryChildren(context: Context, treeUri: Uri, parentDocId: String): List<DocEntry>? {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -296,27 +296,29 @@ object LocalPodcastScanner {
             DocumentsContract.Document.COLUMN_SIZE,
             DocumentsContract.Document.COLUMN_LAST_MODIFIED
         )
-        val result = mutableListOf<DocEntry>()
-        runCatching {
-            context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
-                val idIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-                val nameIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-                val mimeIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
-                val sizeIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
-                val modIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+        return runCatching {
+            val result = mutableListOf<DocEntry>()
+            val cursor = context.contentResolver.query(childrenUri, projection, null, null, null)
+                ?: return@runCatching null
+            cursor.use { c ->
+                val idIdx = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameIdx = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val mimeIdx = c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                val sizeIdx = c.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+                val modIdx = c.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
 
-                while (cursor.moveToNext()) {
-                    val docId = if (idIdx >= 0) cursor.getString(idIdx) ?: continue else continue
-                    val name = if (nameIdx >= 0) cursor.getString(nameIdx) ?: docId else docId
-                    val mime = if (mimeIdx >= 0) cursor.getString(mimeIdx) ?: "" else ""
-                    val size = if (sizeIdx >= 0 && !cursor.isNull(sizeIdx)) cursor.getLong(sizeIdx) else 0L
-                    val mod = if (modIdx >= 0 && !cursor.isNull(modIdx)) cursor.getLong(modIdx) else 0L
+                while (c.moveToNext()) {
+                    val docId = if (idIdx >= 0) c.getString(idIdx) ?: continue else continue
+                    val name = if (nameIdx >= 0) c.getString(nameIdx) ?: docId else docId
+                    val mime = if (mimeIdx >= 0) c.getString(mimeIdx) ?: "" else ""
+                    val size = if (sizeIdx >= 0 && !c.isNull(sizeIdx)) c.getLong(sizeIdx) else 0L
+                    val mod = if (modIdx >= 0 && !c.isNull(modIdx)) c.getLong(modIdx) else 0L
                     val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
                     result += DocEntry(docId, name, mime, size, mod, docUri)
                 }
             }
-        }
-        return result
+            result
+        }.getOrNull()
     }
 
     private fun sha256(value: String): String {

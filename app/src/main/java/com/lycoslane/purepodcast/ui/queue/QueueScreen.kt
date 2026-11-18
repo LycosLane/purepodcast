@@ -177,7 +177,9 @@ fun QueueScreen(
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .clickable { onOpenPodcast(item.podcast.id) }
+                                .clickable(onClickLabel = stringResource(R.string.action_open_podcast)) {
+                                    onOpenPodcast(item.podcast.id)
+                                }
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {

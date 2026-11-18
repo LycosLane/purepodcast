@@ -114,6 +114,7 @@ object AudioTranscoder {
 
             while (!encoderDone) {
                 if (shouldCancel()) {
+                    tempOutputFile.delete()
                     return false
                 }
 

@@ -3,6 +3,7 @@ package com.lycoslane.purepodcast.ui
 import android.app.Activity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
@@ -95,6 +96,8 @@ fun PurePodcastApp(app: PurePodcastApplication) {
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    var detailOriginRoute by rememberSaveable { mutableStateOf("home") }
+    val isDetailRoute = currentRoute?.startsWith("detail/") == true
 
     fun navigateTopLevel(route: String) {
         navController.navigate(route) {
@@ -104,6 +107,11 @@ fun PurePodcastApp(app: PurePodcastApplication) {
             launchSingleTop = true
             restoreState = true
         }
+    }
+
+    fun openDetail(podcastId: Long, fromRoute: String) {
+        detailOriginRoute = fromRoute
+        navController.navigate("detail/$podcastId") { launchSingleTop = true }
     }
 
     Scaffold(
@@ -117,9 +125,9 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                 )
                 NavigationBar {
                     NavigationBarItem(
-                        selected = currentRoute == "home" || currentRoute?.startsWith("detail/") == true,
+                        selected = currentRoute == "home" || (isDetailRoute && detailOriginRoute == "home"),
                         onClick = {
-                            if (currentRoute?.startsWith("detail/") == true) {
+                            if (isDetailRoute && detailOriginRoute == "home") {
                                 navController.popBackStack("home", inclusive = false)
                             } else {
                                 navigateTopLevel("home")
@@ -129,10 +137,12 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         label = { Text(stringResource(R.string.nav_podcasts)) }
                     )
                     NavigationBarItem(
-                        selected = currentRoute == "queue",
+                        selected = currentRoute == "queue" || (isDetailRoute && detailOriginRoute == "queue"),
                         onClick = {
                             if (currentRoute == "queue") {
                                 queueScrollTrigger++
+                            } else if (isDetailRoute && detailOriginRoute == "queue") {
+                                navController.popBackStack("queue", inclusive = false)
                             } else {
                                 navigateTopLevel("queue")
                             }
@@ -151,10 +161,12 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         label = { Text(stringResource(R.string.nav_queue)) }
                     )
                     NavigationBarItem(
-                        selected = currentRoute == "search",
+                        selected = currentRoute == "search" || (isDetailRoute && detailOriginRoute == "search"),
                         onClick = {
                             if (currentRoute == "search") {
                                 focusSearchTrigger++
+                            } else if (isDetailRoute && detailOriginRoute == "search") {
+                                navController.popBackStack("search", inclusive = false)
                             } else {
                                 navigateTopLevel("search")
                             }
@@ -169,7 +181,9 @@ fun PurePodcastApp(app: PurePodcastApplication) {
         NavHost(
             navController = navController,
             startDestination = "home",
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
         ) {
             composable("home") {
                 HomeScreen(
@@ -180,9 +194,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     settings = settings,
                     backupStatus = backupStatus,
                     onRefreshAll = mainViewModel::refreshAll,
-                    onPodcastClick = { podcastId ->
-                        navController.navigate("detail/$podcastId") { launchSingleTop = true }
-                    },
+                    onPodcastClick = { podcastId -> openDetail(podcastId, "home") },
                     onAddClick = { navigateTopLevel("search") },
                     onToggleFavorite = mainViewModel::toggleFavorite,
                     onPlayEpisode = { ep, pod -> app.playerController.playEpisode(ep, pod) },
@@ -358,7 +370,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     scrollToggleTrigger = queueScrollTrigger,
                     onScrollToggleConsumed = { queueScrollTrigger = 0 },
                     onOpenNowPlaying = { showFullPlayer = true },
-                    onOpenPodcast = { podcastId -> navController.navigate("detail/$podcastId") { launchSingleTop = true } },
+                    onOpenPodcast = { podcastId -> openDetail(podcastId, "queue") },
                     onPlay = { ep, pod -> app.playerController.playEpisode(ep, pod) },
                     onDownload = mainViewModel::downloadEpisode,
                     onRemove = mainViewModel::removeFromQueue,
@@ -391,7 +403,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onLoadFeedPreview = searchViewModel::loadFeedPreview,
                     onSubscribeFeedUrl = { url ->
                         searchViewModel.subscribeFeedUrl(url) { podcastId ->
-                            navController.navigate("detail/$podcastId") { launchSingleTop = true }
+                            openDetail(podcastId, "search")
                         }
                     },
                     onUnsubscribeById = searchViewModel::unsubscribeById,

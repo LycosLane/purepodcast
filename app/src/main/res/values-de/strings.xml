@@ -145,7 +145,6 @@
     <string name="auto_remove_days">%1$d Tage</string>
     <string name="settings_max_downloads">Max. Downloads pro Podcast</string>
     <string name="settings_max_downloads_sub">Episoden in der Warteschlange sind ausgenommen</string>
-    <string name="max_downloads_unlimited">Unbegrenzt</string>
     <string name="max_downloads_count">%1$d Episoden</string>
     <string name="settings_audio_normalization">Lautstärke normalisieren</string>
     <string name="settings_audio_normalization_sub">Gleicht leise Stimmen und Lautstärkesprünge an</string>
@@ -196,7 +195,7 @@
     <string name="settings_compression_charging_only">Nur beim Laden</string>
     <string name="settings_compression_charging_only_sub">Schont den Akku bei der Umwandlung</string>
     <string name="action_compress_all_now">Alle Downloads jetzt komprimieren</string>
-    <string name="snackbar_compression_queued">Komprimierung im Hintergrund gestartet</string>
+    <string name="cd_expand_player">Player öffnen</string>
     <string name="settings_section_local_folder">Lokaler Podcast-Ordner</string>
     <string name="action_local_folder_guide">So funktioniert\u2019s</string>
     <string name="settings_local_folder_rw">Verbunden (Lesen &amp; Löschen aktiv)</string>

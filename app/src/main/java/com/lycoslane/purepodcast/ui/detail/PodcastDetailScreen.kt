@@ -27,6 +27,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -274,7 +277,7 @@ fun PodcastDetailScreen(
 
             val listState = androidx.compose.foundation.lazy.rememberLazyListState()
             var lastHiddenEpisodeId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
-            var sawHiddenRemoved by remember { mutableStateOf(false) }
+            var sawHiddenRemoved by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
             androidx.compose.runtime.LaunchedEffect(filteredEpisodes, lastHiddenEpisodeId) {
                 val targetId = lastHiddenEpisodeId ?: return@LaunchedEffect
@@ -865,22 +868,34 @@ private fun EpisodeSwipeRow(
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val thresholdFraction = 0.45f
     var rowWidthPx by remember { mutableIntStateOf(0) }
-    var latestSwipeFraction by remember { mutableFloatStateOf(0f) }
 
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
-            value == SwipeToDismissBoxValue.Settled || latestSwipeFraction >= thresholdFraction
+            if (value == SwipeToDismissBoxValue.Settled) {
+                true
+            } else {
+                val offset = runCatching { dismissState.requireOffset() }.getOrDefault(0f)
+                val fraction = if (rowWidthPx > 0) {
+                    kotlin.math.abs(offset) / rowWidthPx.toFloat()
+                } else {
+                    0f
+                }
+                fraction >= thresholdFraction
+            }
         },
         positionalThreshold = { totalDistance -> totalDistance * thresholdFraction }
     )
 
-    val currentOffset = runCatching { dismissState.requireOffset() }.getOrDefault(0f)
-    val swipeFraction = if (rowWidthPx > 0) {
-        (kotlin.math.abs(currentOffset) / rowWidthPx.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
+    val swipeFraction by remember {
+        androidx.compose.runtime.derivedStateOf {
+            val offset = runCatching { dismissState.requireOffset() }.getOrDefault(0f)
+            if (rowWidthPx > 0) {
+                (kotlin.math.abs(offset) / rowWidthPx.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+        }
     }
-    latestSwipeFraction = swipeFraction
     val reachedThreshold = swipeFraction >= thresholdFraction
 
     androidx.compose.runtime.LaunchedEffect(reachedThreshold) {
@@ -900,6 +915,20 @@ private fun EpisodeSwipeRow(
             }
         }
     }
+
+    val a11yQueueLabel = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_add_to_queue_end)
+    val a11yLeftLabel = androidx.compose.ui.res.stringResource(
+        when {
+            isTrashMode -> com.lycoslane.purepodcast.R.string.swipe_delete
+            episode.isHidden -> com.lycoslane.purepodcast.R.string.swipe_unhide
+            else -> com.lycoslane.purepodcast.R.string.swipe_hide
+        }
+    )
+    val a11yPlayedLabel = androidx.compose.ui.res.stringResource(
+        if (episode.isPlayed) com.lycoslane.purepodcast.R.string.action_mark_unplayed
+        else com.lycoslane.purepodcast.R.string.action_mark_played
+    )
+    val a11yMoreLabel = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_more)
 
     SwipeToDismissBox(
         state = dismissState,
@@ -971,8 +1000,22 @@ private fun EpisodeSwipeRow(
                 .combinedClickable(
                     onClick = onClick,
                     onDoubleClick = onDoubleClick,
-                    onLongClick = onLongClick
+                    onLongClick = onLongClick,
+                    onLongClickLabel = a11yMoreLabel
                 )
+                .semantics {
+                    customActions = listOf(
+                        CustomAccessibilityAction(a11yQueueLabel) {
+                            latestRight(); true
+                        },
+                        CustomAccessibilityAction(a11yLeftLabel) {
+                            latestLeft(); true
+                        },
+                        CustomAccessibilityAction(a11yPlayedLabel) {
+                            onDoubleClick(); true
+                        }
+                    )
+                }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

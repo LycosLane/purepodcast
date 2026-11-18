@@ -96,8 +96,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.network.ParsedEpisode
 import com.lycoslane.purepodcast.core.network.ParsedPodcastFeed
