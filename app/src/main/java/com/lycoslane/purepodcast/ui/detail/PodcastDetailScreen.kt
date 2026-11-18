@@ -868,13 +868,14 @@ private fun EpisodeSwipeRow(
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val thresholdFraction = 0.45f
     var rowWidthPx by remember { mutableIntStateOf(0) }
+    var dismissStateHolder: androidx.compose.material3.SwipeToDismissBoxState? = null
 
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.Settled) {
                 true
             } else {
-                val offset = runCatching { dismissState.requireOffset() }.getOrDefault(0f)
+                val offset = runCatching { dismissStateHolder?.requireOffset() }.getOrNull() ?: 0f
                 val fraction = if (rowWidthPx > 0) {
                     kotlin.math.abs(offset) / rowWidthPx.toFloat()
                 } else {
@@ -885,6 +886,7 @@ private fun EpisodeSwipeRow(
         },
         positionalThreshold = { totalDistance -> totalDistance * thresholdFraction }
     )
+    dismissStateHolder = dismissState
 
     val swipeFraction by remember {
         androidx.compose.runtime.derivedStateOf {
@@ -916,7 +918,7 @@ private fun EpisodeSwipeRow(
         }
     }
 
-    val a11yQueueLabel = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_add_to_queue_end)
+    val a11yQueueLabel = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_add_queue)
     val a11yLeftLabel = androidx.compose.ui.res.stringResource(
         when {
             isTrashMode -> com.lycoslane.purepodcast.R.string.swipe_delete
@@ -928,7 +930,6 @@ private fun EpisodeSwipeRow(
         if (episode.isPlayed) com.lycoslane.purepodcast.R.string.action_mark_unplayed
         else com.lycoslane.purepodcast.R.string.action_mark_played
     )
-    val a11yMoreLabel = androidx.compose.ui.res.stringResource(com.lycoslane.purepodcast.R.string.action_more)
 
     SwipeToDismissBox(
         state = dismissState,
@@ -1000,8 +1001,7 @@ private fun EpisodeSwipeRow(
                 .combinedClickable(
                     onClick = onClick,
                     onDoubleClick = onDoubleClick,
-                    onLongClick = onLongClick,
-                    onLongClickLabel = a11yMoreLabel
+                    onLongClick = onLongClick
                 )
                 .semantics {
                     customActions = listOf(
