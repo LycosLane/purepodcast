@@ -1,5 +1,6 @@
 package com.lycoslane.purepodcast.core.network
 
+import android.app.Application
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,7 +10,7 @@ import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], application = Application::class)
 class RssFeedParserTest {
 
     @Test

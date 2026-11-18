@@ -1,7 +1,10 @@
 package com.lycoslane.purepodcast.domain.repository
 
+import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import androidx.work.Configuration
+import androidx.work.WorkManager
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.PodcastEntity
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
@@ -16,12 +19,13 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], application = Application::class)
 class PodcastRepositoryBackupTest {
 
     @Test
     fun exportAndImportBackupJsonRoundTripsSettingsAndProgress() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        runCatching { WorkManager.initialize(context, Configuration.Builder().build()) }
         val prefs = AppPreferences(context)
         prefs.setSmartRewindSeconds(25)
         prefs.setAppLanguage("de")
