@@ -22,8 +22,8 @@ android {
         applicationId = "com.lycoslane.purepodcast"
         minSdk = 29
         targetSdk = 35
-        versionCode = 32
-        versionName = "1.0.21"
+        versionCode = 33
+        versionName = "1.1.0"
     }
 
     lint {

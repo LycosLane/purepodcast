@@ -15,27 +15,27 @@
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
-    <string name="settings_refresh_interval">Check for new episodes</string>
+    <string name="settings_refresh_interval">Auto-refresh</string>
     <string name="interval_off">Off</string>
     <string name="interval_hours">%1$dh</string>
-    <string name="settings_wifi_only">Download on Wi-Fi only</string>
+    <string name="settings_wifi_only">Wi-Fi downloads only</string>
     <string name="settings_wifi_only_sub">Never download over mobile data</string>
-    <string name="settings_auto_download_default">Auto-download new episodes for new subscriptions</string>
+    <string name="settings_auto_download_default">Auto-download new subscriptions</string>
     <string name="settings_auto_download_default_sub">Enables auto-download from subscribe date</string>
-    <string name="settings_download_when_queued">Auto-download episodes added to queue</string>
+    <string name="settings_download_when_queued">Download queued episodes</string>
     <string name="settings_download_when_queued_sub">Automatically download episodes added to queue</string>
-    <string name="settings_queue_when_downloaded">Auto-add downloaded episodes to queue</string>
+    <string name="settings_queue_when_downloaded">Queue finished downloads</string>
     <string name="settings_queue_when_downloaded_sub">Automatically queue finished downloads</string>
-    <string name="settings_section_downloads">Downloads</string>
-    <string name="settings_section_playback">Playback &amp; Queue</string>
+    <string name="settings_section_downloads">Downloads &amp; Storage</string>
+    <string name="settings_section_playback">Playback</string>
     <string name="settings_section_updates">Updates &amp; Backup</string>
     <string name="settings_smart_rewind">Rewind after pause</string>
     <string name="settings_smart_rewind_sub">Rewinds a few seconds when resuming after a pause</string>
     <string name="seconds_short">%1$ds</string>
     <string name="settings_backup_title">Backup</string>
     <string name="settings_backup_sub">Saves subscriptions, playback positions, played status &amp; settings</string>
-    <string name="action_export_backup">Export backup</string>
-    <string name="action_import_backup">Restore backup</string>
+    <string name="action_export_backup">Export</string>
+    <string name="action_import_backup">Restore</string>
     <string name="backup_exported">Backup saved.</string>
     <string name="backup_imported">Restored %1$d podcasts from backup.</string>
     <string name="backup_failed">Backup error: %1$s</string>
@@ -148,7 +148,7 @@
     <string name="settings_max_downloads">Max downloads per podcast</string>
     <string name="settings_max_downloads_sub">Queued episodes are excluded from this limit</string>
     <string name="max_downloads_count">%1$d episodes</string>
-    <string name="settings_audio_normalization">Boost quiet voices (normalize volume)</string>
+    <string name="settings_audio_normalization">Normalize volume</string>
     <string name="settings_audio_normalization_sub">Balances quiet voices and loud peaks across podcasts</string>
     <string name="settings_bluetooth_skip">Headphone skip buttons</string>
     <string name="settings_bluetooth_skip_seek">Rewind 10s / Forward 30s</string>
@@ -158,7 +158,7 @@
     <string name="settings_language_de">Deutsch</string>
 
     <!-- Phase 2: Preview, Gestures, Trash & Settings -->
-    <string name="settings_auto_remove_delay">Wait time after listening</string>
+    <string name="settings_auto_remove_delay">Delete after</string>
     <string name="settings_trash_retention">Empty trash after</string>
     <string name="settings_trash_retention_sub">How long deleted downloads can be restored before permanent removal</string>
     <string name="trash_hint_hours">Deleted downloads are permanently removed after %1$d hours.</string>
@@ -189,16 +189,16 @@
     <string name="episode_search_hint">Search episodes…</string>
     <string name="filter_source_subscribed">Subscribed</string>
     <string name="filter_source_local">Local</string>
-    <string name="settings_section_compression">Compress downloads (AAC/M4A)</string>
+    <string name="settings_section_compression">Compress downloads</string>
     <string name="settings_compression_sub">Transcode downloaded episodes to AAC (M4A) to save storage</string>
     <string name="settings_compression_off">Off</string>
     <string name="settings_compression_auto">Auto-compress new downloads</string>
     <string name="settings_compression_auto_sub">Transcodes newly downloaded episodes in the background</string>
-    <string name="settings_compression_charging_only">Auto-compress only while charging</string>
+    <string name="settings_compression_charging_only">Only while charging</string>
     <string name="settings_compression_charging_only_sub">Saves battery during transcoding</string>
-    <string name="action_compress_all_now">Compress all downloads now</string>
+    <string name="action_compress_all_now">Compress now</string>
     <string name="cd_expand_player">Open player</string>
-    <string name="settings_section_local_folder">Local Podcast Folder</string>
+    <string name="settings_section_local_folder">Local folder</string>
     <string name="action_local_folder_guide">How it works</string>
     <string name="settings_local_folder_rw">Connected (read &amp; delete enabled)</string>
     <string name="settings_local_folder_ro">Connected (read-only)</string>
@@ -210,7 +210,7 @@
     <string name="search_episodes_header">Episodes (%1$d)</string>
     <string name="action_open_podcast">Podcast</string>
     <string name="snackbar_download_started">Download started</string>
-    <string name="snackbar_compression_select_bitrate">Please select 96 or 128 kbps first</string>
+    <string name="snackbar_compression_select_bitrate">Please select Low, Medium, or High first</string>
     <string name="snackbar_compression_nothing_to_do">All downloads are already compressed</string>
     <string name="snackbar_compression_queued_count">Compression started for %1$d episodes</string>
     <string name="notif_transcode_progress">Compressing %1$d / %2$d</string>
@@ -241,4 +241,38 @@
     <string name="compressed_episode_saved_detail">%1$s → %2$s (–%3$s / –%4$d%%)</string>
     <string name="compressed_episode_size_only">%1$s (AAC/M4A compressed)</string>
     <string name="settings_version_format">PurePodcast v%1$s (Build %2$d)</string>
+
+    <!-- v1.1.0: Themes, Fullscreen Settings, Player Controls & Compression Tiers -->
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_accent_color">Accent color</string>
+    <string name="accent_teal">Ocean</string>
+    <string name="accent_indigo">Indigo</string>
+    <string name="accent_green">Forest</string>
+    <string name="accent_amber">Amber</string>
+    <string name="accent_coral">Coral</string>
+    <string name="accent_violet">Violet</string>
+    <string name="settings_section_sync">Background sync</string>
+    <string name="sync_interval_minutes_short">%1$d min</string>
+    <string name="sync_interval_hours_short">%1$dh</string>
+    <string name="settings_section_language_backup">Language &amp; Backup</string>
+    <string name="settings_compression_low">Low</string>
+    <string name="settings_compression_medium">Medium</string>
+    <string name="settings_compression_high">High</string>
+    <string name="settings_compression_info">Low: 64 kbps AAC (maximum storage savings). Medium: 128 kbps AAC (balanced). High: 192 kbps AAC (transparent quality). Episodes already at or below the selected bitrate are never upscaled and remain unchanged.</string>
+    <string name="cd_compression_info">Compression info</string>
+    <string name="settings_bluetooth_skip_seek_short">-10s / +30s</string>
+    <string name="settings_bluetooth_skip_episode_short">Prev / Next</string>
+    <string name="player_silence_short">Silence</string>
+    <string name="player_notes_short">Notes</string>
+    <string name="player_chapters_short">Chapters</string>
+    <string name="player_speed_title">Playback speed</string>
+    <string name="player_sleep_title">Sleep timer</string>
+    <string name="cd_speed_decrease">Decrease speed</string>
+    <string name="cd_speed_increase">Increase speed</string>
+    <string name="sleep_minutes_compact">%1$dm</string>
+    <string name="sleep_hours_exact">%1$dh</string>
+    <string name="sleep_hours_minutes">%1$dh %2$dm</string>
 </resources>

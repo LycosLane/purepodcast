@@ -63,9 +63,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setRefreshInterval(hours: Int) {
-        app.preferences.setRefreshIntervalHours(hours)
-        FeedRefreshWorker.schedulePeriodic(app, hours, replaceExisting = true)
+    fun setRefreshIntervalMinutes(minutes: Int) {
+        app.preferences.setRefreshIntervalMinutes(minutes)
+        FeedRefreshWorker.schedulePeriodic(app, app.preferences.settings.value.refreshIntervalMinutes, replaceExisting = true)
     }
 
     fun setWifiOnly(wifiOnly: Boolean) = app.preferences.setWifiOnlyDownloads(wifiOnly)
@@ -160,6 +160,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setShowSubscribedPodcasts(show: Boolean) = app.preferences.setShowSubscribedPodcasts(show)
     fun setShowLocalPodcasts(show: Boolean) = app.preferences.setShowLocalPodcasts(show)
+    fun setThemeMode(mode: String) = app.preferences.setThemeMode(mode)
+    fun setLightAccent(accent: String) = app.preferences.setLightAccent(accent)
+    fun setDarkAccent(accent: String) = app.preferences.setDarkAccent(accent)
 
     fun unhideEpisode(episodeId: Long) {
         viewModelScope.launch {

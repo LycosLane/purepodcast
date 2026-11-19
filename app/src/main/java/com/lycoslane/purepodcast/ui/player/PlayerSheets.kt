@@ -1,18 +1,18 @@
 package com.lycoslane.purepodcast.ui.player
 
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -24,20 +24,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,15 +48,20 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -72,11 +78,21 @@ import com.lycoslane.purepodcast.core.network.ChaptersParser
 import com.lycoslane.purepodcast.ui.common.CoverLightboxDialog
 import com.lycoslane.purepodcast.ui.common.PinchZoomText
 import com.lycoslane.purepodcast.ui.common.PodcastImage
+import com.lycoslane.purepodcast.ui.common.PureSegmentedControl
 import com.lycoslane.purepodcast.ui.common.TextReaderDialog
 import com.lycoslane.purepodcast.ui.common.formatDuration
+import com.lycoslane.purepodcast.ui.common.formatPlaybackSpeed
 import com.lycoslane.purepodcast.ui.common.htmlToPlainText
 import kotlinx.coroutines.launch
-import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+private enum class PlayerControlPanel {
+    NONE,
+    SPEED,
+    SILENCE,
+    SLEEP
+}
 
 @Composable
 fun MiniPlayer(
@@ -159,7 +175,7 @@ fun MiniPlayer(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullPlayerSheet(
     state: PlayerUiState,
@@ -173,8 +189,7 @@ fun FullPlayerSheet(
     onPrevEpisode: () -> Unit,
     onNextEpisode: () -> Unit,
     onSetSpeed: (Float) -> Unit,
-    onToggleSkipSilence: () -> Unit,
-    onSetSilenceIntensity: (Int) -> Unit,
+    onSetSilenceMode: (Boolean, Int) -> Unit,
     onSetSleepTimer: (Int) -> Unit
 ) {
     val ep = state.currentEpisode ?: return
@@ -182,13 +197,11 @@ fun FullPlayerSheet(
 
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    var showNotes by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    var showChapters by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    var showSpeedRow by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    var showSleepRow by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    var showSilenceIntensityRow by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    var showCoverLightbox by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    var showReaderDialog by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showNotes by rememberSaveable { mutableStateOf(false) }
+    var showChapters by rememberSaveable { mutableStateOf(false) }
+    var activePanel by rememberSaveable { mutableStateOf(PlayerControlPanel.NONE) }
+    var showCoverLightbox by rememberSaveable { mutableStateOf(false) }
+    var showReaderDialog by rememberSaveable { mutableStateOf(false) }
     var scrubPos by remember(ep.id) { mutableStateOf<Float?>(null) }
 
     fun expandSheet() {
@@ -342,214 +355,137 @@ fun FullPlayerSheet(
 
             Spacer(Modifier.height(18.dp))
 
-            FlowRow(
+            val speedLabel = formatPlaybackSpeed(state.playbackSpeed)
+            val silenceStateText = stringResource(if (state.skipSilence) R.string.state_on else R.string.state_off)
+            val silenceLongClickLabel = stringResource(R.string.player_silence)
+            val sleepLabel = if (state.sleepTimerRemainingMs > 0L) {
+                formatDuration(state.sleepTimerRemainingMs)
+            } else {
+                stringResource(R.string.player_sleep)
+            }
+
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val currentSpeedLabel = if (kotlin.math.abs(state.playbackSpeed - 0.75f) < 0.01f) {
-                    String.format(Locale.getDefault(), "%.2fx", state.playbackSpeed)
-                } else {
-                    String.format(Locale.getDefault(), "%.1fx", state.playbackSpeed)
-                }
-                FilterChip(
-                    selected = showSpeedRow,
+                PlayerActionTile(
+                    icon = Icons.Default.Speed,
+                    label = speedLabel,
+                    active = activePanel == PlayerControlPanel.SPEED || abs(state.playbackSpeed - 1.0f) >= 0.01f,
                     onClick = {
-                        showSpeedRow = !showSpeedRow
-                        showSleepRow = false
-                        showSilenceIntensityRow = false
-                        if (showSpeedRow) expandSheet()
-                    },
-                    label = { Text(currentSpeedLabel) },
-                    leadingIcon = { Icon(Icons.Default.Speed, null, modifier = Modifier.size(16.dp)) }
-                )
-
-                val silenceSelected = state.skipSilence
-                val silenceStateText = stringResource(if (silenceSelected) R.string.state_on else R.string.state_off)
-                val silenceLongClickLabel = stringResource(R.string.silence_intensity_title)
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier.height(48.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (silenceSelected) {
-                            MaterialTheme.colorScheme.secondaryContainer
+                        activePanel = if (activePanel == PlayerControlPanel.SPEED) {
+                            PlayerControlPanel.NONE
                         } else {
-                            MaterialTheme.colorScheme.surface
-                        },
-                        border = if (silenceSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        modifier = Modifier
-                            .defaultMinSize(minHeight = 48.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .semantics {
-                                role = Role.Button
-                                stateDescription = silenceStateText
-                            }
-                            .combinedClickable(
-                                onClick = onToggleSkipSilence,
-                                onLongClickLabel = silenceLongClickLabel,
-                                onLongClick = {
-                                    showSilenceIntensityRow = !showSilenceIntensityRow
-                                    showSpeedRow = false
-                                    showSleepRow = false
-                                    if (showSilenceIntensityRow) expandSheet()
-                                }
-                            )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.GraphicEq,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = if (silenceSelected) {
-                                    MaterialTheme.colorScheme.onSecondaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.primary
-                                }
-                            )
-                            Text(
-                                text = stringResource(R.string.player_silence),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = if (silenceSelected) {
-                                    MaterialTheme.colorScheme.onSecondaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                }
-                            )
+                            expandSheet()
+                            PlayerControlPanel.SPEED
                         }
-                    }
-                }
-
-                FilterChip(
-                    selected = state.sleepTimerRemainingMs > 0L || showSleepRow,
-                    onClick = {
-                        showSleepRow = !showSleepRow
-                        showSpeedRow = false
-                        showSilenceIntensityRow = false
-                        if (showSleepRow) expandSheet()
                     },
-                    label = {
-                        Text(
-                            if (state.sleepTimerRemainingMs > 0L) formatDuration(state.sleepTimerRemainingMs)
-                            else stringResource(R.string.player_sleep)
-                        )
-                    },
-                    leadingIcon = { Icon(Icons.Default.Bedtime, null, modifier = Modifier.size(16.dp)) }
+                    modifier = Modifier.weight(1f)
                 )
-                FilterChip(
-                    selected = showNotes,
+
+                PlayerActionTile(
+                    icon = Icons.Default.GraphicEq,
+                    label = stringResource(R.string.player_silence_short),
+                    active = state.skipSilence || activePanel == PlayerControlPanel.SILENCE,
+                    stateText = silenceStateText,
+                    onLongClickLabel = silenceLongClickLabel,
+                    onClick = {
+                        activePanel = if (activePanel == PlayerControlPanel.SILENCE) {
+                            PlayerControlPanel.NONE
+                        } else {
+                            expandSheet()
+                            PlayerControlPanel.SILENCE
+                        }
+                    },
+                    onLongClick = {
+                        onSetSilenceMode(!state.skipSilence, state.silenceIntensity)
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+
+                PlayerActionTile(
+                    icon = Icons.Default.Bedtime,
+                    label = sleepLabel,
+                    active = state.sleepTimerRemainingMs > 0L || activePanel == PlayerControlPanel.SLEEP,
+                    onClick = {
+                        activePanel = if (activePanel == PlayerControlPanel.SLEEP) {
+                            PlayerControlPanel.NONE
+                        } else {
+                            expandSheet()
+                            PlayerControlPanel.SLEEP
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+
+                PlayerActionTile(
+                    icon = Icons.Default.Description,
+                    label = stringResource(R.string.player_notes_short),
+                    active = showNotes,
                     onClick = {
                         showNotes = !showNotes
                         if (showNotes) {
                             showChapters = false
+                            activePanel = PlayerControlPanel.NONE
                             expandSheet()
                         } else if (!showChapters) {
                             scope.launch { runCatching { sheetState.partialExpand() } }
                         }
                     },
-                    label = { Text(stringResource(R.string.player_notes)) },
-                    leadingIcon = { Icon(Icons.Default.Description, null, modifier = Modifier.size(16.dp)) }
+                    modifier = Modifier.weight(1f)
                 )
+
                 if (chapters.isNotEmpty()) {
-                    FilterChip(
-                        selected = showChapters,
+                    PlayerActionTile(
+                        icon = Icons.AutoMirrored.Filled.FormatListBulleted,
+                        label = stringResource(R.string.player_chapters_short),
+                        active = showChapters,
                         onClick = {
                             showChapters = !showChapters
                             if (showChapters) {
                                 showNotes = false
+                                activePanel = PlayerControlPanel.NONE
                                 expandSheet()
                             } else if (!showNotes) {
                                 scope.launch { runCatching { sheetState.partialExpand() } }
                             }
                         },
-                        label = { Text(stringResource(R.string.player_chapters_count, chapters.size)) },
-                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.FormatListBulleted, null, modifier = Modifier.size(16.dp)) }
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
 
-            if (showSilenceIntensityRow) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.silence_intensity_title),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(4.dp))
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+            if (activePanel != PlayerControlPanel.NONE) {
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    val levels = listOf(
-                        0 to stringResource(R.string.silence_soft),
-                        1 to stringResource(R.string.silence_medium),
-                        2 to stringResource(R.string.silence_strong)
-                    )
-                    levels.forEach { (level, label) ->
-                        FilterChip(
-                            selected = state.silenceIntensity == level,
-                            onClick = {
-                                onSetSilenceIntensity(level)
-                                if (!state.skipSilence) onToggleSkipSilence()
-                                showSilenceIntensityRow = false
-                            },
-                            label = { Text(label) }
-                        )
-                    }
-                }
-            }
-
-            if (showSpeedRow) {
-                Spacer(Modifier.height(8.dp))
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf(0.75f, 1.0f, 1.2f, 1.5f, 1.8f, 2.0f, 2.5f, 3.0f).forEach { speed ->
-                        val speedLabel = if (speed == 0.75f) {
-                            String.format(Locale.getDefault(), "%.2fx", speed)
-                        } else {
-                            String.format(Locale.getDefault(), "%.1fx", speed)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                    ) {
+                        when (activePanel) {
+                            PlayerControlPanel.SPEED -> SpeedControlPanel(
+                                episodeId = ep.id,
+                                currentSpeed = state.playbackSpeed,
+                                onSetSpeed = onSetSpeed
+                            )
+                            PlayerControlPanel.SILENCE -> SilenceControlPanel(
+                                skipSilence = state.skipSilence,
+                                silenceIntensity = state.silenceIntensity,
+                                onSetSilenceMode = onSetSilenceMode
+                            )
+                            PlayerControlPanel.SLEEP -> SleepControlPanel(
+                                remainingMs = state.sleepTimerRemainingMs,
+                                presetMinutes = state.sleepTimerPresetMinutes,
+                                onSetSleepTimer = onSetSleepTimer
+                            )
+                            PlayerControlPanel.NONE -> Unit
                         }
-                        FilterChip(
-                            selected = kotlin.math.abs(state.playbackSpeed - speed) < 0.01f,
-                            onClick = { onSetSpeed(speed) },
-                            label = { Text(speedLabel) }
-                        )
-                    }
-                }
-            }
-
-            if (showSleepRow) {
-                Spacer(Modifier.height(8.dp))
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val offLabel = stringResource(R.string.sleep_off)
-                    listOf(0, 15, 30, 45, 60).forEach { mins ->
-                        val label = if (mins == 0) offLabel else stringResource(R.string.sleep_minutes_short, mins)
-                        val selected = if (state.sleepTimerRemainingMs <= 0L) {
-                            mins == 0
-                        } else {
-                            mins == state.sleepTimerPresetMinutes
-                        }
-                        FilterChip(
-                            selected = selected,
-                            onClick = {
-                                onSetSleepTimer(mins)
-                                showSleepRow = false
-                            },
-                            label = { Text(label) }
-                        )
                     }
                 }
             }
@@ -644,5 +580,354 @@ fun FullPlayerSheet(
             onTextScaleChange = onTextScaleChange,
             onDismiss = { showReaderDialog = false }
         )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PlayerActionTile(
+    icon: ImageVector,
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    stateText: String? = null
+) {
+    val containerColor = if (active) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    val contentColor = if (active) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    val border = if (active) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = containerColor,
+        border = border,
+        modifier = modifier
+            .height(58.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .semantics {
+                role = Role.Button
+                if (stateText != null) stateDescription = stateText
+            }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClickLabel = onLongClickLabel,
+                onLongClick = onLongClick
+            )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = contentColor
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun SpeedControlPanel(
+    episodeId: Long,
+    currentSpeed: Float,
+    onSetSpeed: (Float) -> Unit
+) {
+    var sliderSpeed by remember(episodeId, currentSpeed) {
+        mutableFloatStateOf(currentSpeed.coerceIn(0.50f, 3.00f))
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = stringResource(R.string.player_speed_title),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = {
+                    val next = (((sliderSpeed - 0.02f) * 100f).roundToInt().coerceIn(50, 300)) / 100f
+                    sliderSpeed = next
+                    onSetSpeed(next)
+                }
+            ) {
+                Icon(
+                    Icons.Default.Remove,
+                    contentDescription = stringResource(R.string.cd_speed_decrease)
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier
+                    .defaultMinSize(minHeight = 36.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        sliderSpeed = 1.0f
+                        onSetSpeed(1.0f)
+                    }
+            ) {
+                Box(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = formatPlaybackSpeed(sliderSpeed),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+            IconButton(
+                onClick = {
+                    val next = (((sliderSpeed + 0.02f) * 100f).roundToInt().coerceIn(50, 300)) / 100f
+                    sliderSpeed = next
+                    onSetSpeed(next)
+                }
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = stringResource(R.string.cd_speed_increase)
+                )
+            }
+        }
+    }
+
+    Slider(
+        value = sliderSpeed,
+        onValueChange = { raw ->
+            sliderSpeed = (raw * 100f).roundToInt().coerceIn(50, 300) / 100f
+        },
+        onValueChangeFinished = { onSetSpeed(sliderSpeed) },
+        valueRange = 0.50f..3.00f,
+        steps = 0,
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        listOf(0.8f, 1.0f, 1.2f, 1.5f, 2.0f).forEach { preset ->
+            val selected = abs(sliderSpeed - preset) < 0.01f
+            Box(
+                modifier = Modifier
+                    .defaultMinSize(minHeight = 40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        sliderSpeed = preset
+                        onSetSpeed(preset)
+                    }
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = formatPlaybackSpeed(preset),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SilenceControlPanel(
+    skipSilence: Boolean,
+    silenceIntensity: Int,
+    onSetSilenceMode: (Boolean, Int) -> Unit
+) {
+    val selectedOption = if (skipSilence) silenceIntensity.coerceIn(0, 2) else -1
+    val statusText = when (selectedOption) {
+        0 -> stringResource(R.string.silence_soft)
+        1 -> stringResource(R.string.silence_medium)
+        2 -> stringResource(R.string.silence_strong)
+        else -> stringResource(R.string.sleep_off)
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.player_silence),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = statusText,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+    Spacer(Modifier.height(10.dp))
+    PureSegmentedControl(
+        options = listOf(
+            -1 to stringResource(R.string.sleep_off),
+            0 to stringResource(R.string.silence_soft),
+            1 to stringResource(R.string.silence_medium),
+            2 to stringResource(R.string.silence_strong)
+        ),
+        selected = selectedOption,
+        onSelect = { level ->
+            if (level < 0) {
+                onSetSilenceMode(false, silenceIntensity)
+            } else {
+                onSetSilenceMode(true, level)
+            }
+        }
+    )
+}
+
+@Composable
+private fun SleepControlPanel(
+    remainingMs: Long,
+    presetMinutes: Int,
+    onSetSleepTimer: (Int) -> Unit
+) {
+    var isDragging by remember { mutableStateOf(false) }
+    var sleepStep by remember(presetMinutes, remainingMs) {
+        val currentMins = if (remainingMs <= 0L) 0 else presetMinutes.coerceIn(0, 120)
+        mutableIntStateOf(((currentMins + 2) / 5).coerceIn(0, 24))
+    }
+
+    val selectedMinutes = sleepStep * 5
+    val formattedSelected = formatSleepMinutesLabel(selectedMinutes)
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.player_sleep_title),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = if (!isDragging && remainingMs > 0L) {
+                    formatDuration(remainingMs)
+                } else {
+                    formattedSelected
+                },
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = if (remainingMs > 0L || selectedMinutes > 0) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
+            if (remainingMs > 0L) {
+                Spacer(Modifier.width(6.dp))
+                TextButton(
+                    onClick = {
+                        isDragging = false
+                        sleepStep = 0
+                        onSetSleepTimer(0)
+                    }
+                ) {
+                    Text(stringResource(R.string.sleep_off))
+                }
+            }
+        }
+    }
+
+    Slider(
+        value = sleepStep.toFloat(),
+        onValueChange = { raw ->
+            isDragging = true
+            sleepStep = raw.roundToInt().coerceIn(0, 24)
+        },
+        onValueChangeFinished = {
+            isDragging = false
+            onSetSleepTimer(sleepStep * 5)
+        },
+        valueRange = 0f..24f,
+        steps = 23,
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        val presets = listOf(
+            0 to stringResource(R.string.sleep_off),
+            15 to stringResource(R.string.sleep_minutes_compact, 15),
+            30 to stringResource(R.string.sleep_minutes_compact, 30),
+            60 to stringResource(R.string.sleep_minutes_compact, 60),
+            120 to stringResource(R.string.sleep_hours_exact, 2)
+        )
+        presets.forEach { (mins, label) ->
+            val selected = if (remainingMs <= 0L && !isDragging) {
+                mins == 0
+            } else {
+                selectedMinutes == mins
+            }
+            Box(
+                modifier = Modifier
+                    .defaultMinSize(minHeight = 40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        isDragging = false
+                        sleepStep = mins / 5
+                        onSetSleepTimer(mins)
+                    }
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun formatSleepMinutesLabel(minutes: Int): String {
+    if (minutes <= 0) return stringResource(R.string.sleep_off)
+    val hours = minutes / 60
+    val remMins = minutes % 60
+    return when {
+        hours == 0 -> stringResource(R.string.sleep_minutes_short, remMins)
+        remMins == 0 -> stringResource(R.string.sleep_hours_exact, hours)
+        else -> stringResource(R.string.sleep_hours_minutes, hours, remMins)
     }
 }

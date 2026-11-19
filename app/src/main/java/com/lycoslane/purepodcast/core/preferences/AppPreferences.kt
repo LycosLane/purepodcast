@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 data class AppSettings(
-    val refreshIntervalHours: Int = 6, // 0 = manual only
+    val refreshIntervalMinutes: Int = 360, // 0 = manual only, 15..1440
     val wifiOnlyDownloads: Boolean = true,
     val autoDownloadNewByDefault: Boolean = false,
     val downloadWhenQueued: Boolean = false,
@@ -20,12 +20,15 @@ data class AppSettings(
     val bluetoothNextPrevSeeks: Boolean = true, // true = -10s/+30s, false = prev/next in queue
     val textScale: Float = 1.0f, // 0.8f..1.8f global pinch-to-zoom text scale
     val appLanguage: String = "en", // "en" or "de"
-    val transcodeBitrateKbps: Int = 0, // 0 = off, 96 = 96 kbps, 128 = 128 kbps
+    val transcodeBitrateKbps: Int = 0, // 0 = off, 64 = Low, 128 = Medium, 192 = High
     val transcodeAutoEnabled: Boolean = false,
     val transcodeChargingOnly: Boolean = true,
     val localFolderUri: String = "",
     val showSubscribedPodcasts: Boolean = true,
-    val showLocalPodcasts: Boolean = true
+    val showLocalPodcasts: Boolean = true,
+    val themeMode: String = AppPreferences.THEME_SYSTEM,
+    val lightAccent: String = AppPreferences.DEFAULT_ACCENT,
+    val darkAccent: String = AppPreferences.DEFAULT_ACCENT
 )
 
 class AppPreferences(context: Context) {
@@ -35,36 +38,62 @@ class AppPreferences(context: Context) {
     private val _settings = MutableStateFlow(load())
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
-    private fun load(): AppSettings = AppSettings(
-        refreshIntervalHours = prefs.getInt(KEY_REFRESH_INTERVAL_HOURS, 6).coerceIn(0, 168),
-        wifiOnlyDownloads = prefs.getBoolean(KEY_WIFI_ONLY, true),
-        autoDownloadNewByDefault = prefs.getBoolean(KEY_AUTO_DOWNLOAD_DEFAULT, false),
-        downloadWhenQueued = prefs.getBoolean(KEY_DOWNLOAD_WHEN_QUEUED, false),
-        addToQueueWhenDownloaded = prefs.getBoolean(KEY_QUEUE_WHEN_DOWNLOADED, false),
-        autoRemovePlayedDays = prefs.getInt(KEY_AUTO_REMOVE_PLAYED_DAYS, 1).coerceIn(-1, 365),
-        trashRetentionHours = prefs.getInt(KEY_TRASH_RETENTION_HOURS, 24).let {
-            if (it in listOf(0, 24, 48)) it else 24
-        },
-        maxDownloadsPerPodcast = prefs.getInt(KEY_MAX_DOWNLOADS_PER_PODCAST, 0).coerceIn(0, 30),
-        smartRewindSeconds = prefs.getInt(KEY_SMART_REWIND_SECONDS, 10).coerceIn(0, 120),
-        audioNormalizationEnabled = prefs.getBoolean(KEY_AUDIO_NORMALIZATION, false),
-        bluetoothNextPrevSeeks = prefs.getBoolean(KEY_BLUETOOTH_NEXT_PREV_SEEKS, true),
-        textScale = prefs.getFloat(KEY_TEXT_SCALE, 1.0f).coerceIn(0.8f, 1.8f),
-        appLanguage = prefs.getString(KEY_APP_LANGUAGE, "en") ?: "en",
-        transcodeBitrateKbps = prefs.getInt(KEY_TRANSCODE_BITRATE_KBPS, 0).let {
-            if (it in listOf(0, 96, 128)) it else 0
-        },
-        transcodeAutoEnabled = prefs.getBoolean(KEY_TRANSCODE_AUTO, false),
-        transcodeChargingOnly = prefs.getBoolean(KEY_TRANSCODE_CHARGING_ONLY, true),
-        localFolderUri = prefs.getString(KEY_LOCAL_FOLDER_URI, "") ?: "",
-        showSubscribedPodcasts = prefs.getBoolean(KEY_SHOW_SUBSCRIBED, true),
-        showLocalPodcasts = prefs.getBoolean(KEY_SHOW_LOCAL, true)
-    )
+    private fun normalizeRefreshMinutes(minutes: Int): Int =
+        if (minutes <= 0) 0 else minutes.coerceIn(15, 1440)
 
-    fun setRefreshIntervalHours(hours: Int) {
-        val clamped = hours.coerceIn(0, 168)
-        prefs.edit().putInt(KEY_REFRESH_INTERVAL_HOURS, clamped).apply()
-        _settings.update { it.copy(refreshIntervalHours = clamped) }
+    private fun normalizeTranscodeBitrate(kbps: Int): Int = when (kbps) {
+        96 -> 64 // Migrate legacy 96 kbps setting to Low (64 kbps)
+        0, 64, 128, 192 -> kbps
+        else -> 0
+    }
+
+    private fun normalizeThemeMode(mode: String?): String =
+        if (mode in VALID_THEME_MODES) mode!! else THEME_SYSTEM
+
+    private fun normalizeAccent(accent: String?): String =
+        if (accent in VALID_ACCENTS) accent!! else DEFAULT_ACCENT
+
+    private fun load(): AppSettings {
+        val refreshMinutes = if (prefs.contains(KEY_REFRESH_INTERVAL_MINUTES)) {
+            normalizeRefreshMinutes(prefs.getInt(KEY_REFRESH_INTERVAL_MINUTES, 360))
+        } else {
+            val legacyHours = prefs.getInt(KEY_REFRESH_INTERVAL_HOURS, 6)
+            if (legacyHours <= 0) 0 else normalizeRefreshMinutes(legacyHours * 60)
+        }
+        return AppSettings(
+            refreshIntervalMinutes = refreshMinutes,
+            wifiOnlyDownloads = prefs.getBoolean(KEY_WIFI_ONLY, true),
+            autoDownloadNewByDefault = prefs.getBoolean(KEY_AUTO_DOWNLOAD_DEFAULT, false),
+            downloadWhenQueued = prefs.getBoolean(KEY_DOWNLOAD_WHEN_QUEUED, false),
+            addToQueueWhenDownloaded = prefs.getBoolean(KEY_QUEUE_WHEN_DOWNLOADED, false),
+            autoRemovePlayedDays = prefs.getInt(KEY_AUTO_REMOVE_PLAYED_DAYS, 1).coerceIn(-1, 365),
+            trashRetentionHours = prefs.getInt(KEY_TRASH_RETENTION_HOURS, 24).let {
+                if (it in listOf(0, 24, 48)) it else 24
+            },
+            maxDownloadsPerPodcast = prefs.getInt(KEY_MAX_DOWNLOADS_PER_PODCAST, 0).coerceIn(0, 30),
+            smartRewindSeconds = prefs.getInt(KEY_SMART_REWIND_SECONDS, 10).coerceIn(0, 120),
+            audioNormalizationEnabled = prefs.getBoolean(KEY_AUDIO_NORMALIZATION, false),
+            bluetoothNextPrevSeeks = prefs.getBoolean(KEY_BLUETOOTH_NEXT_PREV_SEEKS, true),
+            textScale = prefs.getFloat(KEY_TEXT_SCALE, 1.0f).coerceIn(0.8f, 1.8f),
+            appLanguage = prefs.getString(KEY_APP_LANGUAGE, "en") ?: "en",
+            transcodeBitrateKbps = normalizeTranscodeBitrate(
+                prefs.getInt(KEY_TRANSCODE_BITRATE_KBPS, 0)
+            ),
+            transcodeAutoEnabled = prefs.getBoolean(KEY_TRANSCODE_AUTO, false),
+            transcodeChargingOnly = prefs.getBoolean(KEY_TRANSCODE_CHARGING_ONLY, true),
+            localFolderUri = prefs.getString(KEY_LOCAL_FOLDER_URI, "") ?: "",
+            showSubscribedPodcasts = prefs.getBoolean(KEY_SHOW_SUBSCRIBED, true),
+            showLocalPodcasts = prefs.getBoolean(KEY_SHOW_LOCAL, true),
+            themeMode = normalizeThemeMode(prefs.getString(KEY_THEME_MODE, THEME_SYSTEM)),
+            lightAccent = normalizeAccent(prefs.getString(KEY_LIGHT_ACCENT, DEFAULT_ACCENT)),
+            darkAccent = normalizeAccent(prefs.getString(KEY_DARK_ACCENT, DEFAULT_ACCENT))
+        )
+    }
+
+    fun setRefreshIntervalMinutes(minutes: Int) {
+        val normalized = normalizeRefreshMinutes(minutes)
+        prefs.edit().putInt(KEY_REFRESH_INTERVAL_MINUTES, normalized).apply()
+        _settings.update { it.copy(refreshIntervalMinutes = normalized) }
     }
 
     fun setWifiOnlyDownloads(wifiOnly: Boolean) {
@@ -134,7 +163,7 @@ class AppPreferences(context: Context) {
     }
 
     fun setTranscodeBitrateKbps(kbps: Int) {
-        val normalized = if (kbps in listOf(0, 96, 128)) kbps else 0
+        val normalized = normalizeTranscodeBitrate(kbps)
         prefs.edit().putInt(KEY_TRANSCODE_BITRATE_KBPS, normalized).apply()
         _settings.update { it.copy(transcodeBitrateKbps = normalized) }
     }
@@ -164,10 +193,37 @@ class AppPreferences(context: Context) {
         _settings.update { it.copy(showLocalPodcasts = show) }
     }
 
+    fun setThemeMode(mode: String) {
+        val normalized = normalizeThemeMode(mode)
+        prefs.edit().putString(KEY_THEME_MODE, normalized).apply()
+        _settings.update { it.copy(themeMode = normalized) }
+    }
+
+    fun setLightAccent(accent: String) {
+        val normalized = normalizeAccent(accent)
+        prefs.edit().putString(KEY_LIGHT_ACCENT, normalized).apply()
+        _settings.update { it.copy(lightAccent = normalized) }
+    }
+
+    fun setDarkAccent(accent: String) {
+        val normalized = normalizeAccent(accent)
+        prefs.edit().putString(KEY_DARK_ACCENT, normalized).apply()
+        _settings.update { it.copy(darkAccent = normalized) }
+    }
+
     companion object {
         const val PREFS_NAME = "purepodcast_prefs"
         const val KEY_APP_LANGUAGE = "app_language"
+        const val THEME_SYSTEM = "system"
+        const val THEME_LIGHT = "light"
+        const val THEME_DARK = "dark"
+        val VALID_THEME_MODES = listOf(THEME_SYSTEM, THEME_LIGHT, THEME_DARK)
+        const val DEFAULT_ACCENT = "teal"
+        val VALID_ACCENTS = listOf("teal", "indigo", "green", "amber", "coral", "violet")
+        val VALID_TRANSCODE_BITRATES = listOf(0, 64, 128, 192)
+        val REFRESH_INTERVAL_STEPS_MINUTES = listOf(0, 15, 30, 60, 180, 360, 720, 1440)
         private const val KEY_REFRESH_INTERVAL_HOURS = "refresh_interval_hours"
+        private const val KEY_REFRESH_INTERVAL_MINUTES = "refresh_interval_minutes"
         private const val KEY_WIFI_ONLY = "wifi_only_downloads"
         private const val KEY_AUTO_DOWNLOAD_DEFAULT = "auto_download_new_default"
         private const val KEY_DOWNLOAD_WHEN_QUEUED = "download_when_queued"
@@ -185,5 +241,8 @@ class AppPreferences(context: Context) {
         private const val KEY_LOCAL_FOLDER_URI = "local_folder_uri"
         private const val KEY_SHOW_SUBSCRIBED = "show_subscribed_podcasts"
         private const val KEY_SHOW_LOCAL = "show_local_podcasts"
+        private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_LIGHT_ACCENT = "light_accent"
+        private const val KEY_DARK_ACCENT = "dark_accent"
     }
 }

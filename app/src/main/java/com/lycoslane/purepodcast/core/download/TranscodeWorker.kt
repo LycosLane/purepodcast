@@ -192,8 +192,7 @@ class TranscodeWorker(
 
                     val candidates = when {
                         singleEpisodeId > 0L -> listOfNotNull(dao.getEpisode(singleEpisodeId))
-                        manualTrigger -> dao.getAllDownloadedEpisodes()
-                        else -> dao.getUntranscodedDownloads()
+                        else -> dao.getAllDownloadedEpisodes()
                     }.filter {
                         it.downloadState == DownloadState.DOWNLOADED &&
                             it.localFilePath?.startsWith("content://") != true
@@ -212,26 +211,20 @@ class TranscodeWorker(
                         return@withLock Result.success()
                     }
 
-                    // Filter candidates down to files that actually need compression at targetBitrateKbps
+                    // Filter candidates down to files that actually need downscaling to target bitrate
                     val targets = candidates.filter { ep ->
                         val path = ep.localFilePath ?: return@filter false
                         val file = File(path)
                         if (!file.exists() || file.length() <= 0L) return@filter false
                         if (AudioTranscoder.isAlreadyCompact(file, bitrateKbps)) {
-                            if (!ep.isTranscoded) {
-                                dao.markEpisodeTranscoded(ep.id, file.absolutePath, file.length(), ep.transcodeSavedBytes)
-                            }
                             return@filter false
                         }
-                        if (ep.isTranscoded) {
-                            // If marked transcoded earlier, only re-attempt during manual trigger if file is still larger than target bitrate
-                            if (!manualTrigger) return@filter false
-                            if (ep.durationMs > 0L) {
-                                val avgKbps = (file.length() * 8L) / ep.durationMs
-                                if (avgKbps <= bitrateKbps + 8) return@filter false
-                            } else {
-                                return@filter false
-                            }
+                        if (ep.isTranscoded &&
+                            path.endsWith(".m4a", ignoreCase = true) &&
+                            ep.durationMs > 0L
+                        ) {
+                            val avgKbps = (file.length() * 8L) / ep.durationMs
+                            if (avgKbps <= bitrateKbps + 6) return@filter false
                         }
                         true
                     }
@@ -283,7 +276,6 @@ class TranscodeWorker(
                             continue
                         }
                         if (AudioTranscoder.isAlreadyCompact(sourceFile, bitrateKbps)) {
-                            dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length(), ep.transcodeSavedBytes)
                             _status.value = _status.value.copy(episodePercent = 100)
                             continue
                         }
@@ -325,7 +317,7 @@ class TranscodeWorker(
                                 skippedCount++
                                 continue
                             }
-                            if (tempFile.length() < originalSize) {
+                            if (tempFile.length() < (originalSize * 96L) / 100L) {
                                 val newSize = tempFile.length()
                                 if (targetM4a.exists() && targetM4a.absolutePath != sourceFile.absolutePath) {
                                     targetM4a.delete()
@@ -348,9 +340,9 @@ class TranscodeWorker(
                                     skippedCount++
                                 }
                             } else {
-                                // Transcoded file wasn't smaller (source already low-bitrate); keep original
+                                // Transcoded file did not yield real space savings; keep original untouched
                                 tempFile.delete()
-                                dao.markEpisodeTranscoded(ep.id, sourceFile.absolutePath, sourceFile.length(), ep.transcodeSavedBytes)
+                                skippedCount++
                             }
                         } else {
                             tempFile.delete()

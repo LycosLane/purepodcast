@@ -6,6 +6,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @Volatile
 private var cachedLocale: Locale? = null
@@ -15,6 +16,16 @@ private var cachedDateFormatter: DateTimeFormatter? = null
 private fun appendTwoDigits(sb: StringBuilder, value: Long) {
     if (value < 10L) sb.append('0')
     sb.append(value)
+}
+
+fun formatPlaybackSpeed(speed: Float, locale: Locale = Locale.getDefault()): String {
+    val hundredths = (speed * 100f).roundToInt()
+    val normalized = hundredths / 100f
+    return if (hundredths % 10 == 0) {
+        String.format(locale, "%.1fx", normalized)
+    } else {
+        String.format(locale, "%.2fx", normalized)
+    }
 }
 
 fun formatDuration(ms: Long): String {

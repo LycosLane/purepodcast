@@ -3,6 +3,7 @@ package com.lycoslane.purepodcast.ui.common
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Locale
 
 class FormattersTest {
 
@@ -20,5 +21,14 @@ class FormattersTest {
         assertEquals("", formatPubDate(0L))
         assertEquals("", formatPubDate(-1L))
         assertTrue(formatPubDate(1_700_000_000_000L).isNotBlank())
+    }
+
+    @Test
+    fun formatsPlaybackSpeeds() {
+        assertEquals("1.0x", formatPlaybackSpeed(1.0f, Locale.US))
+        assertEquals("1.12x", formatPlaybackSpeed(1.12f, Locale.US))
+        assertEquals("0.75x", formatPlaybackSpeed(0.75f, Locale.US))
+        assertEquals("1.2x", formatPlaybackSpeed(1.20f, Locale.US))
+        assertEquals("1,12x", formatPlaybackSpeed(1.12f, Locale.GERMANY))
     }
 }

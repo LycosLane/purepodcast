@@ -30,7 +30,7 @@ class PurePodcastApplication : Application() {
         playerController = PlayerController(this, preferences)
         FeedRefreshWorker.schedulePeriodic(
             context = this,
-            intervalHours = preferences.settings.value.refreshIntervalHours,
+            intervalMinutes = preferences.settings.value.refreshIntervalMinutes,
             replaceExisting = false
         )
         appScope.launch {

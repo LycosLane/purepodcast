@@ -1,6 +1,7 @@
 package com.lycoslane.purepodcast.core.preferences
 
 import android.app.Application
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -14,12 +15,17 @@ class AppPreferencesTest {
 
     @Test
     fun clampsAndNormalizesSettingsValues() {
-        val prefs = AppPreferences(ApplicationProvider.getApplicationContext())
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = AppPreferences(context)
 
-        prefs.setRefreshIntervalHours(999)
-        assertEquals(168, prefs.settings.value.refreshIntervalHours)
-        prefs.setRefreshIntervalHours(-5)
-        assertEquals(0, prefs.settings.value.refreshIntervalHours)
+        prefs.setRefreshIntervalMinutes(9999)
+        assertEquals(1440, prefs.settings.value.refreshIntervalMinutes)
+        prefs.setRefreshIntervalMinutes(5)
+        assertEquals(15, prefs.settings.value.refreshIntervalMinutes)
+        prefs.setRefreshIntervalMinutes(30)
+        assertEquals(30, prefs.settings.value.refreshIntervalMinutes)
+        prefs.setRefreshIntervalMinutes(-5)
+        assertEquals(0, prefs.settings.value.refreshIntervalMinutes)
 
         prefs.setTrashRetentionHours(12)
         assertEquals(24, prefs.settings.value.trashRetentionHours)
@@ -43,8 +49,39 @@ class AppPreferencesTest {
         assertEquals("de", prefs.settings.value.appLanguage)
 
         prefs.setTranscodeBitrateKbps(64)
-        assertEquals(0, prefs.settings.value.transcodeBitrateKbps)
+        assertEquals(64, prefs.settings.value.transcodeBitrateKbps)
+        prefs.setTranscodeBitrateKbps(96)
+        assertEquals(64, prefs.settings.value.transcodeBitrateKbps)
         prefs.setTranscodeBitrateKbps(128)
         assertEquals(128, prefs.settings.value.transcodeBitrateKbps)
+        prefs.setTranscodeBitrateKbps(192)
+        assertEquals(192, prefs.settings.value.transcodeBitrateKbps)
+        prefs.setTranscodeBitrateKbps(100)
+        assertEquals(0, prefs.settings.value.transcodeBitrateKbps)
+
+        prefs.setThemeMode("invalid")
+        assertEquals(AppPreferences.THEME_SYSTEM, prefs.settings.value.themeMode)
+        prefs.setThemeMode(AppPreferences.THEME_DARK)
+        assertEquals(AppPreferences.THEME_DARK, prefs.settings.value.themeMode)
+
+        prefs.setLightAccent("unknown")
+        assertEquals(AppPreferences.DEFAULT_ACCENT, prefs.settings.value.lightAccent)
+        prefs.setLightAccent("indigo")
+        assertEquals("indigo", prefs.settings.value.lightAccent)
+
+        prefs.setDarkAccent("unknown")
+        assertEquals(AppPreferences.DEFAULT_ACCENT, prefs.settings.value.darkAccent)
+        prefs.setDarkAccent("amber")
+        assertEquals("amber", prefs.settings.value.darkAccent)
+    }
+
+    @Test
+    fun migratesLegacyRefreshHoursWhenMinutesKeyAbsent() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val raw = context.getSharedPreferences(AppPreferences.PREFS_NAME, Context.MODE_PRIVATE)
+        raw.edit().clear().putInt("refresh_interval_hours", 12).commit()
+
+        val migrated = AppPreferences(context)
+        assertEquals(720, migrated.settings.value.refreshIntervalMinutes)
     }
 }

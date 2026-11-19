@@ -165,7 +165,7 @@ class PlayerController(
                         currentPodcast = candidate.podcast,
                         positionMs = candidate.episode.positionMs.coerceAtLeast(0L),
                         durationMs = candidate.episode.durationMs.coerceAtLeast(0L),
-                        playbackSpeed = candidate.podcast.playbackSpeed.coerceIn(0.75f, 3.0f),
+                        playbackSpeed = candidate.podcast.playbackSpeed.coerceIn(0.50f, 3.0f),
                         skipSilence = candidate.podcast.skipSilence,
                         silenceIntensity = candidate.podcast.silenceIntensity.coerceIn(0, 2),
                         isPlaying = false
@@ -209,7 +209,7 @@ class PlayerController(
                     currentPodcast = withPodcast.podcast,
                     positionMs = livePos ?: withPodcast.episode.positionMs,
                     durationMs = liveDuration ?: withPodcast.episode.durationMs,
-                    playbackSpeed = withPodcast.podcast.playbackSpeed.coerceIn(0.75f, 3.0f),
+                    playbackSpeed = withPodcast.podcast.playbackSpeed.coerceIn(0.50f, 3.0f),
                     skipSilence = withPodcast.podcast.skipSilence,
                     silenceIntensity = withPodcast.podcast.silenceIntensity.coerceIn(0, 2)
                 )
@@ -298,7 +298,7 @@ class PlayerController(
                 .setMediaMetadata(metadata)
                 .build()
 
-            val speed = freshPodcast.playbackSpeed.coerceIn(0.75f, 3.0f)
+            val speed = freshPodcast.playbackSpeed.coerceIn(0.50f, 3.0f)
             val intensity = freshPodcast.silenceIntensity.coerceIn(0, 2)
             val rewindMs = preferences.settings.value.smartRewindSeconds * 1000L
             val startPos = when {
@@ -412,11 +412,22 @@ class PlayerController(
     }
 
     fun setPlaybackSpeed(speed: Float) {
-        val clamped = speed.coerceIn(0.75f, 3.0f)
+        val clamped = speed.coerceIn(0.50f, 3.0f)
         controller?.playbackParameters = PlaybackParameters(clamped)
         _state.update { it.copy(playbackSpeed = clamped) }
         val podcastId = _state.value.currentPodcast?.id ?: return
         scope.launch(Dispatchers.IO) { dao.setPlaybackSpeed(podcastId, clamped) }
+    }
+
+    fun setSilenceMode(enabled: Boolean, intensity: Int) {
+        val clamped = intensity.coerceIn(0, 2)
+        controller?.let { sendSkipSilenceCommand(it, enabled, clamped) }
+        _state.update { it.copy(skipSilence = enabled, silenceIntensity = clamped) }
+        val podcastId = _state.value.currentPodcast?.id ?: return
+        scope.launch(Dispatchers.IO) {
+            dao.setSkipSilence(podcastId, enabled)
+            dao.setSilenceIntensity(podcastId, clamped)
+        }
     }
 
     fun toggleSkipSilence() {

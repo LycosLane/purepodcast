@@ -314,7 +314,7 @@ class PlaybackService : MediaSessionService() {
                             } else {
                                 withContext(Dispatchers.Main) {
                                     player.playbackParameters = PlaybackParameters(
-                                        withPodcast.podcast.playbackSpeed.coerceIn(0.75f, 3.0f)
+                                        withPodcast.podcast.playbackSpeed.coerceIn(0.50f, 3.0f)
                                     )
                                     updateSilenceProcessors(
                                         withPodcast.podcast.skipSilence,
@@ -523,7 +523,7 @@ class PlaybackService : MediaSessionService() {
             val mediaItem = buildMediaItem(ep, pod) ?: return@launch
             val mediaUri = mediaItem.localConfiguration?.uri ?: return@launch
 
-            val speed = pod.playbackSpeed.coerceIn(0.75f, 3.0f)
+            val speed = pod.playbackSpeed.coerceIn(0.50f, 3.0f)
             val rewindMs = (applicationContext as PurePodcastApplication)
                 .preferences.settings.value.smartRewindSeconds * 1000L
             val startPos = if (ep.positionMs > 0L) (ep.positionMs - rewindMs).coerceAtLeast(0L) else 0L

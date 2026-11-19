@@ -29,6 +29,11 @@ class PodcastRepositoryBackupTest {
         val prefs = AppPreferences(context)
         prefs.setSmartRewindSeconds(25)
         prefs.setAppLanguage("de")
+        prefs.setRefreshIntervalMinutes(30)
+        prefs.setTranscodeBitrateKbps(192)
+        prefs.setThemeMode(AppPreferences.THEME_DARK)
+        prefs.setLightAccent("indigo")
+        prefs.setDarkAccent("amber")
 
         val dao = PurePodcastDatabase.getInstance(context).dao()
         val podId = dao.insertPodcast(
@@ -66,6 +71,11 @@ class PodcastRepositoryBackupTest {
         // Reset state, then import backup offline
         prefs.setSmartRewindSeconds(0)
         prefs.setAppLanguage("en")
+        prefs.setRefreshIntervalMinutes(360)
+        prefs.setTranscodeBitrateKbps(0)
+        prefs.setThemeMode(AppPreferences.THEME_SYSTEM)
+        prefs.setLightAccent(AppPreferences.DEFAULT_ACCENT)
+        prefs.setDarkAccent(AppPreferences.DEFAULT_ACCENT)
         dao.clearQueue()
         dao.updatePosition(epIds[0], 0L)
         dao.setPlayed(epIds[0], false, 0L)
@@ -75,6 +85,11 @@ class PodcastRepositoryBackupTest {
         assertEquals(1, restoredCount)
         assertEquals(25, prefs.settings.value.smartRewindSeconds)
         assertEquals("de", prefs.settings.value.appLanguage)
+        assertEquals(30, prefs.settings.value.refreshIntervalMinutes)
+        assertEquals(192, prefs.settings.value.transcodeBitrateKbps)
+        assertEquals(AppPreferences.THEME_DARK, prefs.settings.value.themeMode)
+        assertEquals("indigo", prefs.settings.value.lightAccent)
+        assertEquals("amber", prefs.settings.value.darkAccent)
 
         val restoredEp = dao.getEpisode(epIds[0])!!
         assertEquals(42_000L, restoredEp.positionMs)

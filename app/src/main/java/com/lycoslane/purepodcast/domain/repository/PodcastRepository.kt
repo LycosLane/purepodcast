@@ -590,7 +590,8 @@ class PodcastRepository(
             put(
                 "settings",
                 org.json.JSONObject().apply {
-                    put("refreshIntervalHours", settings.refreshIntervalHours)
+                    put("refreshIntervalMinutes", settings.refreshIntervalMinutes)
+                    put("refreshIntervalHours", settings.refreshIntervalMinutes / 60)
                     put("wifiOnlyDownloads", settings.wifiOnlyDownloads)
                     put("autoDownloadNewByDefault", settings.autoDownloadNewByDefault)
                     put("downloadWhenQueued", settings.downloadWhenQueued)
@@ -606,6 +607,9 @@ class PodcastRepository(
                     put("transcodeBitrateKbps", settings.transcodeBitrateKbps)
                     put("transcodeAutoEnabled", settings.transcodeAutoEnabled)
                     put("transcodeChargingOnly", settings.transcodeChargingOnly)
+                    put("themeMode", settings.themeMode)
+                    put("lightAccent", settings.lightAccent)
+                    put("darkAccent", settings.darkAccent)
                 }
             )
             val podcastsArr = org.json.JSONArray()
@@ -658,10 +662,26 @@ class PodcastRepository(
         if (version < 1 || version > 1) error("Unsupported backup version")
 
         root.optJSONObject("settings")?.let { s ->
-            if (s.has("refreshIntervalHours")) {
-                val hours = s.optInt("refreshIntervalHours", 6).let { if (it in listOf(0, 1, 3, 6, 12, 24)) it else 6 }
-                preferences.setRefreshIntervalHours(hours)
-                com.lycoslane.purepodcast.core.download.FeedRefreshWorker.schedulePeriodic(context, hours, replaceExisting = true)
+            when {
+                s.has("refreshIntervalMinutes") -> {
+                    val mins = s.optInt("refreshIntervalMinutes", 360)
+                    preferences.setRefreshIntervalMinutes(mins)
+                    com.lycoslane.purepodcast.core.download.FeedRefreshWorker.schedulePeriodic(
+                        context,
+                        preferences.settings.value.refreshIntervalMinutes,
+                        replaceExisting = true
+                    )
+                }
+                s.has("refreshIntervalHours") -> {
+                    val hours = s.optInt("refreshIntervalHours", 6)
+                    val mins = if (hours <= 0) 0 else (hours * 60)
+                    preferences.setRefreshIntervalMinutes(mins)
+                    com.lycoslane.purepodcast.core.download.FeedRefreshWorker.schedulePeriodic(
+                        context,
+                        preferences.settings.value.refreshIntervalMinutes,
+                        replaceExisting = true
+                    )
+                }
             }
             if (s.has("wifiOnlyDownloads")) preferences.setWifiOnlyDownloads(s.optBoolean("wifiOnlyDownloads", true))
             if (s.has("autoDownloadNewByDefault")) preferences.setAutoDownloadNewByDefault(s.optBoolean("autoDownloadNewByDefault", false))
@@ -696,11 +716,13 @@ class PodcastRepository(
                 if (lang in listOf("en", "de")) preferences.setAppLanguage(lang)
             }
             if (s.has("transcodeBitrateKbps")) {
-                val kbps = s.optInt("transcodeBitrateKbps", 0).let { if (it in listOf(0, 96, 128)) it else 0 }
-                preferences.setTranscodeBitrateKbps(kbps)
+                preferences.setTranscodeBitrateKbps(s.optInt("transcodeBitrateKbps", 0))
             }
             if (s.has("transcodeAutoEnabled")) preferences.setTranscodeAutoEnabled(s.optBoolean("transcodeAutoEnabled", false))
             if (s.has("transcodeChargingOnly")) preferences.setTranscodeChargingOnly(s.optBoolean("transcodeChargingOnly", true))
+            if (s.has("themeMode")) preferences.setThemeMode(s.optString("themeMode", AppPreferences.THEME_SYSTEM))
+            if (s.has("lightAccent")) preferences.setLightAccent(s.optString("lightAccent", AppPreferences.DEFAULT_ACCENT))
+            if (s.has("darkAccent")) preferences.setDarkAccent(s.optString("darkAccent", AppPreferences.DEFAULT_ACCENT))
         }
 
         val podcastsArr = root.optJSONArray("podcasts") ?: return@withContext 0
@@ -727,7 +749,7 @@ class PodcastRepository(
                 val existing = dao.getPodcast(podcastId)
                 if (existing != null) {
                     val rawSpeed = pObj.optDouble("playbackSpeed", existing.playbackSpeed.toDouble())
-                    val safeSpeed = if (rawSpeed.isFinite()) rawSpeed.toFloat().coerceIn(0.75f, 3.0f) else 1.0f
+                    val safeSpeed = if (rawSpeed.isFinite()) rawSpeed.toFloat().coerceIn(0.50f, 3.0f) else 1.0f
                     dao.updatePodcast(
                         existing.copy(
                             autoDownloadFromPubDateMs = pObj.optLong("autoDownloadFromPubDateMs", existing.autoDownloadFromPubDateMs).coerceAtLeast(0L),

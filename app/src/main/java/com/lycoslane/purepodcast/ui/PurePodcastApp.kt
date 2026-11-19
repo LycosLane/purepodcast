@@ -65,6 +65,7 @@ import com.lycoslane.purepodcast.ui.player.FullPlayerSheet
 import com.lycoslane.purepodcast.ui.player.MiniPlayer
 import com.lycoslane.purepodcast.ui.queue.QueueScreen
 import com.lycoslane.purepodcast.ui.search.SearchScreen
+import com.lycoslane.purepodcast.ui.settings.SettingsScreen
 import com.lycoslane.purepodcast.ui.viewmodel.MainViewModel
 import com.lycoslane.purepodcast.ui.viewmodel.PodcastDetailViewModel
 import com.lycoslane.purepodcast.ui.viewmodel.SearchViewModel
@@ -113,6 +114,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     val currentRoute = navBackStackEntry?.destination?.route
     var detailOriginRoute by rememberSaveable { mutableStateOf("home") }
     val isDetailRoute = currentRoute?.startsWith("detail/") == true
+    val isSettingsRoute = currentRoute == "settings"
 
     fun navigateTopLevel(route: String) {
         navController.navigate(route) {
@@ -133,63 +135,65 @@ fun PurePodcastApp(app: PurePodcastApplication) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            Column {
-                TranscodeProgressBanner(status = transcodeStatus)
-                MiniPlayerBar(
-                    playerController = app.playerController,
-                    onExpand = { showFullPlayer = true }
-                )
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = currentRoute == "home" || (isDetailRoute && detailOriginRoute == "home"),
-                        onClick = {
-                            if (isDetailRoute && detailOriginRoute == "home") {
-                                navController.popBackStack("home", inclusive = false)
-                            } else {
-                                navigateTopLevel("home")
-                            }
-                        },
-                        icon = { Icon(Icons.Default.Podcasts, null) },
-                        label = { Text(stringResource(R.string.nav_podcasts)) }
+            if (!isSettingsRoute) {
+                Column {
+                    TranscodeProgressBanner(status = transcodeStatus)
+                    MiniPlayerBar(
+                        playerController = app.playerController,
+                        onExpand = { showFullPlayer = true }
                     )
-                    NavigationBarItem(
-                        selected = currentRoute == "queue" || (isDetailRoute && detailOriginRoute == "queue"),
-                        onClick = {
-                            if (currentRoute == "queue") {
-                                queueScrollTrigger++
-                            } else if (isDetailRoute && detailOriginRoute == "queue") {
-                                navController.popBackStack("queue", inclusive = false)
-                            } else {
-                                navigateTopLevel("queue")
-                            }
-                        },
-                        icon = {
-                            BadgedBox(
-                                badge = {
-                                    if (queue.isNotEmpty()) {
-                                        Badge { Text(queue.size.toString()) }
-                                    }
+                    NavigationBar {
+                        NavigationBarItem(
+                            selected = currentRoute == "home" || (isDetailRoute && detailOriginRoute == "home"),
+                            onClick = {
+                                if (isDetailRoute && detailOriginRoute == "home") {
+                                    navController.popBackStack("home", inclusive = false)
+                                } else {
+                                    navigateTopLevel("home")
                                 }
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.QueueMusic, null)
-                            }
-                        },
-                        label = { Text(stringResource(R.string.nav_queue)) }
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == "search" || (isDetailRoute && detailOriginRoute == "search"),
-                        onClick = {
-                            if (currentRoute == "search") {
-                                focusSearchTrigger++
-                            } else if (isDetailRoute && detailOriginRoute == "search") {
-                                navController.popBackStack("search", inclusive = false)
-                            } else {
-                                navigateTopLevel("search")
-                            }
-                        },
-                        icon = { Icon(Icons.Default.Explore, null) },
-                        label = { Text(stringResource(R.string.nav_discover)) }
-                    )
+                            },
+                            icon = { Icon(Icons.Default.Podcasts, null) },
+                            label = { Text(stringResource(R.string.nav_podcasts)) }
+                        )
+                        NavigationBarItem(
+                            selected = currentRoute == "queue" || (isDetailRoute && detailOriginRoute == "queue"),
+                            onClick = {
+                                if (currentRoute == "queue") {
+                                    queueScrollTrigger++
+                                } else if (isDetailRoute && detailOriginRoute == "queue") {
+                                    navController.popBackStack("queue", inclusive = false)
+                                } else {
+                                    navigateTopLevel("queue")
+                                }
+                            },
+                            icon = {
+                                BadgedBox(
+                                    badge = {
+                                        if (queue.isNotEmpty()) {
+                                            Badge { Text(queue.size.toString()) }
+                                        }
+                                    }
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.QueueMusic, null)
+                                }
+                            },
+                            label = { Text(stringResource(R.string.nav_queue)) }
+                        )
+                        NavigationBarItem(
+                            selected = currentRoute == "search" || (isDetailRoute && detailOriginRoute == "search"),
+                            onClick = {
+                                if (currentRoute == "search") {
+                                    focusSearchTrigger++
+                                } else if (isDetailRoute && detailOriginRoute == "search") {
+                                    navController.popBackStack("search", inclusive = false)
+                                } else {
+                                    navigateTopLevel("search")
+                                }
+                            },
+                            icon = { Icon(Icons.Default.Explore, null) },
+                            label = { Text(stringResource(R.string.nav_discover)) }
+                        )
+                    }
                 }
             }
         }
@@ -208,11 +212,10 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     activeEpisodeId = activeEpisodeId,
                     isRefreshing = isRefreshing,
                     settings = settings,
-                    backupStatus = backupStatus,
-                    transcodeStatus = transcodeStatus,
                     onRefreshAll = mainViewModel::refreshAll,
                     onPodcastClick = { podcastId -> openDetail(podcastId, "home") },
                     onAddClick = { navigateTopLevel("search") },
+                    onOpenSettings = { navController.navigate("settings") { launchSingleTop = true } },
                     onToggleFavorite = mainViewModel::toggleFavorite,
                     onPlayEpisode = { ep, pod -> app.playerController.playEpisode(ep, pod) },
                     onPauseMainPlayer = { app.playerController.pauseIfPlaying() },
@@ -255,7 +258,22 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         }
                     },
                     onTextScaleChange = mainViewModel::setTextScale,
-                    onChangeRefreshInterval = mainViewModel::setRefreshInterval,
+                    onToggleShowSubscribed = mainViewModel::setShowSubscribedPodcasts,
+                    onToggleShowLocal = mainViewModel::setShowLocalPodcasts
+                )
+            }
+
+            composable("settings") {
+                SettingsScreen(
+                    allEpisodes = allEpisodes,
+                    settings = settings,
+                    backupStatus = backupStatus,
+                    transcodeStatus = transcodeStatus,
+                    onBack = { navController.popBackStack() },
+                    onChangeThemeMode = mainViewModel::setThemeMode,
+                    onChangeLightAccent = mainViewModel::setLightAccent,
+                    onChangeDarkAccent = mainViewModel::setDarkAccent,
+                    onChangeRefreshIntervalMinutes = mainViewModel::setRefreshIntervalMinutes,
                     onToggleWifiOnly = mainViewModel::setWifiOnly,
                     onToggleAutoDownloadDefault = mainViewModel::setAutoDownloadDefault,
                     onToggleDownloadWhenQueued = mainViewModel::setDownloadWhenQueued,
@@ -284,8 +302,6 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         }
                     },
                     onSelectLocalFolderUri = mainViewModel::setLocalFolderUri,
-                    onToggleShowSubscribed = mainViewModel::setShowSubscribedPodcasts,
-                    onToggleShowLocal = mainViewModel::setShowLocalPodcasts,
                     onExportBackupUri = mainViewModel::exportBackup,
                     onImportBackupUri = mainViewModel::importBackup
                 )
@@ -545,8 +561,7 @@ private fun FullPlayerOverlay(
         onPrevEpisode = { playerController.skipToPreviousInQueue() },
         onNextEpisode = { playerController.skipToNextInQueue() },
         onSetSpeed = { playerController.setPlaybackSpeed(it) },
-        onToggleSkipSilence = { playerController.toggleSkipSilence() },
-        onSetSilenceIntensity = { playerController.setSilenceIntensity(it) },
+        onSetSilenceMode = { enabled, intensity -> playerController.setSilenceMode(enabled, intensity) },
         onSetSleepTimer = { playerController.setSleepTimer(it) }
     )
 }

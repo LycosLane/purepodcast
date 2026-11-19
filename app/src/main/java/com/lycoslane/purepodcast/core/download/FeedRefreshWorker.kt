@@ -54,11 +54,11 @@ class FeedRefreshWorker(
 
         fun schedulePeriodic(
             context: Context,
-            intervalHours: Int,
+            intervalMinutes: Int,
             replaceExisting: Boolean = true
         ) {
             val wm = WorkManager.getInstance(context)
-            if (intervalHours <= 0) {
+            if (intervalMinutes <= 0) {
                 wm.cancelUniqueWork(UNIQUE_NAME)
                 return
             }
@@ -69,8 +69,8 @@ class FeedRefreshWorker(
                 .build()
 
             val request = PeriodicWorkRequestBuilder<FeedRefreshWorker>(
-                intervalHours.toLong().coerceAtLeast(1L),
-                TimeUnit.HOURS
+                intervalMinutes.toLong().coerceAtLeast(15L),
+                TimeUnit.MINUTES
             )
                 .setConstraints(constraints)
                 .build()
