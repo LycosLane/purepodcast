@@ -40,7 +40,11 @@ class PurePodcastApplication : Application() {
                 val dao = com.lycoslane.purepodcast.core.database.PurePodcastDatabase
                     .getInstance(this@PurePodcastApplication)
                     .dao()
-                com.lycoslane.purepodcast.core.download.TranscodeWorker.backfillLegacySavedBytes(dao)
+                com.lycoslane.purepodcast.core.download.TranscodeWorker.backfillLegacySavedBytes(
+                    context = this@PurePodcastApplication,
+                    dao = dao,
+                    wifiOnly = preferences.settings.value.wifiOnlyDownloads
+                )
             }
             val s = preferences.settings.value
             if (s.transcodeAutoEnabled && s.transcodeBitrateKbps > 0) {
