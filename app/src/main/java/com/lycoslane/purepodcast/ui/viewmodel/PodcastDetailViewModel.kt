@@ -58,6 +58,26 @@ class PodcastDetailViewModel(
         viewModelScope.launch { app.repository.toggleSortAscending(podcastId, ascending) }
     }
 
+    fun setPlaybackSpeed(speed: Float) {
+        if (podcastId < 0L) return
+        app.playerController.setPodcastPlaybackSpeed(podcastId, speed)
+    }
+
+    fun setSilenceMode(enabled: Boolean, intensity: Int) {
+        if (podcastId < 0L) return
+        app.playerController.setPodcastSilenceMode(podcastId, enabled, intensity)
+    }
+
+    fun setMonoModeOverride(mode: Int) {
+        if (podcastId < 0L) return
+        app.playerController.setPodcastMonoOverride(podcastId, mode)
+    }
+
+    fun setAudioNormalizationOverride(override: Int) {
+        if (podcastId < 0L) return
+        app.playerController.setPodcastNormalizationOverride(podcastId, override)
+    }
+
     fun disableAutoDownload() {
         if (podcastId < 0L) return
         viewModelScope.launch { app.repository.disableAutoDownload(podcastId) }

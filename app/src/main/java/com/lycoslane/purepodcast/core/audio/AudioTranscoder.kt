@@ -90,6 +90,41 @@ object AudioTranscoder {
         }
     }
 
+    /**
+     * Downmixes little-endian 16-bit signed stereo PCM ([stereoPcm]) to mono PCM by averaging L and R.
+     */
+    internal fun downmixStereoPcm16ToMono(stereoPcm: ByteArray, length: Int = stereoPcm.size): ByteArray {
+        val frames = length.coerceAtMost(stereoPcm.size) / 4
+        if (frames <= 0) return ByteArray(0)
+        val mono = ByteArray(frames * 2)
+        var inIdx = 0
+        var outIdx = 0
+        for (i in 0 until frames) {
+            val l = (stereoPcm[inIdx].toInt() and 0xFF) or (stereoPcm[inIdx + 1].toInt() shl 8)
+            val r = (stereoPcm[inIdx + 2].toInt() and 0xFF) or (stereoPcm[inIdx + 3].toInt() shl 8)
+            val m = (l + r) shr 1
+            mono[outIdx] = (m and 0xFF).toByte()
+            mono[outIdx + 1] = ((m shr 8) and 0xFF).toByte()
+            inIdx += 4
+            outIdx += 2
+        }
+        return mono
+    }
+
+    private fun downmixStereoPcm16ToMonoInto(src: ByteArray, srcByteLen: Int, dst: ByteBuffer): Int {
+        val frames = srcByteLen.coerceAtMost(src.size) / 4
+        var inIdx = 0
+        for (i in 0 until frames) {
+            val l = (src[inIdx].toInt() and 0xFF) or (src[inIdx + 1].toInt() shl 8)
+            val r = (src[inIdx + 2].toInt() and 0xFF) or (src[inIdx + 3].toInt() shl 8)
+            val m = (l + r) shr 1
+            dst.put((m and 0xFF).toByte())
+            dst.put(((m shr 8) and 0xFF).toByte())
+            inIdx += 4
+        }
+        return frames * 2
+    }
+
     private fun createAacEncoder(sampleRate: Int, channelCount: Int, targetBitrateKbps: Int): MediaCodec {
         val outputFormat = MediaFormat.createAudioFormat(
             MediaFormat.MIMETYPE_AUDIO_AAC,
@@ -107,8 +142,9 @@ object AudioTranscoder {
     }
 
     /**
-     * Transcodes [sourceFile] to AAC-LC inside an M4A container at [targetBitrateKbps] (e.g. 96 or 128).
-     * Writes to [tempOutputFile]. Returns true if transcoding succeeded and produced a valid smaller file.
+     * Transcodes [sourceFile] to AAC-LC inside an M4A container at [targetBitrateKbps] (e.g. 64, 128, or 192).
+     * Target bitrates up to 64 kbps automatically downmix stereo PCM to mono before AAC encoding.
+     * Writes to [tempOutputFile]. Returns true if transcoding succeeded and produced a valid file.
      */
     fun transcodeToAacM4a(
         sourceFile: File,
@@ -176,8 +212,9 @@ object AudioTranscoder {
             decoder = activeDecoder
             val rawReadBuffer = if (rawPcmBypass) ByteBuffer.allocateDirect(65_536) else null
 
+            val forceMono = targetBitrateKbps in 1..64
             var currentEncRate = sampleRate
-            var currentEncChannels = channelCount
+            var currentEncChannels = if (forceMono) 1 else channelCount
             var activeEncoder = createAacEncoder(currentEncRate, currentEncChannels, targetBitrateKbps)
             encoder = activeEncoder
 
@@ -197,7 +234,9 @@ object AudioTranscoder {
 
             // Keep a simple FIFO of decoded PCM chunks to feed the encoder cleanly
             val pcmQueue = ArrayDeque<ByteArray>()
+            var queuedPcmBytes = 0
             val maxQueuedChunks = 32
+            val scratchStereo = ByteArray(1024 * 4)
 
             while (!encoderDone) {
                 if (shouldCancel()) {
@@ -221,6 +260,7 @@ object AudioTranscoder {
                                 rawReadBuffer.position(0)
                                 rawReadBuffer.get(chunk, 0, size)
                                 pcmQueue.addLast(chunk)
+                                queuedPcmBytes += size
                             }
                             extractor.advance()
                         }
@@ -262,12 +302,13 @@ object AudioTranscoder {
                                 tempOutputFile.delete()
                                 return false
                             }
-                            if (decRate != currentEncRate || decChannels != currentEncChannels) {
+                            val desiredEncChannels = if (forceMono) 1 else decChannels
+                            if (decRate != currentEncRate || desiredEncChannels != currentEncChannels) {
                                 if (!muxerStarted && encodedFrames == 0L) {
                                     runCatching { activeEncoder.stop() }
                                     runCatching { activeEncoder.release() }
                                     currentEncRate = decRate
-                                    currentEncChannels = decChannels
+                                    currentEncChannels = desiredEncChannels
                                     activeEncoder = createAacEncoder(currentEncRate, currentEncChannels, targetBitrateKbps)
                                     encoder = activeEncoder
                                 } else {
@@ -284,6 +325,7 @@ object AudioTranscoder {
                                 val chunk = ByteArray(decInfo.size)
                                 outBuf.get(chunk)
                                 pcmQueue.addLast(chunk)
+                                queuedPcmBytes += decInfo.size
                             }
                             activeDecoder.releaseOutputBuffer(outIdx, false)
                             if ((decInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
@@ -296,8 +338,11 @@ object AudioTranscoder {
                 }
 
                 // 3. Feed pcmQueue -> encoder (1 AAC frame = 1024 samples per buffer so encoder output pool never saturates)
+                val srcBytesPerFrame = 2 * decChannels
+                val encBytesPerFrame = 2 * currentEncChannels
+                val downmixToMono = decChannels == 2 && currentEncChannels == 1
                 var fedBuffersThisTurn = 0
-                while ((pcmQueue.isNotEmpty() || decoderDone) && !encoderEosSent && fedBuffersThisTurn < 2) {
+                while ((queuedPcmBytes >= srcBytesPerFrame || decoderDone) && !encoderEosSent && fedBuffersThisTurn < 2) {
                     val encInIdx = activeEncoder.dequeueInputBuffer(0L)
                     if (encInIdx < 0) break
                     madeProgress = true
@@ -310,33 +355,41 @@ object AudioTranscoder {
                     }
                     encInBuf.clear()
 
-                    if (pcmQueue.isNotEmpty()) {
-                        val bytesPerFrame = 2 * decChannels
-                        val rawCapacity = (encInBuf.remaining() / bytesPerFrame) * bytesPerFrame
-                        // Feed at most 1024 samples (1 AAC-LC frame = 4096B stereo / 2048B mono) per input buffer
-                        val capacity = minOf(rawCapacity, 1024 * bytesPerFrame)
-                        if (capacity <= 0) {
+                    val availFrames = queuedPcmBytes / srcBytesPerFrame
+                    if (availFrames > 0) {
+                        val maxEncFrames = minOf(encInBuf.remaining() / encBytesPerFrame, 1024, availFrames)
+                        if (maxEncFrames <= 0) {
                             val ptsUs = encodedFrames * 1_000_000L / decRate
                             activeEncoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, 0)
                             break
                         }
+                        val srcTakeTotal = maxEncFrames * srcBytesPerFrame
                         val ptsUs = encodedFrames * 1_000_000L / decRate
-                        var totalPut = 0
-                        while (pcmQueue.isNotEmpty() && totalPut < capacity) {
+                        var srcTaken = 0
+                        while (pcmQueue.isNotEmpty() && srcTaken < srcTakeTotal) {
                             val chunk = pcmQueue.first()
-                            val remainingCap = capacity - totalPut
-                            val take = minOf(chunk.size, remainingCap)
+                            val take = minOf(chunk.size, srcTakeTotal - srcTaken)
                             if (take <= 0) break
-                            encInBuf.put(chunk, 0, take)
-                            totalPut += take
+                            if (downmixToMono) {
+                                System.arraycopy(chunk, 0, scratchStereo, srcTaken, take)
+                            } else {
+                                encInBuf.put(chunk, 0, take)
+                            }
+                            srcTaken += take
+                            queuedPcmBytes -= take
                             pcmQueue.removeFirst()
                             if (take < chunk.size) {
                                 pcmQueue.addFirst(chunk.copyOfRange(take, chunk.size))
                                 break
                             }
                         }
-                        encodedFrames += (totalPut / bytesPerFrame).toLong()
-                        activeEncoder.queueInputBuffer(encInIdx, 0, totalPut, ptsUs, 0)
+                        val queuedBytes = if (downmixToMono) {
+                            downmixStereoPcm16ToMonoInto(scratchStereo, srcTaken, encInBuf)
+                        } else {
+                            srcTaken
+                        }
+                        encodedFrames += (srcTaken / srcBytesPerFrame).toLong()
+                        activeEncoder.queueInputBuffer(encInIdx, 0, queuedBytes, ptsUs, 0)
                         fedBuffersThisTurn++
                         if (totalDurationUs > 0L) {
                             val currentUs = encodedFrames * 1_000_000L / decRate
@@ -347,6 +400,8 @@ object AudioTranscoder {
                             }
                         }
                     } else {
+                        pcmQueue.clear()
+                        queuedPcmBytes = 0
                         val ptsUs = encodedFrames * 1_000_000L / decRate
                         activeEncoder.queueInputBuffer(encInIdx, 0, 0, ptsUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                         encoderEosSent = true

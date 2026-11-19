@@ -1,6 +1,7 @@
 package com.lycoslane.purepodcast.core.preferences
 
 import android.content.Context
+import com.lycoslane.purepodcast.core.audio.AudioMonoMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +18,7 @@ data class AppSettings(
     val maxDownloadsPerPodcast: Int = 0, // 0 = unlimited, 1..30
     val smartRewindSeconds: Int = 10, // 0 = off
     val audioNormalizationEnabled: Boolean = false,
+    val monoMode: Int = AudioMonoMode.OFF,
     val bluetoothNextPrevSeeks: Boolean = true, // true = -10s/+30s, false = prev/next in queue
     val textScale: Float = 1.0f, // 0.8f..1.8f global pinch-to-zoom text scale
     val appLanguage: String = "en", // "en" or "de"
@@ -73,6 +75,7 @@ class AppPreferences(context: Context) {
             maxDownloadsPerPodcast = prefs.getInt(KEY_MAX_DOWNLOADS_PER_PODCAST, 0).coerceIn(0, 30),
             smartRewindSeconds = prefs.getInt(KEY_SMART_REWIND_SECONDS, 10).coerceIn(0, 120),
             audioNormalizationEnabled = prefs.getBoolean(KEY_AUDIO_NORMALIZATION, false),
+            monoMode = AudioMonoMode.normalizeConcrete(prefs.getInt(KEY_MONO_MODE, AudioMonoMode.OFF)),
             bluetoothNextPrevSeeks = prefs.getBoolean(KEY_BLUETOOTH_NEXT_PREV_SEEKS, true),
             textScale = prefs.getFloat(KEY_TEXT_SCALE, 1.0f).coerceIn(0.8f, 1.8f),
             appLanguage = prefs.getString(KEY_APP_LANGUAGE, "en") ?: "en",
@@ -143,6 +146,12 @@ class AppPreferences(context: Context) {
     fun setAudioNormalizationEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_AUDIO_NORMALIZATION, enabled).apply()
         _settings.update { it.copy(audioNormalizationEnabled = enabled) }
+    }
+
+    fun setMonoMode(mode: Int) {
+        val normalized = AudioMonoMode.normalizeConcrete(mode)
+        prefs.edit().putInt(KEY_MONO_MODE, normalized).apply()
+        _settings.update { it.copy(monoMode = normalized) }
     }
 
     fun setBluetoothNextPrevSeeks(seeks: Boolean) {
@@ -233,6 +242,7 @@ class AppPreferences(context: Context) {
         private const val KEY_MAX_DOWNLOADS_PER_PODCAST = "max_downloads_per_podcast"
         private const val KEY_SMART_REWIND_SECONDS = "smart_rewind_seconds"
         private const val KEY_AUDIO_NORMALIZATION = "audio_normalization_enabled"
+        private const val KEY_MONO_MODE = "mono_mode"
         private const val KEY_BLUETOOTH_NEXT_PREV_SEEKS = "bluetooth_next_prev_seeks"
         private const val KEY_TEXT_SCALE = "text_scale"
         private const val KEY_TRANSCODE_BITRATE_KBPS = "transcode_bitrate_kbps"

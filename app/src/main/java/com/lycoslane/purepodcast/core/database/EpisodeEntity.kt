@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.lycoslane.purepodcast.core.audio.AudioMonoMode
 
 enum class DownloadState {
     NONE,
@@ -58,5 +59,6 @@ data class EpisodeEntity(
     val chaptersJson: String = "",
     val isTranscoded: Boolean = false,
     val transcodeSavedBytes: Long = 0L,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val monoModeOverride: Int = AudioMonoMode.INHERIT
 )

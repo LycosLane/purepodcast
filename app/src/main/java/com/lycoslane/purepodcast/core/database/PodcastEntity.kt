@@ -3,6 +3,8 @@ package com.lycoslane.purepodcast.core.database
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.lycoslane.purepodcast.core.audio.AudioMonoMode
+import com.lycoslane.purepodcast.core.audio.AudioOverride
 
 @Entity(
     tableName = "podcasts",
@@ -24,6 +26,8 @@ data class PodcastEntity(
     val playbackSpeed: Float = 1.0f,
     val skipSilence: Boolean = false,
     val silenceIntensity: Int = 1, // 0 = Soft, 1 = Medium, 2 = Strong
+    val monoModeOverride: Int = AudioMonoMode.INHERIT,
+    val audioNormalizationOverride: Int = AudioOverride.INHERIT,
     val lastRefreshedMs: Long = 0L,
     val isLocal: Boolean = false,
     val isSubscribed: Boolean = true,

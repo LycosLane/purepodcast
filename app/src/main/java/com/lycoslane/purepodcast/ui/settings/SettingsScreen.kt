@@ -4,14 +4,12 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -19,19 +17,14 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -40,20 +33,14 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -65,15 +52,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -84,18 +68,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.PackageInfoCompat
 import com.lycoslane.purepodcast.R
-import com.lycoslane.purepodcast.core.database.DownloadState
+import com.lycoslane.purepodcast.core.audio.AudioMonoMode
 import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
 import com.lycoslane.purepodcast.core.download.TranscodeStatus
 import com.lycoslane.purepodcast.core.local.LocalPodcastScanner
 import com.lycoslane.purepodcast.core.preferences.AppPreferences
 import com.lycoslane.purepodcast.core.preferences.AppSettings
-import com.lycoslane.purepodcast.ui.common.PodcastImage
+import com.lycoslane.purepodcast.ui.common.MonoModeSelector
 import com.lycoslane.purepodcast.ui.common.PureSegmentedControl
 import com.lycoslane.purepodcast.ui.theme.PureAccent
 import com.lycoslane.purepodcast.ui.theme.isDarkThemeEffective
-import java.io.File
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -120,6 +102,7 @@ fun SettingsScreen(
     onChangeMaxDownloadsPerPodcast: (Int) -> Unit,
     onChangeSmartRewind: (Int) -> Unit,
     onToggleAudioNormalization: (Boolean) -> Unit,
+    onChangeMonoMode: (Int) -> Unit,
     onChangeBluetoothNextPrevSeeks: (Boolean) -> Unit,
     onChangeAppLanguage: (String) -> Unit,
     onChangeTranscodeBitrate: (Int) -> Unit,
@@ -133,7 +116,6 @@ fun SettingsScreen(
     val context = LocalContext.current
     var showLocalGuideDialog by rememberSaveable { mutableStateOf(false) }
     var showCompressedDownloadsDialog by rememberSaveable { mutableStateOf(false) }
-    var showCompressionInfo by rememberSaveable { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -309,6 +291,22 @@ fun SettingsScreen(
                     onCheckedChange = onToggleAudioNormalization
                 )
                 SectionDivider()
+                val isGlobalMonoOn = settings.monoMode != AudioMonoMode.OFF
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_mono_audio),
+                    checked = isGlobalMonoOn,
+                    onCheckedChange = { enabled ->
+                        onChangeMonoMode(if (enabled) AudioMonoMode.MIX else AudioMonoMode.OFF)
+                    }
+                )
+                if (isGlobalMonoOn) {
+                    Spacer(Modifier.height(8.dp))
+                    MonoModeSelector(
+                        selectedMode = settings.monoMode,
+                        onSelectMode = onChangeMonoMode
+                    )
+                }
+                SectionDivider()
                 Text(
                     text = stringResource(R.string.settings_smart_rewind),
                     style = MaterialTheme.typography.bodyMedium,
@@ -452,177 +450,16 @@ fun SettingsScreen(
             }
 
             // --- 4. Audio Compression (Low / Medium / High + Info) ---
-            SettingsSection(
-                title = stringResource(R.string.settings_section_compression),
-                trailing = {
-                    IconButton(
-                        onClick = { showCompressionInfo = !showCompressionInfo },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = stringResource(R.string.cd_compression_info),
-                            tint = if (showCompressionInfo) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            ) {
-                if (showCompressionInfo) {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = stringResource(R.string.settings_compression_info),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-                    Spacer(Modifier.height(10.dp))
-                }
-
-                PureSegmentedControl(
-                    options = listOf(
-                        0 to stringResource(R.string.settings_compression_off),
-                        64 to stringResource(R.string.settings_compression_low),
-                        128 to stringResource(R.string.settings_compression_medium),
-                        192 to stringResource(R.string.settings_compression_high)
-                    ),
-                    selected = settings.transcodeBitrateKbps,
-                    onSelect = onChangeTranscodeBitrate
-                )
-
-                if (settings.transcodeBitrateKbps > 0) {
-                    SectionDivider()
-                    SettingSwitchRow(
-                        title = stringResource(R.string.settings_compression_auto),
-                        checked = settings.transcodeAutoEnabled,
-                        onCheckedChange = onToggleTranscodeAuto
-                    )
-                    SectionDivider()
-                    SettingSwitchRow(
-                        title = stringResource(R.string.settings_compression_charging_only),
-                        checked = settings.transcodeChargingOnly,
-                        onCheckedChange = onToggleTranscodeChargingOnly
-                    )
-
-                    val downloadedNonLocal = remember(allEpisodes) {
-                        allEpisodes.filter { item ->
-                            !item.podcast.isLocal &&
-                                item.episode.downloadState == DownloadState.DOWNLOADED &&
-                                item.episode.markedForDeletionAtMs == 0L &&
-                                item.episode.localFilePath?.startsWith("content://") != true
-                        }
-                    }
-                    val compressedEpisodes = remember(downloadedNonLocal) {
-                        downloadedNonLocal.filter {
-                            it.episode.isTranscoded &&
-                                it.episode.localFilePath?.endsWith(".m4a", ignoreCase = true) == true
-                        }
-                    }
-                    val compressedCount = compressedEpisodes.size
-                    val pendingCount = (downloadedNonLocal.size - compressedCount).coerceAtLeast(0)
-                    val totalSavedBytes = remember(compressedEpisodes) {
-                        compressedEpisodes.sumOf { it.episode.transcodeSavedBytes.coerceAtLeast(0L) }
-                    }
-
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = when {
-                            downloadedNonLocal.isEmpty() -> stringResource(R.string.compression_no_downloads)
-                            totalSavedBytes > 0L -> stringResource(
-                                R.string.compression_status_summary_with_saved,
-                                compressedCount,
-                                pendingCount,
-                                formatSizeMb(totalSavedBytes)
-                            )
-                            else -> stringResource(
-                                R.string.compression_status_summary,
-                                compressedCount,
-                                pendingCount
-                            )
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(10.dp))
-
-                    if (transcodeStatus.isActive) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = buildString {
-                                    append(
-                                        stringResource(
-                                            R.string.notif_transcode_progress,
-                                            transcodeStatus.currentIndex,
-                                            transcodeStatus.totalCount
-                                        )
-                                    )
-                                    if (transcodeStatus.episodeTitle.isNotBlank()) {
-                                        append(" • ")
-                                        append(transcodeStatus.episodeTitle)
-                                    }
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = "${(transcodeStatus.overallProgress * 100f).toInt()}%",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        LinearProgressIndicator(
-                            progress = { transcodeStatus.overallProgress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                        )
-                    } else {
-                        OutlinedButton(
-                            onClick = onTranscodeAllNow,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(stringResource(R.string.action_compress_all_now))
-                        }
-                        if (transcodeStatus.statusMessage.isNotBlank()) {
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                text = transcodeStatus.statusMessage,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-
-                    if (compressedCount > 0) {
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = { showCompressedDownloadsDialog = true },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(stringResource(R.string.action_show_compressed_downloads, compressedCount))
-                        }
-                    }
-                }
-            }
+            CompressionSettingsSection(
+                allEpisodes = allEpisodes,
+                settings = settings,
+                transcodeStatus = transcodeStatus,
+                onChangeTranscodeBitrate = onChangeTranscodeBitrate,
+                onToggleTranscodeAuto = onToggleTranscodeAuto,
+                onToggleTranscodeChargingOnly = onToggleTranscodeChargingOnly,
+                onTranscodeAllNow = onTranscodeAllNow,
+                onShowCompressedDownloads = { showCompressedDownloadsDialog = true }
+            )
 
             // --- 5. Background Sync ---
             SettingsSection(title = stringResource(R.string.settings_section_sync)) {
@@ -812,16 +649,7 @@ fun SettingsScreen(
     }
 
     if (showLocalGuideDialog) {
-        AlertDialog(
-            onDismissRequest = { showLocalGuideDialog = false },
-            title = { Text(stringResource(R.string.local_guide_title)) },
-            text = { Text(stringResource(R.string.local_guide_body)) },
-            confirmButton = {
-                TextButton(onClick = { showLocalGuideDialog = false }) {
-                    Text(stringResource(android.R.string.ok))
-                }
-            }
-        )
+        LocalFolderGuideDialog(onDismiss = { showLocalGuideDialog = false })
     }
 
     if (showCompressedDownloadsDialog) {
@@ -829,227 +657,5 @@ fun SettingsScreen(
             allEpisodes = allEpisodes,
             onDismiss = { showCompressedDownloadsDialog = false }
         )
-    }
-}
-
-@Composable
-private fun SettingsSection(
-    title: String,
-    trailing: @Composable (() -> Unit)? = null,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary
-            )
-            if (trailing != null) trailing()
-        }
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                content = content
-            )
-        }
-    }
-}
-
-@Composable
-private fun SectionDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(vertical = 10.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-    )
-}
-
-@Composable
-private fun SettingSwitchRow(
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .toggleable(
-                value = checked,
-                role = Role.Switch,
-                onValueChange = onCheckedChange
-            )
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.weight(1f)
-        )
-        Spacer(Modifier.width(12.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = null,
-            modifier = Modifier.clearAndSetSemantics { }
-        )
-    }
-}
-
-@Composable
-private fun CompressedDownloadsDialog(
-    allEpisodes: List<EpisodeWithPodcast>,
-    onDismiss: () -> Unit
-) {
-    val compressedList = remember(allEpisodes) {
-        allEpisodes.filter { item ->
-            !item.podcast.isLocal &&
-                item.episode.downloadState == DownloadState.DOWNLOADED &&
-                item.episode.markedForDeletionAtMs == 0L &&
-                item.episode.isTranscoded &&
-                item.episode.localFilePath?.endsWith(".m4a", ignoreCase = true) == true
-        }.sortedByDescending { it.episode.pubDateMs }
-    }
-    val totalCurrentBytes = remember(compressedList) {
-        compressedList.sumOf { item ->
-            item.episode.fileSizeBytes.takeIf { it > 0L }
-                ?: runCatching { File(item.episode.localFilePath.orEmpty()).length() }.getOrDefault(0L)
-        }
-    }
-    val totalSavedBytes = remember(compressedList) {
-        compressedList.sumOf { it.episode.transcodeSavedBytes.coerceAtLeast(0L) }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.dialog_compressed_downloads_title)) },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = stringResource(
-                        R.string.compressed_downloads_total_summary,
-                        compressedList.size,
-                        formatSizeMb(totalCurrentBytes),
-                        formatSizeMb(totalSavedBytes)
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(Modifier.height(10.dp))
-                HorizontalDivider()
-                Spacer(Modifier.height(6.dp))
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 340.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(compressedList, key = { it.episode.id }) { item ->
-                        val ep = item.episode
-                        val pod = item.podcast
-                        val currentBytes = ep.fileSizeBytes.takeIf { it > 0L }
-                            ?: runCatching { File(ep.localFilePath.orEmpty()).length() }.getOrDefault(0L)
-                        val savedBytes = ep.transcodeSavedBytes.coerceAtLeast(0L)
-                        val origBytes = currentBytes + savedBytes
-                        val savedPct = if (origBytes > 0L && savedBytes > 0L) {
-                            ((savedBytes * 100L) / origBytes).toInt().coerceIn(1, 99)
-                        } else {
-                            0
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            PodcastImage(
-                                url = ep.artworkUrl.ifEmpty { pod.artworkUrl },
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = ep.title,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = pod.title,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = if (savedBytes > 0L) {
-                                        stringResource(
-                                            R.string.compressed_episode_saved_detail,
-                                            formatSizeMb(origBytes),
-                                            formatSizeMb(currentBytes),
-                                            formatSizeMb(savedBytes),
-                                            savedPct
-                                        )
-                                    } else {
-                                        stringResource(
-                                            R.string.compressed_episode_size_only,
-                                            formatSizeMb(currentBytes)
-                                        )
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                        HorizontalDivider(modifier = Modifier.alpha(0.35f))
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(android.R.string.ok))
-            }
-        }
-    )
-}
-
-@Composable
-private fun formatSyncMinutesLabel(minutes: Int): String = when {
-    minutes <= 0 -> stringResource(R.string.interval_off)
-    minutes < 60 -> stringResource(R.string.sync_interval_minutes_short, minutes)
-    else -> stringResource(R.string.sync_interval_hours_short, minutes / 60)
-}
-
-private fun formatSizeMb(bytes: Long): String {
-    val mb = bytes.coerceAtLeast(0L) / (1024.0 * 1024.0)
-    return if (mb >= 100.0) {
-        String.format(Locale.getDefault(), "%.0f MB", mb)
-    } else {
-        String.format(Locale.getDefault(), "%.1f MB", mb)
     }
 }

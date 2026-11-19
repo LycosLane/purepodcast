@@ -5,6 +5,8 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import com.lycoslane.purepodcast.core.audio.AudioMonoMode
+import com.lycoslane.purepodcast.core.audio.AudioOverride
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.PodcastEntity
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
@@ -34,6 +36,7 @@ class PodcastRepositoryBackupTest {
         prefs.setThemeMode(AppPreferences.THEME_DARK)
         prefs.setLightAccent("indigo")
         prefs.setDarkAccent("amber")
+        prefs.setMonoMode(AudioMonoMode.AUTO)
 
         val dao = PurePodcastDatabase.getInstance(context).dao()
         val podId = dao.insertPodcast(
@@ -43,6 +46,8 @@ class PodcastRepositoryBackupTest {
                 playbackSpeed = 1.5f,
                 skipSilence = true,
                 silenceIntensity = 2,
+                monoModeOverride = AudioMonoMode.LEFT,
+                audioNormalizationOverride = AudioOverride.ON,
                 isSubscribed = true
             )
         )
@@ -56,7 +61,8 @@ class PodcastRepositoryBackupTest {
                     positionMs = 42_000L,
                     isPlayed = true,
                     isFavorite = true,
-                    playedAtMs = 999_000L
+                    playedAtMs = 999_000L,
+                    monoModeOverride = AudioMonoMode.RIGHT
                 )
             )
         )
@@ -67,6 +73,7 @@ class PodcastRepositoryBackupTest {
         val json = JSONObject(exported)
         assertEquals(1, json.getInt("version"))
         assertEquals(25, json.getJSONObject("settings").getInt("smartRewindSeconds"))
+        assertEquals(AudioMonoMode.AUTO, json.getJSONObject("settings").getInt("monoMode"))
 
         // Reset state, then import backup offline
         prefs.setSmartRewindSeconds(0)
@@ -76,7 +83,11 @@ class PodcastRepositoryBackupTest {
         prefs.setThemeMode(AppPreferences.THEME_SYSTEM)
         prefs.setLightAccent(AppPreferences.DEFAULT_ACCENT)
         prefs.setDarkAccent(AppPreferences.DEFAULT_ACCENT)
+        prefs.setMonoMode(AudioMonoMode.OFF)
         dao.clearQueue()
+        dao.setPodcastMonoModeOverride(podId, AudioMonoMode.INHERIT)
+        dao.setPodcastAudioNormalizationOverride(podId, AudioOverride.INHERIT)
+        dao.setEpisodeMonoModeOverride(epIds[0], AudioMonoMode.INHERIT)
         dao.updatePosition(epIds[0], 0L)
         dao.setPlayed(epIds[0], false, 0L)
         dao.setFavorite(epIds[0], false)
@@ -90,11 +101,26 @@ class PodcastRepositoryBackupTest {
         assertEquals(AppPreferences.THEME_DARK, prefs.settings.value.themeMode)
         assertEquals("indigo", prefs.settings.value.lightAccent)
         assertEquals("amber", prefs.settings.value.darkAccent)
+        assertEquals(AudioMonoMode.AUTO, prefs.settings.value.monoMode)
+
+        val restoredPod = dao.getPodcast(podId)!!
+        assertEquals(AudioMonoMode.LEFT, restoredPod.monoModeOverride)
+        assertEquals(AudioOverride.ON, restoredPod.audioNormalizationOverride)
 
         val restoredEp = dao.getEpisode(epIds[0])!!
         assertEquals(42_000L, restoredEp.positionMs)
         assertTrue(restoredEp.isPlayed)
         assertTrue(restoredEp.isFavorite)
+        assertEquals(AudioMonoMode.RIGHT, restoredEp.monoModeOverride)
         assertEquals(listOf(epIds[0]), dao.getQueueEpisodesOnce().map { it.episode.id })
+
+        // Verify legacy backup JSON without new mono/normalization fields imports cleanly
+        val legacyJson = JSONObject(exported)
+        legacyJson.getJSONObject("settings").remove("monoMode")
+        val legacyPod = legacyJson.getJSONArray("podcasts").getJSONObject(0)
+        legacyPod.remove("monoModeOverride")
+        legacyPod.remove("audioNormalizationOverride")
+        legacyPod.getJSONArray("episodes").getJSONObject(0).remove("monoModeOverride")
+        assertEquals(1, repo.importBackupJson(legacyJson.toString()))
     }
 }

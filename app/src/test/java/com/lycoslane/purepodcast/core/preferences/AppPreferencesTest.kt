@@ -3,6 +3,7 @@ package com.lycoslane.purepodcast.core.preferences
 import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.lycoslane.purepodcast.core.audio.AudioMonoMode
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -73,6 +74,13 @@ class AppPreferencesTest {
         assertEquals(AppPreferences.DEFAULT_ACCENT, prefs.settings.value.darkAccent)
         prefs.setDarkAccent("amber")
         assertEquals("amber", prefs.settings.value.darkAccent)
+
+        prefs.setMonoMode(99)
+        assertEquals(AudioMonoMode.OFF, prefs.settings.value.monoMode)
+        prefs.setMonoMode(AudioMonoMode.AUTO)
+        assertEquals(AudioMonoMode.AUTO, prefs.settings.value.monoMode)
+        prefs.setMonoMode(AudioMonoMode.LEFT)
+        assertEquals(AudioMonoMode.LEFT, prefs.settings.value.monoMode)
     }
 
     @Test

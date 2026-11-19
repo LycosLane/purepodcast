@@ -9,12 +9,12 @@
     <!-- Home -->
     <string name="action_refresh_all">Alle Feeds aktualisieren</string>
     <string name="action_add_podcast">Podcast hinzufügen</string>
-    <string name="action_settings">Einstellungen</string>
+    <string name="action_settings">Globale Einstellungen</string>
     <string name="empty_podcasts_title">Noch keine Podcasts abonniert</string>
     <string name="empty_podcasts_subtitle">Suche freie Podcasts, füge eine RSS-URL ein oder importiere eine OPML-Datei.</string>
 
     <!-- Settings -->
-    <string name="settings_title">Einstellungen</string>
+    <string name="settings_title">Globale Einstellungen</string>
     <string name="settings_refresh_interval">Automatisch aktualisieren</string>
     <string name="interval_off">Aus</string>
     <string name="interval_hours">%1$d Std.</string>
@@ -238,7 +238,7 @@
     <string name="action_show_compressed_downloads">Komprimierte Downloads anzeigen (%1$d)</string>
     <string name="dialog_compressed_downloads_title">Komprimierte Downloads</string>
     <string name="compressed_downloads_total_summary">%1$d Episode(n) • Aktuell: %2$s • Gespart: %3$s</string>
-    <string name="compressed_episode_saved_detail">%1$s → %2$s (–%3$s / –%4$d%%)</string>
+    <string name="compressed_episode_saved_detail">%1$s → %2$s (-%3$s / -%4$d%%)</string>
     <string name="compressed_episode_size_only">%1$s (AAC/M4A komprimiert)</string>
     <string name="settings_version_format">PurePodcast v%1$s (Build %2$d)</string>
 
@@ -261,7 +261,7 @@
     <string name="settings_compression_low">Low</string>
     <string name="settings_compression_medium">Medium</string>
     <string name="settings_compression_high">High</string>
-    <string name="settings_compression_info">Low: 64 kbps AAC (maximale Ersparnis). Medium: 128 kbps AAC (ausgewogen). High: 192 kbps AAC (transparente Qualität). Episoden mit gleicher oder niedrigerer Bitrate werden nie hochgerechnet und bleiben unverändert.</string>
+    <string name="settings_compression_info">Low: 64 kbps AAC Mono (maximale Ersparnis). Medium: 128 kbps AAC (ausgewogen). High: 192 kbps AAC (transparente Qualität). Episoden mit gleicher oder niedrigerer Bitrate werden nie hochgerechnet und bleiben unverändert.</string>
     <string name="cd_compression_info">Infos zur Komprimierung</string>
     <string name="settings_bluetooth_skip_seek_short">-10s / +30s</string>
     <string name="settings_bluetooth_skip_episode_short">Vorh. / Nächste</string>
@@ -275,4 +275,38 @@
     <string name="sleep_minutes_compact">%1$dm</string>
     <string name="sleep_hours_exact">%1$d Std.</string>
     <string name="sleep_hours_minutes">%1$d Std. %2$d Min.</string>
+
+    <!-- v1.1.0: Mono-Audio, Audio-Fix & Podcast-Einstellungen -->
+    <string name="podcast_settings_title">Podcast-Einstellungen</string>
+    <string name="podcast_settings_section_audio">Audio &amp; Wiedergabe</string>
+    <string name="podcast_settings_section_episodes">Episoden</string>
+    <string name="podcast_settings_sort_order">Sortierung</string>
+    <string name="podcast_settings_sort_newest">Neueste</string>
+    <string name="podcast_settings_sort_oldest">Älteste</string>
+    <string name="podcast_settings_auto_download_since">Auto-Download ab %1$s</string>
+    <string name="podcast_settings_auto_download_disable">Ausschalten</string>
+    <string name="override_global">Global</string>
+    <string name="override_off">Aus</string>
+    <string name="override_on">An</string>
+    <string name="override_global_state">Global: %1$s</string>
+    <string name="settings_mono_audio">Mono-Audio</string>
+    <string name="settings_mono_mode">Mono-Modus</string>
+    <string name="mono_mode_off">Aus</string>
+    <string name="mono_mode_mix">L+R</string>
+    <string name="mono_mode_smart">Smart</string>
+    <string name="mono_mode_left">L</string>
+    <string name="mono_mode_right">R</string>
+    <string name="mono_mode_left_short">Mono L</string>
+    <string name="mono_mode_right_short">Mono R</string>
+    <string name="cd_mono_info">Infos zum Mono-Modus</string>
+    <string name="mono_mode_info">L+R: mischt links und rechts gleichmäßig. Smart: folgt weich dem lauteren Kanal und verhindert Auslöschungen. L / R: spielt nur den linken oder rechten Kanal auf beiden Seiten ab, um fehlerhafte Aufnahmen zu korrigieren.</string>
+    <string name="player_mono_short">Mono</string>
+    <string name="player_podcast_short">Podcast</string>
+    <string name="player_audio_fix_title">Mono / Audio-Fix</string>
+    <string name="player_scope_episode">Diese Episode</string>
+    <string name="player_scope_podcast">Dieser Podcast</string>
+    <string name="player_audio_fix_inherited">Übernommen: %1$s</string>
+    <string name="player_audio_fix_active_episode">Aktiv für diese Episode</string>
+    <string name="player_audio_fix_active_podcast">Aktiv für diesen Podcast</string>
+    <string name="action_reset">Zurücksetzen</string>
 </resources>

@@ -98,6 +98,12 @@ interface PurePodcastDao {
     @Query("UPDATE podcasts SET silenceIntensity = :intensity WHERE id = :podcastId")
     suspend fun setSilenceIntensity(podcastId: Long, intensity: Int)
 
+    @Query("UPDATE podcasts SET monoModeOverride = :mode WHERE id = :podcastId")
+    suspend fun setPodcastMonoModeOverride(podcastId: Long, mode: Int)
+
+    @Query("UPDATE podcasts SET audioNormalizationOverride = :override WHERE id = :podcastId")
+    suspend fun setPodcastAudioNormalizationOverride(podcastId: Long, override: Int)
+
     @Query("UPDATE podcasts SET isSubscribed = :isSubscribed WHERE id = :podcastId")
     suspend fun setPodcastSubscribed(podcastId: Long, isSubscribed: Boolean)
 
@@ -118,7 +124,7 @@ interface PurePodcastDao {
     @Query("SELECT id FROM episodes WHERE podcastId = :podcastId")
     suspend fun getEpisodeIdsForPodcast(podcastId: Long): List<Long>
 
-    @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND (isPlayed = 1 OR positionMs > 0 OR isHidden = 1 OR isFavorite = 1)")
+    @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND (isPlayed = 1 OR positionMs > 0 OR isHidden = 1 OR isFavorite = 1 OR monoModeOverride != -1)")
     suspend fun getEpisodesWithProgress(podcastId: Long): List<EpisodeEntity>
 
     @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND guid = :guid LIMIT 1")
@@ -152,6 +158,9 @@ interface PurePodcastDao {
 
     @Query("UPDATE episodes SET isFavorite = :isFavorite WHERE id = :episodeId")
     suspend fun setFavorite(episodeId: Long, isFavorite: Boolean)
+
+    @Query("UPDATE episodes SET monoModeOverride = :mode WHERE id = :episodeId")
+    suspend fun setEpisodeMonoModeOverride(episodeId: Long, mode: Int)
 
     @Transaction
     @Query(

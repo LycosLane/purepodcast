@@ -98,7 +98,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAudioNormalization(enabled: Boolean) {
         app.preferences.setAudioNormalizationEnabled(enabled)
-        app.playerController.setAudioNormalization(enabled)
+        app.playerController.refreshEffectiveAudioSettings()
+    }
+
+    fun setMonoMode(mode: Int) {
+        app.preferences.setMonoMode(mode)
+        app.playerController.refreshEffectiveAudioSettings()
     }
 
     fun setBluetoothNextPrevSeeks(seeks: Boolean) = app.preferences.setBluetoothNextPrevSeeks(seeks)

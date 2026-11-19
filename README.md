@@ -25,13 +25,13 @@
 
 ### Playback & Queue
 * **Seamless Resume:** The mini-player remembers your last in-progress episode across app restarts, and the queue highlights your active or most recently played episode.
-* **Per-Podcast Audio Controls:** Fine-tune playback speed (`0.5x` - `3.0x` slider with `0.02x` steps) and silence trimming (`Off`, `Soft`, `Medium`, `Strong`) individually for each podcast.
-* **Comfortable Listening:** Smart rewind after pauses, optional volume normalization, a flexible sleep timer slider (`5` - `120` min) that continues across queued episodes, and configurable Bluetooth next/previous buttons (`-10s` / `+30s` seek or episode skip).
+* **Per-Podcast & Per-Episode Audio Controls:** Fine-tune playback speed (`0.5x` - `3.0x` slider with `0.02x` steps), silence trimming (`Off`, `Soft`, `Medium`, `Strong`), volume normalization (global default or per-podcast override), and Mono audio / Audio-Fix (`L+R`, `Smart`, `L`, `R`) globally, per podcast, or for individual episodes.
+* **Comfortable Listening:** Smart rewind after pauses, a flexible sleep timer slider (`5` - `120` min) that continues across queued episodes, and configurable Bluetooth next/previous buttons (`-10s` / `+30s` seek or episode skip).
 * **Chapters & Show Notes:** Navigate episode chapters and read show notes with pinch-to-zoom text scaling and a distraction-free reader view.
 
 ### Appearance & Settings
 * **Light & Dark Themes:** Choose System, Light, or Dark mode, plus 6 curated accent colors separately for Light and Dark mode.
-* **Fullscreen Settings:** Clean, self-explanatory settings screen with background sync intervals from `15` min to `24` hours.
+* **Global & Podcast Settings:** Manage app-wide defaults in a dedicated **Global settings** screen (with background sync intervals from `15` min to `24` hours), and customize audio or episode order per show in **Podcast settings**.
 
 ### Quick Gestures
 * **Swipe right:** Add episode to the queue.
@@ -42,7 +42,7 @@
 ### Offline Downloads, Storage & Backup
 * **Automatic & Manual Downloads:** Download new or queued episodes over Wi-Fi or mobile data, limit maximum downloads per podcast, and automatically remove played downloads (*Immediately*, *1 day*, *3 days*, or *7 days*).
 * **Trash Protection:** Deleted downloads move to an in-app trash (*Immediate*, *24h*, or *48h* retention) so you can restore accidentally removed episodes.
-* **Storage-Saving Audio Compression:** Optionally compress downloaded episodes to AAC (*Low* 64 kbps, *Medium* 128 kbps, *High* 192 kbps) without ever upscaling already compact files, and inspect saved storage per episode.
+* **Storage-Saving Audio Compression:** Optionally compress downloaded episodes to AAC (*Low* 64 kbps Mono, *Medium* 128 kbps, *High* 192 kbps) without ever upscaling already compact files, and inspect saved storage per episode.
 * **OPML & Full Backup:** Import subscriptions from OPML files, or export and restore your entire library, playback positions, queue, and settings as a single backup file.
 * **English & German UI:** Switch between English and German directly in Settings.
 

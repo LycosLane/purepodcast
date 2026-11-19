@@ -283,6 +283,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onChangeMaxDownloadsPerPodcast = mainViewModel::setMaxDownloadsPerPodcast,
                     onChangeSmartRewind = mainViewModel::setSmartRewind,
                     onToggleAudioNormalization = mainViewModel::setAudioNormalization,
+                    onChangeMonoMode = mainViewModel::setMonoMode,
                     onChangeBluetoothNextPrevSeeks = mainViewModel::setBluetoothNextPrevSeeks,
                     onChangeAppLanguage = { lang ->
                         if (settings.appLanguage != lang) {
@@ -326,11 +327,17 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     isRefreshing = isRefreshingDetail,
                     textScale = settings.textScale,
                     trashRetentionHours = settings.trashRetentionHours,
+                    globalMonoMode = settings.monoMode,
+                    globalAudioNormalization = settings.audioNormalizationEnabled,
                     canDeleteLocal = canDeleteLocal,
                     onTextScaleChange = mainViewModel::setTextScale,
                     onBack = { navController.popBackStack() },
                     onRefresh = detailViewModel::refresh,
                     onToggleSort = detailViewModel::toggleSort,
+                    onSetPlaybackSpeed = detailViewModel::setPlaybackSpeed,
+                    onSetSilenceMode = detailViewModel::setSilenceMode,
+                    onSetMonoModeOverride = detailViewModel::setMonoModeOverride,
+                    onSetNormalizationOverride = detailViewModel::setAudioNormalizationOverride,
                     onDisableAutoDownload = detailViewModel::disableAutoDownload,
                     onSubscribe = detailViewModel::subscribe,
                     onUnsubscribe = {
@@ -465,6 +472,8 @@ fun PurePodcastApp(app: PurePodcastApplication) {
         FullPlayerOverlay(
             playerController = app.playerController,
             queue = queue,
+            globalMonoMode = settings.monoMode,
+            globalAudioNormalization = settings.audioNormalizationEnabled,
             textScale = settings.textScale,
             onTextScaleChange = mainViewModel::setTextScale,
             onDismiss = { showFullPlayer = false }
@@ -541,16 +550,20 @@ private fun MiniPlayerBar(
 private fun FullPlayerOverlay(
     playerController: PlayerController,
     queue: List<EpisodeWithPodcast>,
+    globalMonoMode: Int,
+    globalAudioNormalization: Boolean,
     textScale: Float,
     onTextScaleChange: (Float) -> Unit,
     onDismiss: () -> Unit
 ) {
     val playerState by playerController.state.collectAsStateWithLifecycle()
-    if (playerState.currentEpisode == null) return
-    val currentId = playerState.currentEpisode?.id
-    val canSkipQueue = queue.size > 1 || (queue.size == 1 && queue[0].episode.id != currentId)
+    val ep = playerState.currentEpisode ?: return
+    val pod = playerState.currentPodcast ?: return
+    val canSkipQueue = queue.size > 1 || (queue.size == 1 && queue[0].episode.id != ep.id)
     FullPlayerSheet(
         state = playerState,
+        globalMonoMode = globalMonoMode,
+        globalAudioNormalization = globalAudioNormalization,
         hasQueue = canSkipQueue,
         textScale = textScale,
         onTextScaleChange = onTextScaleChange,
@@ -562,6 +575,11 @@ private fun FullPlayerOverlay(
         onNextEpisode = { playerController.skipToNextInQueue() },
         onSetSpeed = { playerController.setPlaybackSpeed(it) },
         onSetSilenceMode = { enabled, intensity -> playerController.setSilenceMode(enabled, intensity) },
-        onSetSleepTimer = { playerController.setSleepTimer(it) }
+        onSetSleepTimer = { playerController.setSleepTimer(it) },
+        onSetEpisodeMonoOverride = { playerController.setEpisodeMonoOverride(it) },
+        onSetPodcastMonoOverride = { mode -> playerController.setPodcastMonoOverride(pod.id, mode) },
+        onSetPodcastNormalizationOverride = { ov -> playerController.setPodcastNormalizationOverride(pod.id, ov) },
+        onTogglePodcastSort = { asc -> playerController.setPodcastSortAscending(pod.id, asc) },
+        onDisablePodcastAutoDownload = { playerController.disablePodcastAutoDownload(pod.id) }
     )
 }

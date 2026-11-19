@@ -25,7 +25,7 @@ class Converters {
         EpisodeEntity::class,
         QueueItemEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -104,6 +104,14 @@ abstract class PurePodcastDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN monoModeOverride INTEGER NOT NULL DEFAULT -1")
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN audioNormalizationOverride INTEGER NOT NULL DEFAULT -1")
+                db.execSQL("ALTER TABLE episodes ADD COLUMN monoModeOverride INTEGER NOT NULL DEFAULT -1")
+            }
+        }
+
         fun getInstance(context: Context): PurePodcastDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -120,7 +128,8 @@ abstract class PurePodcastDatabase : RoomDatabase() {
                         MIGRATION_6_7,
                         MIGRATION_7_8,
                         MIGRATION_8_9,
-                        MIGRATION_9_10
+                        MIGRATION_9_10,
+                        MIGRATION_10_11
                     )
                     .build()
                     .also { INSTANCE = it }
