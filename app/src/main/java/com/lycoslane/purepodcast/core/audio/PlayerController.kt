@@ -43,15 +43,34 @@ data class PlayerUiState(
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val playbackSpeed: Float = 1.0f,
+    val hasPodcastSpeedOverride: Boolean = false,
     val skipSilence: Boolean = false,
     val silenceIntensity: Int = 1,
+    val hasPodcastSilenceOverride: Boolean = false,
     val podcastMonoOverride: Int = AudioMonoMode.INHERIT,
     val episodeMonoOverride: Int = AudioMonoMode.INHERIT,
     val effectiveMonoMode: Int = AudioMonoMode.OFF,
     val podcastNormalizationOverride: Int = AudioOverride.INHERIT,
     val effectiveAudioNormalization: Boolean = false,
+    val podcastSmartRewindOverride: Int = SmartRewindOverride.INHERIT,
+    val effectiveSmartRewindSeconds: Int = 10,
     val sleepTimerRemainingMs: Long = 0L,
     val sleepTimerPresetMinutes: Int = 0
+)
+
+private data class ResolvedPodcastAudio(
+    val speed: Float,
+    val hasSpeedOverride: Boolean,
+    val skipSilence: Boolean,
+    val silenceIntensity: Int,
+    val hasSilenceOverride: Boolean,
+    val podcastMonoOverride: Int,
+    val episodeMonoOverride: Int,
+    val effectiveMonoMode: Int,
+    val podcastNormalizationOverride: Int,
+    val effectiveNormalization: Boolean,
+    val podcastSmartRewindOverride: Int,
+    val effectiveSmartRewindSeconds: Int
 )
 
 class PlayerController(
@@ -73,7 +92,16 @@ class PlayerController(
     init {
         scope.launch {
             preferences.settings
-                .map { it.monoMode to it.audioNormalizationEnabled }
+                .map { s ->
+                    listOf(
+                        s.defaultPlaybackSpeed,
+                        s.defaultSkipSilence,
+                        s.defaultSilenceIntensity,
+                        s.monoMode,
+                        s.audioNormalizationEnabled,
+                        s.smartRewindSeconds
+                    )
+                }
                 .distinctUntilChanged()
                 .collect {
                     refreshEffectiveAudioSettings()
@@ -174,15 +202,9 @@ class PlayerController(
                 ?: dao.getMostRecentInProgressEpisode()
                 ?: return@launch
 
-            val global = preferences.settings.value
-            val effectiveMono = AudioMonoMode.resolveEffective(
-                globalMonoMode = global.monoMode,
-                podcastMonoOverride = candidate.podcast.monoModeOverride,
-                episodeMonoOverride = candidate.episode.monoModeOverride
-            )
-            val effectiveNorm = AudioOverride.resolve(
-                globalEnabled = global.audioNormalizationEnabled,
-                podcastOverride = candidate.podcast.audioNormalizationOverride
+            val resolved = resolvePodcastAudio(
+                podcast = candidate.podcast,
+                episode = candidate.episode
             )
             _state.update { st ->
                 if (st.currentEpisode != null) {
@@ -193,14 +215,18 @@ class PlayerController(
                         currentPodcast = candidate.podcast,
                         positionMs = candidate.episode.positionMs.coerceAtLeast(0L),
                         durationMs = candidate.episode.durationMs.coerceAtLeast(0L),
-                        playbackSpeed = candidate.podcast.playbackSpeed.coerceIn(0.50f, 3.0f),
-                        skipSilence = candidate.podcast.skipSilence,
-                        silenceIntensity = candidate.podcast.silenceIntensity.coerceIn(0, 2),
-                        podcastMonoOverride = candidate.podcast.monoModeOverride,
-                        episodeMonoOverride = candidate.episode.monoModeOverride,
-                        effectiveMonoMode = effectiveMono,
-                        podcastNormalizationOverride = candidate.podcast.audioNormalizationOverride,
-                        effectiveAudioNormalization = effectiveNorm,
+                        playbackSpeed = resolved.speed,
+                        hasPodcastSpeedOverride = resolved.hasSpeedOverride,
+                        skipSilence = resolved.skipSilence,
+                        silenceIntensity = resolved.silenceIntensity,
+                        hasPodcastSilenceOverride = resolved.hasSilenceOverride,
+                        podcastMonoOverride = resolved.podcastMonoOverride,
+                        episodeMonoOverride = resolved.episodeMonoOverride,
+                        effectiveMonoMode = resolved.effectiveMonoMode,
+                        podcastNormalizationOverride = resolved.podcastNormalizationOverride,
+                        effectiveAudioNormalization = resolved.effectiveNormalization,
+                        podcastSmartRewindOverride = resolved.podcastSmartRewindOverride,
+                        effectiveSmartRewindSeconds = resolved.effectiveSmartRewindSeconds,
                         isPlaying = false
                     )
                 }
@@ -236,15 +262,9 @@ class PlayerController(
             val livePos = withContext(Dispatchers.Main) {
                 controller?.currentPosition?.takeIf { it > 0L }
             }
-            val global = preferences.settings.value
-            val effectiveMono = AudioMonoMode.resolveEffective(
-                globalMonoMode = global.monoMode,
-                podcastMonoOverride = withPodcast.podcast.monoModeOverride,
-                episodeMonoOverride = withPodcast.episode.monoModeOverride
-            )
-            val effectiveNorm = AudioOverride.resolve(
-                globalEnabled = global.audioNormalizationEnabled,
-                podcastOverride = withPodcast.podcast.audioNormalizationOverride
+            val resolved = resolvePodcastAudio(
+                podcast = withPodcast.podcast,
+                episode = withPodcast.episode
             )
             _state.update {
                 it.copy(
@@ -252,21 +272,24 @@ class PlayerController(
                     currentPodcast = withPodcast.podcast,
                     positionMs = livePos ?: withPodcast.episode.positionMs,
                     durationMs = liveDuration ?: withPodcast.episode.durationMs,
-                    playbackSpeed = withPodcast.podcast.playbackSpeed.coerceIn(0.50f, 3.0f),
-                    skipSilence = withPodcast.podcast.skipSilence,
-                    silenceIntensity = withPodcast.podcast.silenceIntensity.coerceIn(0, 2),
-                    podcastMonoOverride = withPodcast.podcast.monoModeOverride,
-                    episodeMonoOverride = withPodcast.episode.monoModeOverride,
-                    effectiveMonoMode = effectiveMono,
-                    podcastNormalizationOverride = withPodcast.podcast.audioNormalizationOverride,
-                    effectiveAudioNormalization = effectiveNorm
+                    playbackSpeed = resolved.speed,
+                    hasPodcastSpeedOverride = resolved.hasSpeedOverride,
+                    skipSilence = resolved.skipSilence,
+                    silenceIntensity = resolved.silenceIntensity,
+                    hasPodcastSilenceOverride = resolved.hasSilenceOverride,
+                    podcastMonoOverride = resolved.podcastMonoOverride,
+                    episodeMonoOverride = resolved.episodeMonoOverride,
+                    effectiveMonoMode = resolved.effectiveMonoMode,
+                    podcastNormalizationOverride = resolved.podcastNormalizationOverride,
+                    effectiveAudioNormalization = resolved.effectiveNormalization,
+                    podcastSmartRewindOverride = resolved.podcastSmartRewindOverride,
+                    effectiveSmartRewindSeconds = resolved.effectiveSmartRewindSeconds
                 )
             }
             withContext(Dispatchers.Main) {
                 val mc = controller
                 if (mc != null && mc.isConnected && mc.currentMediaItem?.mediaId == episodeId.toString()) {
-                    sendMonoModeCommand(mc, effectiveMono)
-                    sendAudioNormalizationCommand(mc, effectiveNorm)
+                    applyAllCommandsToController(mc, resolved)
                 }
             }
             // Lazily resolve an external chapters file (stored as "url:<link>" by the feed import).
@@ -353,19 +376,11 @@ class PlayerController(
                 .setMediaMetadata(metadata)
                 .build()
 
-            val speed = freshPodcast.playbackSpeed.coerceIn(0.50f, 3.0f)
-            val intensity = freshPodcast.silenceIntensity.coerceIn(0, 2)
-            val global = preferences.settings.value
-            val effectiveMono = AudioMonoMode.resolveEffective(
-                globalMonoMode = global.monoMode,
-                podcastMonoOverride = freshPodcast.monoModeOverride,
-                episodeMonoOverride = freshEpisode.monoModeOverride
+            val resolved = resolvePodcastAudio(
+                podcast = freshPodcast,
+                episode = freshEpisode
             )
-            val effectiveNorm = AudioOverride.resolve(
-                globalEnabled = global.audioNormalizationEnabled,
-                podcastOverride = freshPodcast.audioNormalizationOverride
-            )
-            val rewindMs = global.smartRewindSeconds * 1000L
+            val rewindMs = resolved.effectiveSmartRewindSeconds * 1000L
             val startPos = when {
                 useExplicitIdlePos -> explicitPosMs.coerceAtLeast(0L)
                 freshEpisode.positionMs > 0L -> (freshEpisode.positionMs - rewindMs).coerceAtLeast(0L)
@@ -373,10 +388,7 @@ class PlayerController(
             }
 
             mc.setMediaItem(mediaItem, startPos)
-            mc.playbackParameters = PlaybackParameters(speed)
-            sendSkipSilenceCommand(mc, freshPodcast.skipSilence, intensity)
-            sendMonoModeCommand(mc, effectiveMono)
-            sendAudioNormalizationCommand(mc, effectiveNorm)
+            applyAllCommandsToController(mc, resolved)
             mc.prepare()
             mc.play()
 
@@ -384,14 +396,18 @@ class PlayerController(
                 it.copy(
                     currentEpisode = freshEpisode,
                     currentPodcast = freshPodcast,
-                    playbackSpeed = speed,
-                    skipSilence = freshPodcast.skipSilence,
-                    silenceIntensity = intensity,
-                    podcastMonoOverride = freshPodcast.monoModeOverride,
-                    episodeMonoOverride = freshEpisode.monoModeOverride,
-                    effectiveMonoMode = effectiveMono,
-                    podcastNormalizationOverride = freshPodcast.audioNormalizationOverride,
-                    effectiveAudioNormalization = effectiveNorm,
+                    playbackSpeed = resolved.speed,
+                    hasPodcastSpeedOverride = resolved.hasSpeedOverride,
+                    skipSilence = resolved.skipSilence,
+                    silenceIntensity = resolved.silenceIntensity,
+                    hasPodcastSilenceOverride = resolved.hasSilenceOverride,
+                    podcastMonoOverride = resolved.podcastMonoOverride,
+                    episodeMonoOverride = resolved.episodeMonoOverride,
+                    effectiveMonoMode = resolved.effectiveMonoMode,
+                    podcastNormalizationOverride = resolved.podcastNormalizationOverride,
+                    effectiveAudioNormalization = resolved.effectiveNormalization,
+                    podcastSmartRewindOverride = resolved.podcastSmartRewindOverride,
+                    effectiveSmartRewindSeconds = resolved.effectiveSmartRewindSeconds,
                     durationMs = freshEpisode.durationMs,
                     positionMs = startPos
                 )
@@ -481,6 +497,7 @@ class PlayerController(
             mc.clearMediaItems()
         }
         _state.value = PlayerUiState()
+        refreshEffectiveAudioSettings()
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -494,38 +511,76 @@ class PlayerController(
     }
 
     fun setPodcastPlaybackSpeed(podcastId: Long, speed: Float) {
-        val clamped = speed.coerceIn(0.50f, 3.0f)
+        setPodcastSpeedOverride(podcastId, speed.coerceIn(0.50f, 3.00f))
+    }
+
+    fun setPodcastSpeedOverride(podcastId: Long, speedOverride: Float) {
+        val norm = SpeedOverride.normalize(speedOverride)
+        val global = preferences.settings.value
+        val effectiveSpeed = SpeedOverride.resolve(global.defaultPlaybackSpeed, norm)
         if (_state.value.currentPodcast?.id == podcastId) {
-            controller?.playbackParameters = PlaybackParameters(clamped)
+            controller?.playbackParameters = PlaybackParameters(effectiveSpeed)
             _state.update { st ->
                 st.copy(
-                    playbackSpeed = clamped,
-                    currentPodcast = st.currentPodcast?.copy(playbackSpeed = clamped)
+                    playbackSpeed = effectiveSpeed,
+                    hasPodcastSpeedOverride = !SpeedOverride.isInherit(norm),
+                    currentPodcast = st.currentPodcast?.copy(
+                        speedOverride = norm,
+                        playbackSpeed = effectiveSpeed
+                    )
                 )
             }
         }
-        scope.launch(Dispatchers.IO) { dao.setPlaybackSpeed(podcastId, clamped) }
+        scope.launch(Dispatchers.IO) { dao.setPodcastSpeedOverride(podcastId, norm, effectiveSpeed) }
     }
 
     fun setPodcastSilenceMode(podcastId: Long, enabled: Boolean, intensity: Int) {
-        val clamped = intensity.coerceIn(0, 2)
+        setPodcastSilenceOverride(podcastId, SilenceOverride.fromEnabledAndIntensity(enabled, intensity))
+    }
+
+    fun setPodcastSilenceOverride(podcastId: Long, silenceModeOverride: Int) {
+        val norm = SilenceOverride.normalize(silenceModeOverride)
+        val global = preferences.settings.value
+        val (effectiveEnabled, effectiveIntensity) = SilenceOverride.resolve(
+            globalEnabled = global.defaultSkipSilence,
+            globalIntensity = global.defaultSilenceIntensity,
+            podcastOverride = norm
+        )
         if (_state.value.currentPodcast?.id == podcastId) {
-            controller?.let { sendSkipSilenceCommand(it, enabled, clamped) }
+            controller?.let { sendSkipSilenceCommand(it, effectiveEnabled, effectiveIntensity) }
             _state.update { st ->
                 st.copy(
-                    skipSilence = enabled,
-                    silenceIntensity = clamped,
+                    skipSilence = effectiveEnabled,
+                    silenceIntensity = effectiveIntensity,
+                    hasPodcastSilenceOverride = norm != SilenceOverride.INHERIT,
                     currentPodcast = st.currentPodcast?.copy(
-                        skipSilence = enabled,
-                        silenceIntensity = clamped
+                        silenceModeOverride = norm,
+                        skipSilence = effectiveEnabled,
+                        silenceIntensity = effectiveIntensity
                     )
                 )
             }
         }
         scope.launch(Dispatchers.IO) {
-            dao.setSkipSilence(podcastId, enabled)
-            dao.setSilenceIntensity(podcastId, clamped)
+            dao.setPodcastSilenceModeOverride(podcastId, norm, effectiveEnabled, effectiveIntensity)
         }
+    }
+
+    fun setPodcastSmartRewindOverride(podcastId: Long, smartRewindOverride: Int) {
+        val norm = SmartRewindOverride.normalize(smartRewindOverride)
+        val global = preferences.settings.value
+        val effectiveRewind = SmartRewindOverride.resolve(global.smartRewindSeconds, norm)
+        if (_state.value.currentPodcast?.id == podcastId) {
+            controller?.let { sendSmartRewindCommand(it, effectiveRewind) }
+            _state.update { st ->
+                st.copy(
+                    podcastSmartRewindOverride = norm,
+                    effectiveSmartRewindSeconds = effectiveRewind,
+                    currentPodcast = st.currentPodcast?.copy(smartRewindOverride = norm)
+                )
+            }
+        }
+        scope.launch(Dispatchers.IO) { dao.setPodcastSmartRewindOverride(podcastId, norm) }
     }
 
     fun setEpisodeMonoOverride(mode: Int) {
@@ -610,26 +665,96 @@ class PlayerController(
 
     fun refreshEffectiveAudioSettings() {
         val st = _state.value
-        val global = preferences.settings.value
-        val effectiveMono = AudioMonoMode.resolveEffective(
-            globalMonoMode = global.monoMode,
-            podcastMonoOverride = st.currentPodcast?.monoModeOverride ?: st.podcastMonoOverride,
-            episodeMonoOverride = st.currentEpisode?.monoModeOverride ?: st.episodeMonoOverride
-        )
-        val effectiveNorm = AudioOverride.resolve(
-            globalEnabled = global.audioNormalizationEnabled,
-            podcastOverride = st.currentPodcast?.audioNormalizationOverride ?: st.podcastNormalizationOverride
+        val resolved = resolvePodcastAudio(
+            podcast = st.currentPodcast,
+            episode = st.currentEpisode,
+            fallbackMonoOverride = st.podcastMonoOverride,
+            fallbackNormOverride = st.podcastNormalizationOverride,
+            fallbackRewindOverride = st.podcastSmartRewindOverride
         )
         _state.update {
             it.copy(
-                effectiveMonoMode = effectiveMono,
-                effectiveAudioNormalization = effectiveNorm
+                playbackSpeed = resolved.speed,
+                hasPodcastSpeedOverride = resolved.hasSpeedOverride,
+                skipSilence = resolved.skipSilence,
+                silenceIntensity = resolved.silenceIntensity,
+                hasPodcastSilenceOverride = resolved.hasSilenceOverride,
+                podcastMonoOverride = resolved.podcastMonoOverride,
+                episodeMonoOverride = resolved.episodeMonoOverride,
+                effectiveMonoMode = resolved.effectiveMonoMode,
+                podcastNormalizationOverride = resolved.podcastNormalizationOverride,
+                effectiveAudioNormalization = resolved.effectiveNormalization,
+                podcastSmartRewindOverride = resolved.podcastSmartRewindOverride,
+                effectiveSmartRewindSeconds = resolved.effectiveSmartRewindSeconds
             )
         }
         controller?.takeIf { it.isConnected }?.let { mc ->
-            sendMonoModeCommand(mc, effectiveMono)
-            sendAudioNormalizationCommand(mc, effectiveNorm)
+            applyAllCommandsToController(mc, resolved)
         }
+    }
+
+    fun refreshAfterApplyAll() {
+        val curId = _state.value.currentPodcast?.id
+        if (curId != null) {
+            scope.launch(Dispatchers.IO) {
+                val freshPod = dao.getPodcast(curId) ?: return@launch
+                withContext(Dispatchers.Main) {
+                    _state.update { it.copy(currentPodcast = freshPod) }
+                    refreshEffectiveAudioSettings()
+                }
+            }
+        } else {
+            refreshEffectiveAudioSettings()
+        }
+    }
+
+    private fun resolvePodcastAudio(
+        podcast: PodcastEntity?,
+        episode: EpisodeEntity?,
+        fallbackMonoOverride: Int = AudioMonoMode.INHERIT,
+        fallbackNormOverride: Int = AudioOverride.INHERIT,
+        fallbackRewindOverride: Int = SmartRewindOverride.INHERIT
+    ): ResolvedPodcastAudio {
+        val global = preferences.settings.value
+        val speedOv = podcast?.speedOverride ?: SpeedOverride.INHERIT
+        val silenceOv = podcast?.silenceModeOverride ?: SilenceOverride.INHERIT
+        val monoOv = podcast?.monoModeOverride ?: fallbackMonoOverride
+        val epMonoOv = episode?.monoModeOverride ?: AudioMonoMode.INHERIT
+        val normOv = podcast?.audioNormalizationOverride ?: fallbackNormOverride
+        val rewindOv = podcast?.smartRewindOverride ?: fallbackRewindOverride
+        val (effSilence, effIntensity) = SilenceOverride.resolve(
+            globalEnabled = global.defaultSkipSilence,
+            globalIntensity = global.defaultSilenceIntensity,
+            podcastOverride = silenceOv
+        )
+        return ResolvedPodcastAudio(
+            speed = SpeedOverride.resolve(global.defaultPlaybackSpeed, speedOv),
+            hasSpeedOverride = !SpeedOverride.isInherit(speedOv),
+            skipSilence = effSilence,
+            silenceIntensity = effIntensity,
+            hasSilenceOverride = silenceOv != SilenceOverride.INHERIT,
+            podcastMonoOverride = monoOv,
+            episodeMonoOverride = epMonoOv,
+            effectiveMonoMode = AudioMonoMode.resolveEffective(global.monoMode, monoOv, epMonoOv),
+            podcastNormalizationOverride = normOv,
+            effectiveNormalization = AudioOverride.resolve(global.audioNormalizationEnabled, normOv),
+            podcastSmartRewindOverride = rewindOv,
+            effectiveSmartRewindSeconds = SmartRewindOverride.resolve(global.smartRewindSeconds, rewindOv)
+        )
+    }
+
+    private fun applyAllCommandsToController(mc: MediaController, resolved: ResolvedPodcastAudio) {
+        mc.playbackParameters = PlaybackParameters(resolved.speed)
+        sendSkipSilenceCommand(mc, resolved.skipSilence, resolved.silenceIntensity)
+        sendMonoModeCommand(mc, resolved.effectiveMonoMode)
+        sendAudioNormalizationCommand(mc, resolved.effectiveNormalization)
+        sendSmartRewindCommand(mc, resolved.effectiveSmartRewindSeconds)
+    }
+
+    private fun sendSmartRewindCommand(mc: MediaController, seconds: Int) {
+        val cmd = SessionCommand(PlaybackService.CMD_SET_SMART_REWIND, Bundle.EMPTY)
+        val args = Bundle().apply { putInt(PlaybackService.ARG_SMART_REWIND_SECONDS, seconds.coerceIn(0, 120)) }
+        mc.sendCustomCommand(cmd, args)
     }
 
     private fun sendMonoModeCommand(mc: MediaController, mode: Int) {

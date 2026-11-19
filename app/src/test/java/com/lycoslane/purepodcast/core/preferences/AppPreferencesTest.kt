@@ -81,6 +81,20 @@ class AppPreferencesTest {
         assertEquals(AudioMonoMode.AUTO, prefs.settings.value.monoMode)
         prefs.setMonoMode(AudioMonoMode.LEFT)
         assertEquals(AudioMonoMode.LEFT, prefs.settings.value.monoMode)
+
+        prefs.setDefaultPlaybackSpeed(0.2f)
+        assertEquals(0.50f, prefs.settings.value.defaultPlaybackSpeed, 0.001f)
+        prefs.setDefaultPlaybackSpeed(5.0f)
+        assertEquals(3.00f, prefs.settings.value.defaultPlaybackSpeed, 0.001f)
+        prefs.setDefaultPlaybackSpeed(1.35f)
+        assertEquals(1.35f, prefs.settings.value.defaultPlaybackSpeed, 0.001f)
+
+        prefs.setDefaultSilenceMode(true, 9)
+        assertEquals(true, prefs.settings.value.defaultSkipSilence)
+        assertEquals(2, prefs.settings.value.defaultSilenceIntensity)
+        prefs.setDefaultSilenceMode(false, 0)
+        assertEquals(false, prefs.settings.value.defaultSkipSilence)
+        assertEquals(0, prefs.settings.value.defaultSilenceIntensity)
     }
 
     @Test

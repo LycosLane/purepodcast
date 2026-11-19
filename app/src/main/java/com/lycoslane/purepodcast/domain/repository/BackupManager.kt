@@ -3,6 +3,9 @@ package com.lycoslane.purepodcast.domain.repository
 import android.content.Context
 import com.lycoslane.purepodcast.core.audio.AudioMonoMode
 import com.lycoslane.purepodcast.core.audio.AudioOverride
+import com.lycoslane.purepodcast.core.audio.SilenceOverride
+import com.lycoslane.purepodcast.core.audio.SmartRewindOverride
+import com.lycoslane.purepodcast.core.audio.SpeedOverride
 import com.lycoslane.purepodcast.core.database.PodcastEntity
 import com.lycoslane.purepodcast.core.database.PurePodcastDao
 import com.lycoslane.purepodcast.core.download.FeedRefreshWorker
@@ -13,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.abs
 
 internal class BackupManager(
     private val context: Context,
@@ -39,6 +43,9 @@ internal class BackupManager(
                     put("trashRetentionHours", settings.trashRetentionHours)
                     put("maxDownloadsPerPodcast", settings.maxDownloadsPerPodcast)
                     put("smartRewindSeconds", settings.smartRewindSeconds)
+                    put("defaultPlaybackSpeed", settings.defaultPlaybackSpeed.toDouble())
+                    put("defaultSkipSilence", settings.defaultSkipSilence)
+                    put("defaultSilenceIntensity", settings.defaultSilenceIntensity)
                     put("audioNormalizationEnabled", settings.audioNormalizationEnabled)
                     put("monoMode", settings.monoMode)
                     put("bluetoothNextPrevSeeks", settings.bluetoothNextPrevSeeks)
@@ -76,10 +83,13 @@ internal class BackupManager(
                         put("autoDownloadFromPubDateMs", pod.autoDownloadFromPubDateMs)
                         put("sortAscending", pod.sortAscending)
                         put("playbackSpeed", pod.playbackSpeed.toDouble())
+                        put("speedOverride", pod.speedOverride.toDouble())
                         put("skipSilence", pod.skipSilence)
                         put("silenceIntensity", pod.silenceIntensity)
+                        put("silenceModeOverride", pod.silenceModeOverride)
                         put("monoModeOverride", pod.monoModeOverride)
                         put("audioNormalizationOverride", pod.audioNormalizationOverride)
+                        put("smartRewindOverride", pod.smartRewindOverride)
                         put("episodes", epArr)
                     }
                 )
@@ -134,14 +144,33 @@ internal class BackupManager(
                 val existing = dao.getPodcast(podcastId)
                 if (existing != null) {
                     val rawSpeed = pObj.optDouble("playbackSpeed", existing.playbackSpeed.toDouble())
-                    val safeSpeed = if (rawSpeed.isFinite()) rawSpeed.toFloat().coerceIn(0.50f, 3.0f) else 1.0f
+                    val safeSpeed = if (rawSpeed.isFinite()) rawSpeed.toFloat().coerceIn(0.50f, 3.00f) else 1.0f
+                    val restoredSpeedOverride = if (pObj.has("speedOverride")) {
+                        val rawOv = pObj.optDouble("speedOverride", existing.speedOverride.toDouble())
+                        SpeedOverride.normalize(if (rawOv.isFinite()) rawOv.toFloat() else SpeedOverride.INHERIT)
+                    } else if (abs(safeSpeed - 1.0f) >= 0.01f) {
+                        safeSpeed
+                    } else {
+                        existing.speedOverride
+                    }
+                    val restoredSkipSilence = pObj.optBoolean("skipSilence", existing.skipSilence)
+                    val restoredIntensity = pObj.optInt("silenceIntensity", existing.silenceIntensity).coerceIn(0, 2)
+                    val restoredSilenceOverride = if (pObj.has("silenceModeOverride")) {
+                        SilenceOverride.normalize(pObj.optInt("silenceModeOverride", existing.silenceModeOverride))
+                    } else if (restoredSkipSilence) {
+                        SilenceOverride.fromEnabledAndIntensity(true, restoredIntensity)
+                    } else {
+                        existing.silenceModeOverride
+                    }
                     dao.updatePodcast(
                         existing.copy(
                             autoDownloadFromPubDateMs = pObj.optLong("autoDownloadFromPubDateMs", existing.autoDownloadFromPubDateMs).coerceAtLeast(0L),
                             sortAscending = pObj.optBoolean("sortAscending", existing.sortAscending),
                             playbackSpeed = safeSpeed,
-                            skipSilence = pObj.optBoolean("skipSilence", existing.skipSilence),
-                            silenceIntensity = pObj.optInt("silenceIntensity", existing.silenceIntensity).coerceIn(0, 2),
+                            speedOverride = restoredSpeedOverride,
+                            skipSilence = restoredSkipSilence,
+                            silenceIntensity = restoredIntensity,
+                            silenceModeOverride = restoredSilenceOverride,
                             monoModeOverride = if (pObj.has("monoModeOverride")) {
                                 AudioMonoMode.normalizeOverride(pObj.optInt("monoModeOverride", existing.monoModeOverride))
                             } else {
@@ -151,6 +180,11 @@ internal class BackupManager(
                                 AudioOverride.normalize(pObj.optInt("audioNormalizationOverride", existing.audioNormalizationOverride))
                             } else {
                                 existing.audioNormalizationOverride
+                            },
+                            smartRewindOverride = if (pObj.has("smartRewindOverride")) {
+                                SmartRewindOverride.normalize(pObj.optInt("smartRewindOverride", existing.smartRewindOverride))
+                            } else {
+                                existing.smartRewindOverride
                             }
                         )
                     )
@@ -243,6 +277,16 @@ internal class BackupManager(
         }
         if (s.has("smartRewindSeconds")) {
             preferences.setSmartRewindSeconds(s.optInt("smartRewindSeconds", 10).coerceIn(0, 120))
+        }
+        if (s.has("defaultPlaybackSpeed")) {
+            val speed = s.optDouble("defaultPlaybackSpeed", 1.0)
+            if (speed.isFinite()) preferences.setDefaultPlaybackSpeed(speed.toFloat())
+        }
+        if (s.has("defaultSkipSilence") || s.has("defaultSilenceIntensity")) {
+            val cur = preferences.settings.value
+            val enabled = s.optBoolean("defaultSkipSilence", cur.defaultSkipSilence)
+            val intensity = s.optInt("defaultSilenceIntensity", cur.defaultSilenceIntensity)
+            preferences.setDefaultSilenceMode(enabled, intensity)
         }
         if (s.has("audioNormalizationEnabled")) {
             preferences.setAudioNormalizationEnabled(s.optBoolean("audioNormalizationEnabled", false))

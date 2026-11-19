@@ -67,15 +67,18 @@ import androidx.compose.ui.unit.dp
 import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.AudioMonoMode
 import com.lycoslane.purepodcast.core.audio.AudioOverride
+import com.lycoslane.purepodcast.core.audio.SilenceOverride
+import com.lycoslane.purepodcast.core.audio.SmartRewindOverride
+import com.lycoslane.purepodcast.core.audio.SpeedOverride
 import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.PodcastEntity
+import com.lycoslane.purepodcast.core.preferences.AppSettings
 import com.lycoslane.purepodcast.ui.common.CoverLightboxDialog
 import com.lycoslane.purepodcast.ui.common.PodcastImage
 import com.lycoslane.purepodcast.ui.common.TextReaderDialog
 import com.lycoslane.purepodcast.ui.common.formatPubDate
 import com.lycoslane.purepodcast.ui.common.htmlToPlainText
-import kotlin.math.abs
 
 private enum class EpisodeFilter {
     ALL,
@@ -94,17 +97,18 @@ fun PodcastDetailScreen(
     isRefreshing: Boolean,
     textScale: Float,
     trashRetentionHours: Int,
-    globalMonoMode: Int,
-    globalAudioNormalization: Boolean,
+    globalSettings: AppSettings,
     canDeleteLocal: Boolean = true,
     onTextScaleChange: (Float) -> Unit,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onToggleSort: (Boolean) -> Unit,
-    onSetPlaybackSpeed: (Float) -> Unit,
-    onSetSilenceMode: (Boolean, Int) -> Unit,
+    onSetSpeedOverride: (Float) -> Unit,
+    onSetSilenceModeOverride: (Int) -> Unit,
     onSetMonoModeOverride: (Int) -> Unit,
     onSetNormalizationOverride: (Int) -> Unit,
+    onSetSmartRewindOverride: (Int) -> Unit,
+    onApplyToAllPodcasts: () -> Unit,
     onDisableAutoDownload: () -> Unit,
     onSubscribe: () -> Unit = {},
     onUnsubscribe: () -> Unit,
@@ -386,10 +390,11 @@ fun PodcastDetailScreen(
 
                             Spacer(Modifier.height(10.dp))
 
-                            val hasCustomAudio = abs(podcast.playbackSpeed - 1.0f) >= 0.01f ||
-                                podcast.skipSilence ||
+                            val hasCustomAudio = !SpeedOverride.isInherit(podcast.speedOverride) ||
+                                podcast.silenceModeOverride != SilenceOverride.INHERIT ||
                                 podcast.monoModeOverride != AudioMonoMode.INHERIT ||
-                                podcast.audioNormalizationOverride != AudioOverride.INHERIT
+                                podcast.audioNormalizationOverride != AudioOverride.INHERIT ||
+                                podcast.smartRewindOverride != SmartRewindOverride.INHERIT
                             OutlinedButton(
                                 onClick = { showPodcastSettings = true },
                                 shape = RoundedCornerShape(10.dp),
@@ -554,13 +559,14 @@ fun PodcastDetailScreen(
         podcast?.let { pod ->
             PodcastSettingsSheet(
                 podcast = pod,
-                globalMonoMode = globalMonoMode,
-                globalAudioNormalization = globalAudioNormalization,
+                globalSettings = globalSettings,
                 onDismiss = { showPodcastSettings = false },
-                onSetSpeed = onSetPlaybackSpeed,
-                onSetSilenceMode = onSetSilenceMode,
+                onSetSpeedOverride = onSetSpeedOverride,
+                onSetSilenceModeOverride = onSetSilenceModeOverride,
                 onSetMonoModeOverride = onSetMonoModeOverride,
                 onSetNormalizationOverride = onSetNormalizationOverride,
+                onSetSmartRewindOverride = onSetSmartRewindOverride,
+                onApplyToAllPodcasts = onApplyToAllPodcasts,
                 onToggleSort = onToggleSort,
                 onDisableAutoDownload = onDisableAutoDownload
             )

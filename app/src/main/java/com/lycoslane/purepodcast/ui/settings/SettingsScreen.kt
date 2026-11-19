@@ -76,6 +76,7 @@ import com.lycoslane.purepodcast.core.preferences.AppPreferences
 import com.lycoslane.purepodcast.core.preferences.AppSettings
 import com.lycoslane.purepodcast.ui.common.MonoModeSelector
 import com.lycoslane.purepodcast.ui.common.PureSegmentedControl
+import com.lycoslane.purepodcast.ui.player.SpeedControlPanel
 import com.lycoslane.purepodcast.ui.theme.PureAccent
 import com.lycoslane.purepodcast.ui.theme.isDarkThemeEffective
 import kotlin.math.abs
@@ -101,6 +102,8 @@ fun SettingsScreen(
     onChangeTrashRetentionHours: (Int) -> Unit,
     onChangeMaxDownloadsPerPodcast: (Int) -> Unit,
     onChangeSmartRewind: (Int) -> Unit,
+    onChangeDefaultSpeed: (Float) -> Unit,
+    onChangeDefaultSilenceMode: (Boolean, Int) -> Unit,
     onToggleAudioNormalization: (Boolean) -> Unit,
     onChangeMonoMode: (Int) -> Unit,
     onChangeBluetoothNextPrevSeeks: (Boolean) -> Unit,
@@ -279,11 +282,31 @@ fun SettingsScreen(
 
             // --- 2. Playback & Queue ---
             SettingsSection(title = stringResource(R.string.settings_section_playback)) {
-                SettingSwitchRow(
-                    title = stringResource(R.string.settings_queue_when_downloaded),
-                    checked = settings.addToQueueWhenDownloaded,
-                    onCheckedChange = onToggleAddToQueueWhenDownloaded
+                SpeedControlPanel(
+                    episodeId = 0L,
+                    currentSpeed = settings.defaultPlaybackSpeed,
+                    onSetSpeed = onChangeDefaultSpeed
                 )
+                SectionDivider()
+                SettingSwitchRow(
+                    title = stringResource(R.string.player_silence),
+                    checked = settings.defaultSkipSilence,
+                    onCheckedChange = { enabled ->
+                        onChangeDefaultSilenceMode(enabled, settings.defaultSilenceIntensity)
+                    }
+                )
+                if (settings.defaultSkipSilence) {
+                    Spacer(Modifier.height(8.dp))
+                    PureSegmentedControl(
+                        options = listOf(
+                            0 to stringResource(R.string.silence_soft),
+                            1 to stringResource(R.string.silence_medium),
+                            2 to stringResource(R.string.silence_strong)
+                        ),
+                        selected = settings.defaultSilenceIntensity.coerceIn(0, 2),
+                        onSelect = { onChangeDefaultSilenceMode(true, it) }
+                    )
+                }
                 SectionDivider()
                 SettingSwitchRow(
                     title = stringResource(R.string.settings_audio_normalization),
@@ -307,22 +330,32 @@ fun SettingsScreen(
                     )
                 }
                 SectionDivider()
-                Text(
-                    text = stringResource(R.string.settings_smart_rewind),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
+                val isSmartRewindOn = settings.smartRewindSeconds > 0
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_smart_rewind),
+                    checked = isSmartRewindOn,
+                    onCheckedChange = { enabled ->
+                        onChangeSmartRewind(if (enabled) 10 else 0)
+                    }
                 )
-                Spacer(Modifier.height(8.dp))
-                PureSegmentedControl(
-                    options = listOf(
-                        0 to stringResource(R.string.interval_off),
-                        5 to stringResource(R.string.seconds_short, 5),
-                        10 to stringResource(R.string.seconds_short, 10),
-                        15 to stringResource(R.string.seconds_short, 15),
-                        30 to stringResource(R.string.seconds_short, 30)
-                    ),
-                    selected = settings.smartRewindSeconds,
-                    onSelect = onChangeSmartRewind
+                if (isSmartRewindOn) {
+                    Spacer(Modifier.height(8.dp))
+                    PureSegmentedControl(
+                        options = listOf(
+                            5 to stringResource(R.string.seconds_short, 5),
+                            10 to stringResource(R.string.seconds_short, 10),
+                            15 to stringResource(R.string.seconds_short, 15),
+                            30 to stringResource(R.string.seconds_short, 30)
+                        ),
+                        selected = settings.smartRewindSeconds,
+                        onSelect = onChangeSmartRewind
+                    )
+                }
+                SectionDivider()
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_queue_when_downloaded),
+                    checked = settings.addToQueueWhenDownloaded,
+                    onCheckedChange = onToggleAddToQueueWhenDownloaded
                 )
                 SectionDivider()
                 Text(

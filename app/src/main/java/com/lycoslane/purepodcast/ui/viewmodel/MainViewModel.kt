@@ -94,7 +94,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setSmartRewind(secs: Int) = app.preferences.setSmartRewindSeconds(secs)
+    fun setSmartRewind(secs: Int) {
+        app.preferences.setSmartRewindSeconds(secs)
+        app.playerController.refreshEffectiveAudioSettings()
+    }
+
+    fun setDefaultPlaybackSpeed(speed: Float) {
+        app.preferences.setDefaultPlaybackSpeed(speed)
+        app.playerController.refreshEffectiveAudioSettings()
+    }
+
+    fun setDefaultSilenceMode(enabled: Boolean, intensity: Int) {
+        app.preferences.setDefaultSilenceMode(enabled, intensity)
+        app.playerController.refreshEffectiveAudioSettings()
+    }
 
     fun setAudioNormalization(enabled: Boolean) {
         app.preferences.setAudioNormalizationEnabled(enabled)
@@ -104,6 +117,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setMonoMode(mode: Int) {
         app.preferences.setMonoMode(mode)
         app.playerController.refreshEffectiveAudioSettings()
+    }
+
+    fun applyPodcastAudioSettingsToAll(
+        podcast: com.lycoslane.purepodcast.core.database.PodcastEntity,
+        onDone: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            app.repository.applyAudioSettingsToAllPodcasts(podcast)
+            app.playerController.refreshAfterApplyAll()
+            onDone()
+        }
     }
 
     fun setBluetoothNextPrevSeeks(seeks: Boolean) = app.preferences.setBluetoothNextPrevSeeks(seeks)

@@ -195,7 +195,8 @@ internal fun PlayerSecondaryTile(
 fun SpeedControlPanel(
     episodeId: Long,
     currentSpeed: Float,
-    onSetSpeed: (Float) -> Unit
+    onSetSpeed: (Float) -> Unit,
+    onResetToGlobal: (() -> Unit)? = null
 ) {
     var sliderSpeed by remember(episodeId, currentSpeed) {
         mutableFloatStateOf(currentSpeed.coerceIn(0.50f, 3.00f))
@@ -206,11 +207,27 @@ fun SpeedControlPanel(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = stringResource(R.string.player_speed_title),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold
-        )
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.player_speed_title),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (onResetToGlobal != null) {
+                TextButton(
+                    onClick = onResetToGlobal,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.override_global),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = {
@@ -305,7 +322,8 @@ fun SpeedControlPanel(
 fun SilenceControlPanel(
     skipSilence: Boolean,
     silenceIntensity: Int,
-    onSetSilenceMode: (Boolean, Int) -> Unit
+    onSetSilenceMode: (Boolean, Int) -> Unit,
+    onResetToGlobal: (() -> Unit)? = null
 ) {
     val selectedOption = if (skipSilence) silenceIntensity.coerceIn(0, 2) else -1
     val statusText = when (selectedOption) {
@@ -319,11 +337,24 @@ fun SilenceControlPanel(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = stringResource(R.string.player_silence),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = stringResource(R.string.player_silence),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (onResetToGlobal != null) {
+                TextButton(
+                    onClick = onResetToGlobal,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.override_global),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+        }
         Text(
             text = statusText,
             style = MaterialTheme.typography.labelMedium,
@@ -368,21 +399,25 @@ internal fun AudioFixControlPanel(
     }
     var showInfo by rememberSaveable { mutableStateOf(false) }
 
-    val hasOverride = if (selectedScope == 0) {
-        episodeMonoOverride != AudioMonoMode.INHERIT
+    val currentScopeOverride = if (selectedScope == 0) {
+        AudioMonoMode.normalizeOverride(episodeMonoOverride)
     } else {
-        podcastMonoOverride != AudioMonoMode.INHERIT
+        AudioMonoMode.normalizeOverride(podcastMonoOverride)
     }
-    val inheritedMode = if (selectedScope == 0) {
-        if (podcastMonoOverride != AudioMonoMode.INHERIT) podcastMonoOverride
-        else AudioMonoMode.normalizeConcrete(globalMonoMode)
+    val scopeTriState = when (currentScopeOverride) {
+        AudioMonoMode.INHERIT -> -1
+        AudioMonoMode.OFF -> 0
+        else -> 1
+    }
+
+    val inheritsFromPodcast = selectedScope == 0 && podcastMonoOverride != AudioMonoMode.INHERIT
+    val inheritOptionLabel = stringResource(
+        if (inheritsFromPodcast) R.string.override_podcast else R.string.override_global
+    )
+    val inheritedMode = if (inheritsFromPodcast) {
+        AudioMonoMode.normalizeConcrete(podcastMonoOverride)
     } else {
         AudioMonoMode.normalizeConcrete(globalMonoMode)
-    }
-    val displayedMode = if (hasOverride) {
-        AudioMonoMode.normalizeConcrete(if (selectedScope == 0) episodeMonoOverride else podcastMonoOverride)
-    } else {
-        inheritedMode
     }
 
     Row(
@@ -396,19 +431,17 @@ internal fun AudioFixControlPanel(
             fontWeight = FontWeight.SemiBold
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (hasOverride) {
-                TextButton(
-                    onClick = {
-                        if (selectedScope == 0) onSetEpisodeMonoOverride(AudioMonoMode.INHERIT)
-                        else onSetPodcastMonoOverride(AudioMonoMode.INHERIT)
-                    },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.action_reset),
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
+            if (scopeTriState == -1) {
+                val hintText = stringResource(
+                    if (inheritsFromPodcast) R.string.override_podcast_state else R.string.override_global_state,
+                    monoModeLabel(inheritedMode)
+                )
+                Text(
+                    text = hintText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 4.dp)
+                )
             }
             IconButton(
                 onClick = { showInfo = !showInfo },
@@ -455,41 +488,48 @@ internal fun AudioFixControlPanel(
     )
 
     Spacer(Modifier.height(8.dp))
-    val inheritedLabel = monoModeLabel(inheritedMode)
-    val statusLine = when {
-        hasOverride && selectedScope == 0 -> stringResource(R.string.player_audio_fix_active_episode)
-        hasOverride -> stringResource(R.string.player_audio_fix_active_podcast)
-        else -> stringResource(R.string.player_audio_fix_inherited, inheritedLabel)
-    }
-    Text(
-        text = statusLine,
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = if (hasOverride) FontWeight.SemiBold else FontWeight.Normal,
-        color = if (hasOverride) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    )
-
-    Spacer(Modifier.height(8.dp))
     PureSegmentedControl(
         options = listOf(
-            AudioMonoMode.OFF to stringResource(R.string.mono_mode_off),
-            AudioMonoMode.MIX to stringResource(R.string.mono_mode_mix),
-            AudioMonoMode.AUTO to stringResource(R.string.mono_mode_smart),
-            AudioMonoMode.LEFT to stringResource(R.string.mono_mode_left),
-            AudioMonoMode.RIGHT to stringResource(R.string.mono_mode_right)
+            -1 to inheritOptionLabel,
+            0 to stringResource(R.string.override_off),
+            1 to stringResource(R.string.override_on)
         ),
-        selected = displayedMode,
-        onSelect = { chosen ->
-            if (selectedScope == 0) {
-                if (hasOverride || chosen != inheritedMode) {
-                    onSetEpisodeMonoOverride(chosen)
-                }
-            } else {
-                if (hasOverride || chosen != inheritedMode) {
-                    onSetPodcastMonoOverride(chosen)
+        selected = scopeTriState,
+        onSelect = { choice ->
+            val apply: (Int) -> Unit = if (selectedScope == 0) onSetEpisodeMonoOverride else onSetPodcastMonoOverride
+            when (choice) {
+                -1 -> apply(AudioMonoMode.INHERIT)
+                0 -> apply(AudioMonoMode.OFF)
+                1 -> {
+                    val nextMode = if (currentScopeOverride in AudioMonoMode.MIX..AudioMonoMode.RIGHT) {
+                        currentScopeOverride
+                    } else if (inheritedMode != AudioMonoMode.OFF) {
+                        inheritedMode
+                    } else {
+                        AudioMonoMode.MIX
+                    }
+                    apply(nextMode)
                 }
             }
         }
     )
+
+    if (scopeTriState == 1) {
+        Spacer(Modifier.height(8.dp))
+        PureSegmentedControl(
+            options = listOf(
+                AudioMonoMode.MIX to stringResource(R.string.mono_mode_mix),
+                AudioMonoMode.AUTO to stringResource(R.string.mono_mode_smart),
+                AudioMonoMode.LEFT to stringResource(R.string.mono_mode_left),
+                AudioMonoMode.RIGHT to stringResource(R.string.mono_mode_right)
+            ),
+            selected = currentScopeOverride,
+            onSelect = { chosen ->
+                if (selectedScope == 0) onSetEpisodeMonoOverride(chosen)
+                else onSetPodcastMonoOverride(chosen)
+            }
+        )
+    }
 }
 
 @Composable

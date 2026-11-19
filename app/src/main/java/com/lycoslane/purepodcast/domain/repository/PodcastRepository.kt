@@ -609,6 +609,44 @@ class PodcastRepository(
         dao.setSilenceIntensity(podcastId, intensity.coerceIn(0, 2))
     }
 
+    suspend fun applyAudioSettingsToAllPodcasts(podcast: PodcastEntity) = withContext(Dispatchers.IO) {
+        val global = preferences.settings.value
+        val speed = com.lycoslane.purepodcast.core.audio.SpeedOverride.resolve(
+            globalSpeed = global.defaultPlaybackSpeed,
+            podcastOverride = podcast.speedOverride
+        )
+        val (skipSilence, silenceIntensity) = com.lycoslane.purepodcast.core.audio.SilenceOverride.resolve(
+            globalEnabled = global.defaultSkipSilence,
+            globalIntensity = global.defaultSilenceIntensity,
+            podcastOverride = podcast.silenceModeOverride
+        )
+        val effectiveMono = com.lycoslane.purepodcast.core.audio.AudioMonoMode.resolveEffective(
+            globalMonoMode = global.monoMode,
+            podcastMonoOverride = podcast.monoModeOverride,
+            episodeMonoOverride = com.lycoslane.purepodcast.core.audio.AudioMonoMode.INHERIT
+        )
+        val effectiveNorm = com.lycoslane.purepodcast.core.audio.AudioOverride.resolve(
+            globalEnabled = global.audioNormalizationEnabled,
+            podcastOverride = podcast.audioNormalizationOverride
+        )
+        val effectiveRewind = com.lycoslane.purepodcast.core.audio.SmartRewindOverride.resolve(
+            globalSeconds = global.smartRewindSeconds,
+            podcastOverride = podcast.smartRewindOverride
+        )
+
+        preferences.setDefaultPlaybackSpeed(speed)
+        preferences.setDefaultSilenceMode(skipSilence, silenceIntensity)
+        preferences.setMonoMode(effectiveMono)
+        preferences.setAudioNormalizationEnabled(effectiveNorm)
+        preferences.setSmartRewindSeconds(effectiveRewind)
+
+        dao.applyAudioSettingsToAllPodcasts(
+            speed = speed,
+            skipSilence = skipSilence,
+            silenceIntensity = silenceIntensity
+        )
+    }
+
     suspend fun exportBackupJson(): String = backupManager.exportBackupJson()
 
     suspend fun importBackupJson(jsonText: String): Int = backupManager.importBackupJson(jsonText)

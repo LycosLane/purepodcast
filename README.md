@@ -4,7 +4,7 @@
 
 # PurePodcast
 
-[![Version: 1.1.0](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/LycosLane/PurePodcast/releases)
+[![Version: 1.2.0](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/LycosLane/PurePodcast/releases)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android%2010%2B-0078D6.svg)](https://github.com/LycosLane/PurePodcast)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Zero Telemetry](https://img.shields.io/badge/Telemetry-Zero-brightgreen.svg)]()
@@ -25,8 +25,8 @@
 
 ### Playback & Queue
 * **Seamless Resume:** The mini-player remembers your last in-progress episode across app restarts, and the queue highlights your active or most recently played episode.
-* **Per-Podcast & Per-Episode Audio Controls:** Fine-tune playback speed (`0.5x` - `3.0x` slider with `0.02x` steps), silence trimming (`Off`, `Soft`, `Medium`, `Strong`), volume normalization (global default or per-podcast override), and Mono audio / Audio-Fix (`L+R`, `Smart`, `L`, `R`) globally, per podcast, or for individual episodes.
-* **Comfortable Listening:** Smart rewind after pauses, a flexible sleep timer slider (`5` - `120` min) that continues across queued episodes, and configurable Bluetooth next/previous buttons (`-10s` / `+30s` seek or episode skip).
+* **Global & Per-Podcast Audio Controls:** Set global defaults for playback speed (`0.5x` - `3.0x` slider with `0.02x` steps), silence trimming (`Off`, `Soft`, `Medium`, `Strong`), smart rewind (`Off` or `5` - `30` sec), volume normalization, and Mono audio / Audio-Fix (`L+R`, `Smart`, `L`, `R`). Override any setting per podcast (or per episode for Mono), reset overrides back to global with one tap, or apply a show's audio setup to all podcasts.
+* **Comfortable Listening:** A flexible sleep timer slider (`5` - `120` min) that continues across queued episodes, and configurable Bluetooth next/previous buttons (`-10s` / `+30s` seek or episode skip).
 * **Chapters & Show Notes:** Navigate episode chapters and read show notes with pinch-to-zoom text scaling and a distraction-free reader view.
 
 ### Appearance & Settings

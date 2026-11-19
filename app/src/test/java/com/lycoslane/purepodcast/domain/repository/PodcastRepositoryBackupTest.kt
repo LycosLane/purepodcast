@@ -7,6 +7,9 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import com.lycoslane.purepodcast.core.audio.AudioMonoMode
 import com.lycoslane.purepodcast.core.audio.AudioOverride
+import com.lycoslane.purepodcast.core.audio.SilenceOverride
+import com.lycoslane.purepodcast.core.audio.SmartRewindOverride
+import com.lycoslane.purepodcast.core.audio.SpeedOverride
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.PodcastEntity
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
@@ -37,6 +40,8 @@ class PodcastRepositoryBackupTest {
         prefs.setLightAccent("indigo")
         prefs.setDarkAccent("amber")
         prefs.setMonoMode(AudioMonoMode.AUTO)
+        prefs.setDefaultPlaybackSpeed(1.25f)
+        prefs.setDefaultSilenceMode(true, 1)
 
         val dao = PurePodcastDatabase.getInstance(context).dao()
         val podId = dao.insertPodcast(
@@ -44,10 +49,13 @@ class PodcastRepositoryBackupTest {
                 feedUrl = "https://nonexistent.invalid/feed.xml",
                 title = "Backup Show",
                 playbackSpeed = 1.5f,
+                speedOverride = 1.5f,
                 skipSilence = true,
                 silenceIntensity = 2,
+                silenceModeOverride = SilenceOverride.STRONG,
                 monoModeOverride = AudioMonoMode.LEFT,
                 audioNormalizationOverride = AudioOverride.ON,
+                smartRewindOverride = 15,
                 isSubscribed = true
             )
         )
@@ -74,6 +82,8 @@ class PodcastRepositoryBackupTest {
         assertEquals(1, json.getInt("version"))
         assertEquals(25, json.getJSONObject("settings").getInt("smartRewindSeconds"))
         assertEquals(AudioMonoMode.AUTO, json.getJSONObject("settings").getInt("monoMode"))
+        assertEquals(1.25, json.getJSONObject("settings").getDouble("defaultPlaybackSpeed"), 0.001)
+        assertTrue(json.getJSONObject("settings").getBoolean("defaultSkipSilence"))
 
         // Reset state, then import backup offline
         prefs.setSmartRewindSeconds(0)
@@ -84,7 +94,12 @@ class PodcastRepositoryBackupTest {
         prefs.setLightAccent(AppPreferences.DEFAULT_ACCENT)
         prefs.setDarkAccent(AppPreferences.DEFAULT_ACCENT)
         prefs.setMonoMode(AudioMonoMode.OFF)
+        prefs.setDefaultPlaybackSpeed(1.0f)
+        prefs.setDefaultSilenceMode(false, 1)
         dao.clearQueue()
+        dao.setPodcastSpeedOverride(podId, SpeedOverride.INHERIT, 1.0f)
+        dao.setPodcastSilenceModeOverride(podId, SilenceOverride.INHERIT, false, 1)
+        dao.setPodcastSmartRewindOverride(podId, SmartRewindOverride.INHERIT)
         dao.setPodcastMonoModeOverride(podId, AudioMonoMode.INHERIT)
         dao.setPodcastAudioNormalizationOverride(podId, AudioOverride.INHERIT)
         dao.setEpisodeMonoModeOverride(epIds[0], AudioMonoMode.INHERIT)
@@ -102,8 +117,14 @@ class PodcastRepositoryBackupTest {
         assertEquals("indigo", prefs.settings.value.lightAccent)
         assertEquals("amber", prefs.settings.value.darkAccent)
         assertEquals(AudioMonoMode.AUTO, prefs.settings.value.monoMode)
+        assertEquals(1.25f, prefs.settings.value.defaultPlaybackSpeed, 0.001f)
+        assertTrue(prefs.settings.value.defaultSkipSilence)
+        assertEquals(1, prefs.settings.value.defaultSilenceIntensity)
 
         val restoredPod = dao.getPodcast(podId)!!
+        assertEquals(1.5f, restoredPod.speedOverride, 0.001f)
+        assertEquals(SilenceOverride.STRONG, restoredPod.silenceModeOverride)
+        assertEquals(15, restoredPod.smartRewindOverride)
         assertEquals(AudioMonoMode.LEFT, restoredPod.monoModeOverride)
         assertEquals(AudioOverride.ON, restoredPod.audioNormalizationOverride)
 
@@ -114,13 +135,89 @@ class PodcastRepositoryBackupTest {
         assertEquals(AudioMonoMode.RIGHT, restoredEp.monoModeOverride)
         assertEquals(listOf(epIds[0]), dao.getQueueEpisodesOnce().map { it.episode.id })
 
-        // Verify legacy backup JSON without new mono/normalization fields imports cleanly
+        // Verify legacy backup JSON without new v1.2.0 override fields imports and promotes overrides cleanly
+        dao.setPodcastSpeedOverride(podId, SpeedOverride.INHERIT, 1.0f)
+        dao.setPodcastSilenceModeOverride(podId, SilenceOverride.INHERIT, false, 1)
+        dao.setPodcastSmartRewindOverride(podId, SmartRewindOverride.INHERIT)
         val legacyJson = JSONObject(exported)
-        legacyJson.getJSONObject("settings").remove("monoMode")
+        legacyJson.getJSONObject("settings").apply {
+            remove("monoMode")
+            remove("defaultPlaybackSpeed")
+            remove("defaultSkipSilence")
+            remove("defaultSilenceIntensity")
+        }
         val legacyPod = legacyJson.getJSONArray("podcasts").getJSONObject(0)
+        legacyPod.remove("speedOverride")
+        legacyPod.remove("silenceModeOverride")
+        legacyPod.remove("smartRewindOverride")
         legacyPod.remove("monoModeOverride")
         legacyPod.remove("audioNormalizationOverride")
         legacyPod.getJSONArray("episodes").getJSONObject(0).remove("monoModeOverride")
         assertEquals(1, repo.importBackupJson(legacyJson.toString()))
+        val promotedPod = dao.getPodcast(podId)!!
+        assertEquals(1.5f, promotedPod.speedOverride, 0.001f)
+        assertEquals(SilenceOverride.STRONG, promotedPod.silenceModeOverride)
+        assertEquals(SmartRewindOverride.INHERIT, promotedPod.smartRewindOverride)
+
+        verifyApplyAudioSettingsToAllPodcastsPromotesGlobalDefaultsAndResetsOverrides(repo, dao, prefs)
+    }
+
+    // Runs in the same Robolectric test because PurePodcastDatabase caches a companion singleton across tests.
+    private suspend fun verifyApplyAudioSettingsToAllPodcastsPromotesGlobalDefaultsAndResetsOverrides(
+        repo: PodcastRepository,
+        dao: com.lycoslane.purepodcast.core.database.PurePodcastDao,
+        prefs: AppPreferences
+    ) {
+        prefs.setDefaultPlaybackSpeed(1.0f)
+        prefs.setDefaultSilenceMode(false, 1)
+        prefs.setMonoMode(AudioMonoMode.OFF)
+        prefs.setAudioNormalizationEnabled(false)
+        prefs.setSmartRewindSeconds(10)
+
+        val sourceId = dao.insertPodcast(
+            PodcastEntity(
+                feedUrl = "https://nonexistent.invalid/source.xml",
+                title = "Source Show",
+                speedOverride = 1.4f,
+                silenceModeOverride = SilenceOverride.MEDIUM,
+                monoModeOverride = AudioMonoMode.LEFT,
+                audioNormalizationOverride = AudioOverride.ON,
+                smartRewindOverride = 20
+            )
+        )
+        val otherId = dao.insertPodcast(
+            PodcastEntity(
+                feedUrl = "https://nonexistent.invalid/other.xml",
+                title = "Other Show",
+                speedOverride = 0.8f,
+                silenceModeOverride = SilenceOverride.OFF,
+                monoModeOverride = AudioMonoMode.RIGHT,
+                audioNormalizationOverride = AudioOverride.OFF,
+                smartRewindOverride = 5
+            )
+        )
+
+        try {
+            repo.applyAudioSettingsToAllPodcasts(dao.getPodcast(sourceId)!!)
+
+            val global = prefs.settings.value
+            assertEquals(1.4f, global.defaultPlaybackSpeed, 0.001f)
+            assertTrue(global.defaultSkipSilence)
+            assertEquals(1, global.defaultSilenceIntensity)
+            assertEquals(AudioMonoMode.LEFT, global.monoMode)
+            assertTrue(global.audioNormalizationEnabled)
+            assertEquals(20, global.smartRewindSeconds)
+
+            listOf(dao.getPodcast(sourceId)!!, dao.getPodcast(otherId)!!).forEach { pod ->
+                assertTrue(SpeedOverride.isInherit(pod.speedOverride))
+                assertEquals(SilenceOverride.INHERIT, pod.silenceModeOverride)
+                assertEquals(AudioMonoMode.INHERIT, pod.monoModeOverride)
+                assertEquals(AudioOverride.INHERIT, pod.audioNormalizationOverride)
+                assertEquals(SmartRewindOverride.INHERIT, pod.smartRewindOverride)
+            }
+        } finally {
+            dao.deletePodcast(sourceId)
+            dao.deletePodcast(otherId)
+        }
     }
 }

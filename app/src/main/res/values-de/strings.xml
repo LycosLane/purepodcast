@@ -305,8 +305,10 @@
     <string name="player_audio_fix_title">Mono / Audio-Fix</string>
     <string name="player_scope_episode">Diese Episode</string>
     <string name="player_scope_podcast">Dieser Podcast</string>
-    <string name="player_audio_fix_inherited">Übernommen: %1$s</string>
-    <string name="player_audio_fix_active_episode">Aktiv für diese Episode</string>
-    <string name="player_audio_fix_active_podcast">Aktiv für diesen Podcast</string>
-    <string name="action_reset">Zurücksetzen</string>
+    <string name="override_custom">Lokal</string>
+    <string name="override_podcast">Podcast</string>
+    <string name="override_podcast_state">Podcast: %1$s</string>
+    <string name="apply_to_all_podcasts">Für alle Podcasts übernehmen</string>
+    <string name="applied_to_all_podcasts">Audio-Einstellungen für alle Podcasts übernommen</string>
+    <string name="differs_from_global_summary">Abweichend vom Standard: %1$s</string>
 </resources>

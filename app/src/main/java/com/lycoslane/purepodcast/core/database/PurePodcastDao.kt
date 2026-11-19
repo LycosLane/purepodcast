@@ -104,6 +104,34 @@ interface PurePodcastDao {
     @Query("UPDATE podcasts SET audioNormalizationOverride = :override WHERE id = :podcastId")
     suspend fun setPodcastAudioNormalizationOverride(podcastId: Long, override: Int)
 
+    @Query("UPDATE podcasts SET speedOverride = :speedOverride, playbackSpeed = :playbackSpeed WHERE id = :podcastId")
+    suspend fun setPodcastSpeedOverride(podcastId: Long, speedOverride: Float, playbackSpeed: Float)
+
+    @Query("UPDATE podcasts SET silenceModeOverride = :silenceModeOverride, skipSilence = :skipSilence, silenceIntensity = :silenceIntensity WHERE id = :podcastId")
+    suspend fun setPodcastSilenceModeOverride(podcastId: Long, silenceModeOverride: Int, skipSilence: Boolean, silenceIntensity: Int)
+
+    @Query("UPDATE podcasts SET smartRewindOverride = :smartRewindOverride WHERE id = :podcastId")
+    suspend fun setPodcastSmartRewindOverride(podcastId: Long, smartRewindOverride: Int)
+
+    @Query(
+        """
+        UPDATE podcasts SET
+            playbackSpeed = :speed,
+            speedOverride = -1.0,
+            skipSilence = :skipSilence,
+            silenceIntensity = :silenceIntensity,
+            silenceModeOverride = -1,
+            monoModeOverride = -1,
+            audioNormalizationOverride = -1,
+            smartRewindOverride = -1
+        """
+    )
+    suspend fun applyAudioSettingsToAllPodcasts(
+        speed: Float,
+        skipSilence: Boolean,
+        silenceIntensity: Int
+    )
+
     @Query("UPDATE podcasts SET isSubscribed = :isSubscribed WHERE id = :podcastId")
     suspend fun setPodcastSubscribed(podcastId: Long, isSubscribed: Boolean)
 

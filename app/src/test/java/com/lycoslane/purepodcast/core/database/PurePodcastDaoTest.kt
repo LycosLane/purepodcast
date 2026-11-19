@@ -9,6 +9,9 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import com.lycoslane.purepodcast.core.audio.AudioMonoMode
 import com.lycoslane.purepodcast.core.audio.AudioOverride
+import com.lycoslane.purepodcast.core.audio.SilenceOverride
+import com.lycoslane.purepodcast.core.audio.SmartRewindOverride
+import com.lycoslane.purepodcast.core.audio.SpeedOverride
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -270,13 +273,19 @@ class PurePodcastDaoTest {
 
         val migratedDb = Room.databaseBuilder(context, PurePodcastDatabase::class.java, dbName)
             .allowMainThreadQueries()
-            .addMigrations(PurePodcastDatabase.MIGRATION_10_11)
+            .addMigrations(
+                PurePodcastDatabase.MIGRATION_10_11,
+                PurePodcastDatabase.MIGRATION_11_12
+            )
             .build()
         try {
             val migratedDao = migratedDb.dao()
             val pod = migratedDao.getPodcast(1L)!!
             assertEquals("Legacy Show", pod.title)
             assertEquals(1.25f, pod.playbackSpeed, 0.001f)
+            assertEquals(1.25f, pod.speedOverride, 0.001f)
+            assertEquals(SilenceOverride.STRONG, pod.silenceModeOverride)
+            assertEquals(SmartRewindOverride.INHERIT, pod.smartRewindOverride)
             assertEquals(AudioMonoMode.INHERIT, pod.monoModeOverride)
             assertEquals(AudioOverride.INHERIT, pod.audioNormalizationOverride)
 
@@ -287,6 +296,182 @@ class PurePodcastDaoTest {
         } finally {
             migratedDb.close()
             context.deleteDatabase(dbName)
+        }
+    }
+
+    @Test
+    fun migratesV11DatabaseToV12PromotingLegacyOverrides() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dbName = "migration_11_12_test.db"
+        context.deleteDatabase(dbName)
+
+        val callback = object : SupportSQLiteOpenHelper.Callback(11) {
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `podcasts` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `feedUrl` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `author` TEXT NOT NULL,
+                        `description` TEXT NOT NULL,
+                        `artworkUrl` TEXT NOT NULL,
+                        `autoDownloadFromPubDateMs` INTEGER NOT NULL,
+                        `sortAscending` INTEGER NOT NULL,
+                        `playbackSpeed` REAL NOT NULL,
+                        `skipSilence` INTEGER NOT NULL,
+                        `silenceIntensity` INTEGER NOT NULL,
+                        `monoModeOverride` INTEGER NOT NULL,
+                        `audioNormalizationOverride` INTEGER NOT NULL,
+                        `lastRefreshedMs` INTEGER NOT NULL,
+                        `isLocal` INTEGER NOT NULL,
+                        `isSubscribed` INTEGER NOT NULL,
+                        `etag` TEXT NOT NULL,
+                        `lastModified` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_podcasts_feedUrl` ON `podcasts` (`feedUrl`)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `episodes` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `podcastId` INTEGER NOT NULL,
+                        `guid` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `descriptionHtml` TEXT NOT NULL,
+                        `audioUrl` TEXT NOT NULL,
+                        `artworkUrl` TEXT NOT NULL,
+                        `pubDateMs` INTEGER NOT NULL,
+                        `durationMs` INTEGER NOT NULL,
+                        `positionMs` INTEGER NOT NULL,
+                        `isPlayed` INTEGER NOT NULL,
+                        `playedAtMs` INTEGER NOT NULL,
+                        `isHidden` INTEGER NOT NULL,
+                        `markedForDeletionAtMs` INTEGER NOT NULL,
+                        `localFilePath` TEXT,
+                        `downloadState` TEXT NOT NULL,
+                        `downloadProgress` INTEGER NOT NULL,
+                        `fileSizeBytes` INTEGER NOT NULL,
+                        `skipAutoDownload` INTEGER NOT NULL,
+                        `chaptersJson` TEXT NOT NULL,
+                        `isTranscoded` INTEGER NOT NULL,
+                        `transcodeSavedBytes` INTEGER NOT NULL,
+                        `isFavorite` INTEGER NOT NULL,
+                        `monoModeOverride` INTEGER NOT NULL,
+                        FOREIGN KEY(`podcastId`) REFERENCES `podcasts`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_episodes_podcastId` ON `episodes` (`podcastId`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_episodes_podcastId_guid` ON `episodes` (`podcastId`, `guid`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_episodes_podcastId_pubDateMs` ON `episodes` (`podcastId`, `pubDateMs`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_episodes_podcastId_isPlayed` ON `episodes` (`podcastId`, `isPlayed`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_episodes_podcastId_downloadState` ON `episodes` (`podcastId`, `downloadState`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_episodes_isPlayed_downloadState` ON `episodes` (`isPlayed`, `downloadState`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_episodes_isHidden_pubDateMs` ON `episodes` (`isHidden`, `pubDateMs`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_episodes_podcastId_isHidden` ON `episodes` (`podcastId`, `isHidden`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_episodes_markedForDeletionAtMs` ON `episodes` (`markedForDeletionAtMs`)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `queue_items` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `episodeId` INTEGER NOT NULL,
+                        `sortOrder` INTEGER NOT NULL,
+                        FOREIGN KEY(`episodeId`) REFERENCES `episodes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_queue_items_episodeId` ON `queue_items` (`episodeId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_queue_items_sortOrder` ON `queue_items` (`sortOrder`)")
+
+                db.execSQL(
+                    """
+                    INSERT INTO `podcasts` (`id`, `feedUrl`, `title`, `author`, `description`, `artworkUrl`,
+                        `autoDownloadFromPubDateMs`, `sortAscending`, `playbackSpeed`, `skipSilence`,
+                        `silenceIntensity`, `monoModeOverride`, `audioNormalizationOverride`,
+                        `lastRefreshedMs`, `isLocal`, `isSubscribed`, `etag`, `lastModified`)
+                    VALUES (1, 'https://example.com/default.xml', 'Default Show', '', '', '', 0, 0, 1.0, 0, 1, -1, -1, 0, 0, 1, '', ''),
+                           (2, 'https://example.com/custom.xml', 'Custom Show', '', '', '', 0, 0, 1.4, 1, 2, 1, 1, 0, 0, 1, '', '')
+                    """.trimIndent()
+                )
+            }
+
+            override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }
+
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(dbName)
+                .callback(callback)
+                .build()
+        )
+        helper.writableDatabase.close()
+        helper.close()
+
+        val migratedDb = Room.databaseBuilder(context, PurePodcastDatabase::class.java, dbName)
+            .allowMainThreadQueries()
+            .addMigrations(PurePodcastDatabase.MIGRATION_11_12)
+            .build()
+        try {
+            val migratedDao = migratedDb.dao()
+            val defaultPod = migratedDao.getPodcast(1L)!!
+            assertTrue(SpeedOverride.isInherit(defaultPod.speedOverride))
+            assertEquals(SilenceOverride.INHERIT, defaultPod.silenceModeOverride)
+            assertEquals(SmartRewindOverride.INHERIT, defaultPod.smartRewindOverride)
+
+            val customPod = migratedDao.getPodcast(2L)!!
+            assertEquals(1.4f, customPod.speedOverride, 0.001f)
+            assertEquals(SilenceOverride.STRONG, customPod.silenceModeOverride)
+            assertEquals(SmartRewindOverride.INHERIT, customPod.smartRewindOverride)
+            assertEquals(1, customPod.monoModeOverride)
+            assertEquals(1, customPod.audioNormalizationOverride)
+        } finally {
+            migratedDb.close()
+            context.deleteDatabase(dbName)
+        }
+    }
+
+    @Test
+    fun applyAudioSettingsToAllPodcastsResetsAllOverrides() = runTest {
+        val pod1 = dao.insertPodcast(
+            PodcastEntity(
+                feedUrl = "https://example.com/a.xml",
+                title = "A",
+                speedOverride = 1.4f,
+                silenceModeOverride = SilenceOverride.MEDIUM,
+                monoModeOverride = AudioMonoMode.LEFT,
+                audioNormalizationOverride = AudioOverride.ON,
+                smartRewindOverride = 20
+            )
+        )
+        val pod2 = dao.insertPodcast(
+            PodcastEntity(
+                feedUrl = "https://example.com/b.xml",
+                title = "B",
+                speedOverride = 0.85f,
+                silenceModeOverride = SilenceOverride.OFF,
+                monoModeOverride = AudioMonoMode.RIGHT,
+                audioNormalizationOverride = AudioOverride.OFF,
+                smartRewindOverride = 0
+            )
+        )
+
+        dao.applyAudioSettingsToAllPodcasts(
+            speed = 1.25f,
+            skipSilence = true,
+            silenceIntensity = 2
+        )
+
+        listOf(dao.getPodcast(pod1)!!, dao.getPodcast(pod2)!!).forEach { pod ->
+            assertEquals(1.25f, pod.playbackSpeed, 0.001f)
+            assertTrue(pod.skipSilence)
+            assertEquals(2, pod.silenceIntensity)
+            assertTrue(SpeedOverride.isInherit(pod.speedOverride))
+            assertEquals(SilenceOverride.INHERIT, pod.silenceModeOverride)
+            assertEquals(AudioMonoMode.INHERIT, pod.monoModeOverride)
+            assertEquals(AudioOverride.INHERIT, pod.audioNormalizationOverride)
+            assertEquals(SmartRewindOverride.INHERIT, pod.smartRewindOverride)
         }
     }
 }

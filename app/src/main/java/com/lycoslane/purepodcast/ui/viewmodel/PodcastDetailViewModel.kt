@@ -63,9 +63,24 @@ class PodcastDetailViewModel(
         app.playerController.setPodcastPlaybackSpeed(podcastId, speed)
     }
 
+    fun setSpeedOverride(speedOverride: Float) {
+        if (podcastId < 0L) return
+        app.playerController.setPodcastSpeedOverride(podcastId, speedOverride)
+    }
+
     fun setSilenceMode(enabled: Boolean, intensity: Int) {
         if (podcastId < 0L) return
         app.playerController.setPodcastSilenceMode(podcastId, enabled, intensity)
+    }
+
+    fun setSilenceModeOverride(silenceModeOverride: Int) {
+        if (podcastId < 0L) return
+        app.playerController.setPodcastSilenceOverride(podcastId, silenceModeOverride)
+    }
+
+    fun setSmartRewindOverride(smartRewindOverride: Int) {
+        if (podcastId < 0L) return
+        app.playerController.setPodcastSmartRewindOverride(podcastId, smartRewindOverride)
     }
 
     fun setMonoModeOverride(mode: Int) {
@@ -76,6 +91,15 @@ class PodcastDetailViewModel(
     fun setAudioNormalizationOverride(override: Int) {
         if (podcastId < 0L) return
         app.playerController.setPodcastNormalizationOverride(podcastId, override)
+    }
+
+    fun applyAudioSettingsToAll(onDone: () -> Unit = {}) {
+        val currentPod = podcast.value ?: return
+        viewModelScope.launch {
+            app.repository.applyAudioSettingsToAllPodcasts(currentPod)
+            app.playerController.refreshAfterApplyAll()
+            onDone()
+        }
     }
 
     fun disableAutoDownload() {

@@ -56,9 +56,12 @@ import androidx.navigation.navArgument
 import com.lycoslane.purepodcast.PurePodcastApplication
 import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.PlayerController
+import com.lycoslane.purepodcast.core.audio.SilenceOverride
+import com.lycoslane.purepodcast.core.audio.SpeedOverride
 import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
 import com.lycoslane.purepodcast.core.download.TranscodeStatus
 import com.lycoslane.purepodcast.core.local.LocalPodcastScanner
+import com.lycoslane.purepodcast.core.preferences.AppSettings
 import com.lycoslane.purepodcast.ui.detail.PodcastDetailScreen
 import com.lycoslane.purepodcast.ui.home.HomeScreen
 import com.lycoslane.purepodcast.ui.player.FullPlayerSheet
@@ -282,6 +285,8 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onChangeTrashRetentionHours = mainViewModel::setTrashRetentionHours,
                     onChangeMaxDownloadsPerPodcast = mainViewModel::setMaxDownloadsPerPodcast,
                     onChangeSmartRewind = mainViewModel::setSmartRewind,
+                    onChangeDefaultSpeed = mainViewModel::setDefaultPlaybackSpeed,
+                    onChangeDefaultSilenceMode = mainViewModel::setDefaultSilenceMode,
                     onToggleAudioNormalization = mainViewModel::setAudioNormalization,
                     onChangeMonoMode = mainViewModel::setMonoMode,
                     onChangeBluetoothNextPrevSeeks = mainViewModel::setBluetoothNextPrevSeeks,
@@ -327,17 +332,25 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     isRefreshing = isRefreshingDetail,
                     textScale = settings.textScale,
                     trashRetentionHours = settings.trashRetentionHours,
-                    globalMonoMode = settings.monoMode,
-                    globalAudioNormalization = settings.audioNormalizationEnabled,
+                    globalSettings = settings,
                     canDeleteLocal = canDeleteLocal,
                     onTextScaleChange = mainViewModel::setTextScale,
                     onBack = { navController.popBackStack() },
                     onRefresh = detailViewModel::refresh,
                     onToggleSort = detailViewModel::toggleSort,
-                    onSetPlaybackSpeed = detailViewModel::setPlaybackSpeed,
-                    onSetSilenceMode = detailViewModel::setSilenceMode,
+                    onSetSpeedOverride = detailViewModel::setSpeedOverride,
+                    onSetSilenceModeOverride = detailViewModel::setSilenceModeOverride,
                     onSetMonoModeOverride = detailViewModel::setMonoModeOverride,
                     onSetNormalizationOverride = detailViewModel::setAudioNormalizationOverride,
+                    onSetSmartRewindOverride = detailViewModel::setSmartRewindOverride,
+                    onApplyToAllPodcasts = {
+                        detailViewModel.applyAudioSettingsToAll {
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                snackbarHostState.showSnackbar(context.getString(R.string.applied_to_all_podcasts))
+                            }
+                        }
+                    },
                     onDisableAutoDownload = detailViewModel::disableAutoDownload,
                     onSubscribe = detailViewModel::subscribe,
                     onUnsubscribe = {
@@ -472,10 +485,17 @@ fun PurePodcastApp(app: PurePodcastApplication) {
         FullPlayerOverlay(
             playerController = app.playerController,
             queue = queue,
-            globalMonoMode = settings.monoMode,
-            globalAudioNormalization = settings.audioNormalizationEnabled,
+            globalSettings = settings,
             textScale = settings.textScale,
             onTextScaleChange = mainViewModel::setTextScale,
+            onApplyToAllPodcasts = { pod ->
+                mainViewModel.applyPodcastAudioSettingsToAll(pod) {
+                    scope.launch {
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        snackbarHostState.showSnackbar(context.getString(R.string.applied_to_all_podcasts))
+                    }
+                }
+            },
             onDismiss = { showFullPlayer = false }
         )
     }
@@ -550,10 +570,10 @@ private fun MiniPlayerBar(
 private fun FullPlayerOverlay(
     playerController: PlayerController,
     queue: List<EpisodeWithPodcast>,
-    globalMonoMode: Int,
-    globalAudioNormalization: Boolean,
+    globalSettings: AppSettings,
     textScale: Float,
     onTextScaleChange: (Float) -> Unit,
+    onApplyToAllPodcasts: (com.lycoslane.purepodcast.core.database.PodcastEntity) -> Unit,
     onDismiss: () -> Unit
 ) {
     val playerState by playerController.state.collectAsStateWithLifecycle()
@@ -562,8 +582,7 @@ private fun FullPlayerOverlay(
     val canSkipQueue = queue.size > 1 || (queue.size == 1 && queue[0].episode.id != ep.id)
     FullPlayerSheet(
         state = playerState,
-        globalMonoMode = globalMonoMode,
-        globalAudioNormalization = globalAudioNormalization,
+        globalSettings = globalSettings,
         hasQueue = canSkipQueue,
         textScale = textScale,
         onTextScaleChange = onTextScaleChange,
@@ -574,11 +593,17 @@ private fun FullPlayerOverlay(
         onPrevEpisode = { playerController.skipToPreviousInQueue() },
         onNextEpisode = { playerController.skipToNextInQueue() },
         onSetSpeed = { playerController.setPlaybackSpeed(it) },
+        onResetSpeedToGlobal = { playerController.setPodcastSpeedOverride(pod.id, SpeedOverride.INHERIT) },
         onSetSilenceMode = { enabled, intensity -> playerController.setSilenceMode(enabled, intensity) },
+        onResetSilenceToGlobal = { playerController.setPodcastSilenceOverride(pod.id, SilenceOverride.INHERIT) },
         onSetSleepTimer = { playerController.setSleepTimer(it) },
         onSetEpisodeMonoOverride = { playerController.setEpisodeMonoOverride(it) },
+        onSetPodcastSpeedOverride = { ov -> playerController.setPodcastSpeedOverride(pod.id, ov) },
+        onSetPodcastSilenceOverride = { ov -> playerController.setPodcastSilenceOverride(pod.id, ov) },
         onSetPodcastMonoOverride = { mode -> playerController.setPodcastMonoOverride(pod.id, mode) },
         onSetPodcastNormalizationOverride = { ov -> playerController.setPodcastNormalizationOverride(pod.id, ov) },
+        onSetPodcastSmartRewindOverride = { ov -> playerController.setPodcastSmartRewindOverride(pod.id, ov) },
+        onApplyToAllPodcasts = { onApplyToAllPodcasts(pod) },
         onTogglePodcastSort = { asc -> playerController.setPodcastSortAscending(pod.id, asc) },
         onDisablePodcastAutoDownload = { playerController.disablePodcastAutoDownload(pod.id) }
     )

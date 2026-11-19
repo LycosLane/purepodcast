@@ -101,4 +101,31 @@ class MonoMixAudioProcessorTest {
         balancedProc.processStereoPcm16(balanced, frames, 44_100, AudioMonoMode.AUTO)
         assertEquals(6_000.toShort(), balanced[(frames - 1) * 2])
     }
+
+    @Test
+    fun resolvesSpeedSilenceAndSmartRewindOverrides() {
+        assertTrue(SpeedOverride.isInherit(SpeedOverride.INHERIT))
+        assertTrue(SpeedOverride.isInherit(Float.NaN))
+        assertFalse(SpeedOverride.isInherit(1.0f))
+        assertEquals(SpeedOverride.INHERIT, SpeedOverride.normalize(-1f), 0.001f)
+        assertEquals(0.50f, SpeedOverride.normalize(0.2f), 0.001f)
+        assertEquals(3.00f, SpeedOverride.normalize(5.0f), 0.001f)
+        assertEquals(1.25f, SpeedOverride.resolve(1.25f, SpeedOverride.INHERIT), 0.001f)
+        assertEquals(1.60f, SpeedOverride.resolve(1.25f, 1.60f), 0.001f)
+
+        assertEquals(SilenceOverride.INHERIT, SilenceOverride.normalize(99))
+        assertEquals(SilenceOverride.OFF, SilenceOverride.fromEnabledAndIntensity(false, 2))
+        assertEquals(SilenceOverride.SOFT, SilenceOverride.fromEnabledAndIntensity(true, 0))
+        assertEquals(SilenceOverride.MEDIUM, SilenceOverride.fromEnabledAndIntensity(true, 1))
+        assertEquals(SilenceOverride.STRONG, SilenceOverride.fromEnabledAndIntensity(true, 2))
+        assertEquals(true to 2, SilenceOverride.resolve(true, 2, SilenceOverride.INHERIT))
+        assertEquals(false to 1, SilenceOverride.resolve(true, 2, SilenceOverride.OFF))
+        assertEquals(true to 1, SilenceOverride.resolve(false, 0, SilenceOverride.MEDIUM))
+
+        assertEquals(SmartRewindOverride.INHERIT, SmartRewindOverride.normalize(-5))
+        assertEquals(120, SmartRewindOverride.normalize(500))
+        assertEquals(15, SmartRewindOverride.resolve(15, SmartRewindOverride.INHERIT))
+        assertEquals(0, SmartRewindOverride.resolve(15, SmartRewindOverride.OFF))
+        assertEquals(25, SmartRewindOverride.resolve(15, 25))
+    }
 }

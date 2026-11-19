@@ -428,7 +428,6 @@ private fun PodcastThumbnailCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
     ) {
         Box(
@@ -461,7 +460,8 @@ private fun PodcastThumbnailCard(
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Medium,
             maxLines = 2,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 2.dp)
         )
     }
 }

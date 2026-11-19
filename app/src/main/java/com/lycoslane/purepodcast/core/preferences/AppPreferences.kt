@@ -17,6 +17,9 @@ data class AppSettings(
     val trashRetentionHours: Int = 24, // 0 = delete immediately, 24 = 24h, 48 = 48h
     val maxDownloadsPerPodcast: Int = 0, // 0 = unlimited, 1..30
     val smartRewindSeconds: Int = 10, // 0 = off
+    val defaultPlaybackSpeed: Float = 1.0f,
+    val defaultSkipSilence: Boolean = false,
+    val defaultSilenceIntensity: Int = 1,
     val audioNormalizationEnabled: Boolean = false,
     val monoMode: Int = AudioMonoMode.OFF,
     val bluetoothNextPrevSeeks: Boolean = true, // true = -10s/+30s, false = prev/next in queue
@@ -74,6 +77,9 @@ class AppPreferences(context: Context) {
             },
             maxDownloadsPerPodcast = prefs.getInt(KEY_MAX_DOWNLOADS_PER_PODCAST, 0).coerceIn(0, 30),
             smartRewindSeconds = prefs.getInt(KEY_SMART_REWIND_SECONDS, 10).coerceIn(0, 120),
+            defaultPlaybackSpeed = prefs.getFloat(KEY_DEFAULT_PLAYBACK_SPEED, 1.0f).coerceIn(0.50f, 3.00f),
+            defaultSkipSilence = prefs.getBoolean(KEY_DEFAULT_SKIP_SILENCE, false),
+            defaultSilenceIntensity = prefs.getInt(KEY_DEFAULT_SILENCE_INTENSITY, 1).coerceIn(0, 2),
             audioNormalizationEnabled = prefs.getBoolean(KEY_AUDIO_NORMALIZATION, false),
             monoMode = AudioMonoMode.normalizeConcrete(prefs.getInt(KEY_MONO_MODE, AudioMonoMode.OFF)),
             bluetoothNextPrevSeeks = prefs.getBoolean(KEY_BLUETOOTH_NEXT_PREV_SEEKS, true),
@@ -141,6 +147,23 @@ class AppPreferences(context: Context) {
         val clamped = seconds.coerceIn(0, 120)
         prefs.edit().putInt(KEY_SMART_REWIND_SECONDS, clamped).apply()
         _settings.update { it.copy(smartRewindSeconds = clamped) }
+    }
+
+    fun setDefaultPlaybackSpeed(speed: Float) {
+        val clamped = speed.coerceIn(0.50f, 3.00f)
+        prefs.edit().putFloat(KEY_DEFAULT_PLAYBACK_SPEED, clamped).apply()
+        _settings.update { it.copy(defaultPlaybackSpeed = clamped) }
+    }
+
+    fun setDefaultSilenceMode(enabled: Boolean, intensity: Int) {
+        val normIntensity = intensity.coerceIn(0, 2)
+        prefs.edit()
+            .putBoolean(KEY_DEFAULT_SKIP_SILENCE, enabled)
+            .putInt(KEY_DEFAULT_SILENCE_INTENSITY, normIntensity)
+            .apply()
+        _settings.update {
+            it.copy(defaultSkipSilence = enabled, defaultSilenceIntensity = normIntensity)
+        }
     }
 
     fun setAudioNormalizationEnabled(enabled: Boolean) {
@@ -241,6 +264,9 @@ class AppPreferences(context: Context) {
         private const val KEY_TRASH_RETENTION_HOURS = "trash_retention_hours"
         private const val KEY_MAX_DOWNLOADS_PER_PODCAST = "max_downloads_per_podcast"
         private const val KEY_SMART_REWIND_SECONDS = "smart_rewind_seconds"
+        private const val KEY_DEFAULT_PLAYBACK_SPEED = "default_playback_speed"
+        private const val KEY_DEFAULT_SKIP_SILENCE = "default_skip_silence"
+        private const val KEY_DEFAULT_SILENCE_INTENSITY = "default_silence_intensity"
         private const val KEY_AUDIO_NORMALIZATION = "audio_normalization_enabled"
         private const val KEY_MONO_MODE = "mono_mode"
         private const val KEY_BLUETOOTH_NEXT_PREV_SEEKS = "bluetooth_next_prev_seeks"

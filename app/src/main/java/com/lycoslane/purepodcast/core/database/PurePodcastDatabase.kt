@@ -25,7 +25,7 @@ class Converters {
         EpisodeEntity::class,
         QueueItemEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -112,6 +112,30 @@ abstract class PurePodcastDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN speedOverride REAL NOT NULL DEFAULT -1.0")
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN silenceModeOverride INTEGER NOT NULL DEFAULT -1")
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN smartRewindOverride INTEGER NOT NULL DEFAULT -1")
+                db.execSQL("UPDATE podcasts SET speedOverride = playbackSpeed WHERE ABS(playbackSpeed - 1.0) >= 0.01")
+                db.execSQL(
+                    """
+                    UPDATE podcasts
+                    SET silenceModeOverride = CASE
+                        WHEN skipSilence != 0 THEN (
+                            CASE
+                                WHEN silenceIntensity < 0 THEN 1
+                                WHEN silenceIntensity > 2 THEN 3
+                                ELSE silenceIntensity + 1
+                            END
+                        )
+                        ELSE -1
+                    END
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): PurePodcastDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -129,7 +153,8 @@ abstract class PurePodcastDatabase : RoomDatabase() {
                         MIGRATION_7_8,
                         MIGRATION_8_9,
                         MIGRATION_9_10,
-                        MIGRATION_10_11
+                        MIGRATION_10_11,
+                        MIGRATION_11_12
                     )
                     .build()
                     .also { INSTANCE = it }

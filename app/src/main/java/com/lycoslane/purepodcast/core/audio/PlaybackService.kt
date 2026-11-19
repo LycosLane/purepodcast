@@ -60,6 +60,10 @@ class PlaybackService : MediaSessionService() {
     private var currentAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
     private var attachedAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
     private var currentEffectiveNormalization: Boolean = false
+
+    @Volatile
+    private var currentEffectiveSmartRewindSeconds: Int = 10
+
     private var bitmapLoader: ValidatedBitmapLoader? = null
 
     @OptIn(UnstableApi::class)
@@ -104,9 +108,19 @@ class PlaybackService : MediaSessionService() {
             .build()
 
         val app = applicationContext as PurePodcastApplication
+        currentEffectiveSmartRewindSeconds = app.preferences.settings.value.smartRewindSeconds
         serviceScope.launch {
             app.preferences.settings
-                .map { it.audioNormalizationEnabled to it.monoMode }
+                .map { s ->
+                    listOf(
+                        s.defaultPlaybackSpeed,
+                        s.defaultSkipSilence,
+                        s.defaultSilenceIntensity,
+                        s.audioNormalizationEnabled,
+                        s.monoMode,
+                        s.smartRewindSeconds
+                    )
+                }
                 .distinctUntilChanged()
                 .collect {
                     resolveAndApplyCurrentAudioSettings()
@@ -168,7 +182,7 @@ class PlaybackService : MediaSessionService() {
                 if (!player.playWhenReady && player.playbackState != STATE_ENDED && lastPausedElapsedMs > 0L) {
                     val pausedDuration = SystemClock.elapsedRealtime() - lastPausedElapsedMs
                     lastPausedElapsedMs = 0L
-                    val rewindSecs = app.preferences.settings.value.smartRewindSeconds
+                    val rewindSecs = currentEffectiveSmartRewindSeconds
                     if (rewindSecs > 0 && pausedDuration >= 30_000L) {
                         val target = (player.currentPosition - rewindSecs * 1000L).coerceAtLeast(0L)
                         player.seekTo(target)
@@ -286,6 +300,7 @@ class PlaybackService : MediaSessionService() {
                             .add(SessionCommand(CMD_SET_SKIP_SILENCE, Bundle.EMPTY))
                             .add(SessionCommand(CMD_SET_MONO_MODE, Bundle.EMPTY))
                             .add(SessionCommand(CMD_SET_AUDIO_NORMALIZATION, Bundle.EMPTY))
+                            .add(SessionCommand(CMD_SET_SMART_REWIND, Bundle.EMPTY))
                             .add(SessionCommand(CMD_SKIP_QUEUE_NEXT, Bundle.EMPTY))
                             .add(SessionCommand(CMD_SKIP_QUEUE_PREV, Bundle.EMPTY))
                             .build()
@@ -318,6 +333,15 @@ class PlaybackService : MediaSessionService() {
                                 future.setException(UnsupportedOperationException("Nothing to resume"))
                             } else {
                                 val globalSettings = app.preferences.settings.value
+                                val effectiveSpeed = SpeedOverride.resolve(
+                                    globalSpeed = globalSettings.defaultPlaybackSpeed,
+                                    podcastOverride = withPodcast.podcast.speedOverride
+                                )
+                                val (effectiveSkipSilence, effectiveIntensity) = SilenceOverride.resolve(
+                                    globalEnabled = globalSettings.defaultSkipSilence,
+                                    globalIntensity = globalSettings.defaultSilenceIntensity,
+                                    podcastOverride = withPodcast.podcast.silenceModeOverride
+                                )
                                 val effectiveMono = AudioMonoMode.resolveEffective(
                                     globalMonoMode = globalSettings.monoMode,
                                     podcastMonoOverride = withPodcast.podcast.monoModeOverride,
@@ -327,14 +351,14 @@ class PlaybackService : MediaSessionService() {
                                     globalEnabled = globalSettings.audioNormalizationEnabled,
                                     podcastOverride = withPodcast.podcast.audioNormalizationOverride
                                 )
+                                val effectiveSmartRewind = SmartRewindOverride.resolve(
+                                    globalSeconds = globalSettings.smartRewindSeconds,
+                                    podcastOverride = withPodcast.podcast.smartRewindOverride
+                                )
+                                currentEffectiveSmartRewindSeconds = effectiveSmartRewind
                                 withContext(Dispatchers.Main) {
-                                    player.playbackParameters = PlaybackParameters(
-                                        withPodcast.podcast.playbackSpeed.coerceIn(0.50f, 3.0f)
-                                    )
-                                    updateSilenceProcessors(
-                                        withPodcast.podcast.skipSilence,
-                                        withPodcast.podcast.silenceIntensity
-                                    )
+                                    player.playbackParameters = PlaybackParameters(effectiveSpeed)
+                                    updateSilenceProcessors(effectiveSkipSilence, effectiveIntensity)
                                     monoProcessor.setMode(effectiveMono)
                                     currentEffectiveNormalization = effectiveNorm
                                     applyAudioNormalization(effectiveNorm)
@@ -379,6 +403,11 @@ class PlaybackService : MediaSessionService() {
                                 applyAudioNormalization(enabled)
                                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                             }
+                            CMD_SET_SMART_REWIND -> {
+                                currentEffectiveSmartRewindSeconds =
+                                    args.getInt(ARG_SMART_REWIND_SECONDS, 10).coerceIn(0, 120)
+                                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                            }
                             CMD_SKIP_QUEUE_NEXT -> {
                                 val fallbackId = args.getLong(ARG_CURRENT_EPISODE_ID, -1L).takeIf { it > 0L }
                                 skipQueueEpisode(forward = true, fallbackEpisodeId = fallbackId)
@@ -407,8 +436,11 @@ class PlaybackService : MediaSessionService() {
         val global = app.preferences.settings.value
         val epId = player.currentMediaItem?.mediaId?.toLongOrNull()
         if (epId == null) {
+            player.playbackParameters = PlaybackParameters(global.defaultPlaybackSpeed.coerceIn(0.50f, 3.00f))
+            updateSilenceProcessors(global.defaultSkipSilence, global.defaultSilenceIntensity)
             monoProcessor.setMode(global.monoMode)
             currentEffectiveNormalization = global.audioNormalizationEnabled
+            currentEffectiveSmartRewindSeconds = global.smartRewindSeconds
             applyAudioNormalization(currentEffectiveNormalization)
             return
         }
@@ -418,6 +450,23 @@ class PlaybackService : MediaSessionService() {
             }
             if (player.currentMediaItem?.mediaId?.toLongOrNull() != epId) return@launch
             val currentGlobal = app.preferences.settings.value
+            val effectiveSpeed = if (withPodcast != null) {
+                SpeedOverride.resolve(
+                    globalSpeed = currentGlobal.defaultPlaybackSpeed,
+                    podcastOverride = withPodcast.podcast.speedOverride
+                )
+            } else {
+                currentGlobal.defaultPlaybackSpeed.coerceIn(0.50f, 3.00f)
+            }
+            val (effectiveSilence, effectiveIntensity) = if (withPodcast != null) {
+                SilenceOverride.resolve(
+                    globalEnabled = currentGlobal.defaultSkipSilence,
+                    globalIntensity = currentGlobal.defaultSilenceIntensity,
+                    podcastOverride = withPodcast.podcast.silenceModeOverride
+                )
+            } else {
+                currentGlobal.defaultSkipSilence to currentGlobal.defaultSilenceIntensity.coerceIn(0, 2)
+            }
             val effectiveMono = if (withPodcast != null) {
                 AudioMonoMode.resolveEffective(
                     globalMonoMode = currentGlobal.monoMode,
@@ -435,8 +484,19 @@ class PlaybackService : MediaSessionService() {
             } else {
                 currentGlobal.audioNormalizationEnabled
             }
+            val effectiveRewind = if (withPodcast != null) {
+                SmartRewindOverride.resolve(
+                    globalSeconds = currentGlobal.smartRewindSeconds,
+                    podcastOverride = withPodcast.podcast.smartRewindOverride
+                )
+            } else {
+                currentGlobal.smartRewindSeconds
+            }
+            player.playbackParameters = PlaybackParameters(effectiveSpeed)
+            updateSilenceProcessors(effectiveSilence, effectiveIntensity)
             monoProcessor.setMode(effectiveMono)
             currentEffectiveNormalization = effectiveNorm
+            currentEffectiveSmartRewindSeconds = effectiveRewind
             applyAudioNormalization(effectiveNorm)
         }
     }
@@ -587,8 +647,21 @@ class PlaybackService : MediaSessionService() {
             val mediaUri = mediaItem.localConfiguration?.uri ?: return@launch
 
             val globalSettings = (applicationContext as PurePodcastApplication).preferences.settings.value
-            val speed = pod.playbackSpeed.coerceIn(0.50f, 3.0f)
-            val rewindMs = globalSettings.smartRewindSeconds * 1000L
+            val speed = SpeedOverride.resolve(
+                globalSpeed = globalSettings.defaultPlaybackSpeed,
+                podcastOverride = pod.speedOverride
+            )
+            val (effectiveSkipSilence, effectiveIntensity) = SilenceOverride.resolve(
+                globalEnabled = globalSettings.defaultSkipSilence,
+                globalIntensity = globalSettings.defaultSilenceIntensity,
+                podcastOverride = pod.silenceModeOverride
+            )
+            val effectiveRewind = SmartRewindOverride.resolve(
+                globalSeconds = globalSettings.smartRewindSeconds,
+                podcastOverride = pod.smartRewindOverride
+            )
+            currentEffectiveSmartRewindSeconds = effectiveRewind
+            val rewindMs = effectiveRewind * 1000L
             val startPos = if (ep.positionMs > 0L) (ep.positionMs - rewindMs).coerceAtLeast(0L) else 0L
             val effectiveMono = AudioMonoMode.resolveEffective(
                 globalMonoMode = globalSettings.monoMode,
@@ -604,7 +677,7 @@ class PlaybackService : MediaSessionService() {
             player.setWakeMode(if (mediaUri.scheme == "file" || mediaUri.scheme == "content") C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
             player.setMediaItem(mediaItem, startPos)
             player.playbackParameters = PlaybackParameters(speed)
-            updateSilenceProcessors(pod.skipSilence, pod.silenceIntensity.coerceIn(0, 2))
+            updateSilenceProcessors(effectiveSkipSilence, effectiveIntensity)
             monoProcessor.setMode(effectiveMono)
             currentEffectiveNormalization = effectiveNorm
             applyAudioNormalization(effectiveNorm)
@@ -701,6 +774,8 @@ class PlaybackService : MediaSessionService() {
         const val ARG_MONO_MODE = "mono_mode"
         const val CMD_SET_AUDIO_NORMALIZATION = "com.lycoslane.purepodcast.SET_AUDIO_NORMALIZATION"
         const val ARG_AUDIO_NORMALIZATION = "audio_normalization"
+        const val CMD_SET_SMART_REWIND = "com.lycoslane.purepodcast.SET_SMART_REWIND"
+        const val ARG_SMART_REWIND_SECONDS = "smart_rewind_seconds"
         const val CMD_SKIP_QUEUE_NEXT = "com.lycoslane.purepodcast.SKIP_QUEUE_NEXT"
         const val CMD_SKIP_QUEUE_PREV = "com.lycoslane.purepodcast.SKIP_QUEUE_PREV"
         const val ARG_CURRENT_EPISODE_ID = "current_episode_id"

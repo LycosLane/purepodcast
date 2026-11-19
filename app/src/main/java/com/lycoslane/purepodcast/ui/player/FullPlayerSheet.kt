@@ -66,6 +66,7 @@ import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.AudioMonoMode
 import com.lycoslane.purepodcast.core.audio.PlayerUiState
 import com.lycoslane.purepodcast.core.network.ChaptersParser
+import com.lycoslane.purepodcast.core.preferences.AppSettings
 import com.lycoslane.purepodcast.ui.common.CoverLightboxDialog
 import com.lycoslane.purepodcast.ui.common.PinchZoomText
 import com.lycoslane.purepodcast.ui.common.PodcastImage
@@ -82,8 +83,7 @@ import kotlin.math.abs
 @Composable
 fun FullPlayerSheet(
     state: PlayerUiState,
-    globalMonoMode: Int,
-    globalAudioNormalization: Boolean,
+    globalSettings: AppSettings,
     hasQueue: Boolean,
     textScale: Float,
     onTextScaleChange: (Float) -> Unit,
@@ -94,11 +94,17 @@ fun FullPlayerSheet(
     onPrevEpisode: () -> Unit,
     onNextEpisode: () -> Unit,
     onSetSpeed: (Float) -> Unit,
+    onResetSpeedToGlobal: () -> Unit,
     onSetSilenceMode: (Boolean, Int) -> Unit,
+    onResetSilenceToGlobal: () -> Unit,
     onSetSleepTimer: (Int) -> Unit,
     onSetEpisodeMonoOverride: (Int) -> Unit,
+    onSetPodcastSpeedOverride: (Float) -> Unit,
+    onSetPodcastSilenceOverride: (Int) -> Unit,
     onSetPodcastMonoOverride: (Int) -> Unit,
     onSetPodcastNormalizationOverride: (Int) -> Unit,
+    onSetPodcastSmartRewindOverride: (Int) -> Unit,
+    onApplyToAllPodcasts: () -> Unit,
     onTogglePodcastSort: (Boolean) -> Unit,
     onDisablePodcastAutoDownload: () -> Unit
 ) {
@@ -324,8 +330,6 @@ fun FullPlayerSheet(
                     icon = Icons.Default.Headphones,
                     label = monoTileLabel,
                     active = state.effectiveMonoMode != AudioMonoMode.OFF ||
-                        state.episodeMonoOverride != AudioMonoMode.INHERIT ||
-                        state.podcastMonoOverride != AudioMonoMode.INHERIT ||
                         activePanel == PlayerControlPanel.AUDIO_FIX,
                     onClick = {
                         activePanel = if (activePanel == PlayerControlPanel.AUDIO_FIX) {
@@ -371,16 +375,18 @@ fun FullPlayerSheet(
                             PlayerControlPanel.SPEED -> SpeedControlPanel(
                                 episodeId = ep.id,
                                 currentSpeed = state.playbackSpeed,
-                                onSetSpeed = onSetSpeed
+                                onSetSpeed = onSetSpeed,
+                                onResetToGlobal = if (state.hasPodcastSpeedOverride) onResetSpeedToGlobal else null
                             )
                             PlayerControlPanel.SILENCE -> SilenceControlPanel(
                                 skipSilence = state.skipSilence,
                                 silenceIntensity = state.silenceIntensity,
-                                onSetSilenceMode = onSetSilenceMode
+                                onSetSilenceMode = onSetSilenceMode,
+                                onResetToGlobal = if (state.hasPodcastSilenceOverride) onResetSilenceToGlobal else null
                             )
                             PlayerControlPanel.AUDIO_FIX -> AudioFixControlPanel(
                                 episodeId = ep.id,
-                                globalMonoMode = globalMonoMode,
+                                globalMonoMode = globalSettings.monoMode,
                                 podcastMonoOverride = state.podcastMonoOverride,
                                 episodeMonoOverride = state.episodeMonoOverride,
                                 onSetEpisodeMonoOverride = onSetEpisodeMonoOverride,
@@ -525,13 +531,14 @@ fun FullPlayerSheet(
     if (showPodcastSettings) {
         PodcastSettingsSheet(
             podcast = pod,
-            globalMonoMode = globalMonoMode,
-            globalAudioNormalization = globalAudioNormalization,
+            globalSettings = globalSettings,
             onDismiss = { showPodcastSettings = false },
-            onSetSpeed = onSetSpeed,
-            onSetSilenceMode = onSetSilenceMode,
+            onSetSpeedOverride = onSetPodcastSpeedOverride,
+            onSetSilenceModeOverride = onSetPodcastSilenceOverride,
             onSetMonoModeOverride = onSetPodcastMonoOverride,
             onSetNormalizationOverride = onSetPodcastNormalizationOverride,
+            onSetSmartRewindOverride = onSetPodcastSmartRewindOverride,
+            onApplyToAllPodcasts = onApplyToAllPodcasts,
             onToggleSort = onTogglePodcastSort,
             onDisableAutoDownload = onDisablePodcastAutoDownload
         )
