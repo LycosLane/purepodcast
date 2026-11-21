@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <clipPath id="micCapClip">
+      <rect x="345" y="248" width="62" height="142" rx="31"/>
+    </clipPath>
+    <clipPath id="micBaseClip">
+      <path d="M 332 454 C 332 444, 340 440, 350 440 L 402 440 C 412 440, 420 444, 420 454 Z"/>
+    </clipPath>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="#101216"/>
+
+  <!-- Master Fedora (1.22x at translate(256, 248) rotate(-6), 24px #101216 backing on all 5 parts) -->
+  <g transform="translate(256, 248) rotate(-6) scale(1.22) translate(-256, -267)">
+    <g stroke="#101216" stroke-width="24" stroke-linejoin="round" fill="#101216">
+      <path d="M 162 252 L 186 162 L 208 150 L 256 196 L 304 150 L 326 162 L 350 252 Q 256 264 162 252 Z"/>
+      <path d="M 220 154 L 256 165 L 292 154 L 256 186 Z"/>
+      <path d="M 159 264 Q 204 269 249 269 L 250 305 Q 200 306 151 300 Z"/>
+      <path d="M 263 269 Q 308 268 353 264 L 361 300 Q 312 305 264 305 Z"/>
+      <path d="M 86 312 L 150 312 Q 256 326 362 312 L 426 312 C 394 362, 330 384, 256 384 C 182 384, 118 362, 86 312 Z"/>
+    </g>
+    <path d="M 162 252 L 186 162 L 208 150 L 256 196 L 304 150 L 326 162 L 350 252 Q 256 264 162 252 Z" fill="#FFFFFF"/>
+    <path d="M 220 154 L 256 165 L 292 154 L 256 186 Z" fill="#FFFFFF"/>
+    <path d="M 159 264 Q 204 269 249 269 L 250 305 Q 200 306 151 300 Z" fill="#0099C0"/>
+    <path d="M 263 269 Q 308 268 353 264 L 361 300 Q 312 305 264 305 Z" fill="#2DCEC6"/>
+    <path d="M 86 312 L 150 312 Q 256 326 362 312 L 426 312 C 394 362, 330 384, 256 384 C 182 384, 118 362, 86 312 Z" fill="#FFFFFF"/>
+  </g>
+
+  <!-- Sound Waves & Foreground Microphone (aligned vertically with original PNG) -->
+  <g transform="translate(0, -10)">
+    <!-- Sound Waves (Teal/Cyan, clear of the hat crown & brim) -->
+    <g fill="none" stroke="#30D1E5" stroke-width="8.5" stroke-linecap="round">
+      <path d="M 395 224 A 36 36 0 0 1 428 266"/>
+      <path d="M 398 204 A 55 55 0 0 1 448 266"/>
+    </g>
+
+    <!-- Foreground Microphone with solid #101216 Backing -->
+    <g>
+      <!-- Dark Cutout Backing -->
+      <g fill="#101216" stroke="#101216" stroke-width="20" stroke-linejoin="round" stroke-linecap="round">
+        <rect x="345" y="248" width="62" height="142" rx="31"/>
+        <path d="M 328 331 L 328 358 A 48 48 0 0 0 424 358 L 424 331"/>
+        <rect x="369" y="406" width="14" height="30"/>
+        <path d="M 332 454 C 332 444, 340 440, 350 440 L 402 440 C 412 440, 420 444, 420 454 Z"/>
+      </g>
+
+      <!-- Capsule Body (Split White/Cyan bottom, Cyan band, White grille) -->
+      <g clip-path="url(#micCapClip)">
+        <rect x="345" y="248" width="62" height="80" fill="#FFFFFF"/>
+        <rect x="345" y="328" width="62" height="24" fill="#101216"/>
+        <rect x="345" y="333" width="62" height="14" fill="#30D1E5"/>
+        <rect x="345" y="352" width="31" height="38" fill="#FFFFFF"/>
+        <rect x="376" y="352" width="31" height="38" fill="#30D1E5"/>
+      </g>
+
+      <!-- Capsule Grille Slots -->
+      <g fill="#101216">
+        <rect x="342" y="281" width="28" height="7" rx="3.5"/>
+        <rect x="342" y="296" width="28" height="7" rx="3.5"/>
+        <rect x="342" y="311" width="28" height="7" rx="3.5"/>
+        <rect x="382" y="281" width="28" height="7" rx="3.5"/>
+        <rect x="382" y="296" width="28" height="7" rx="3.5"/>
+        <rect x="382" y="311" width="28" height="7" rx="3.5"/>
+      </g>
+
+      <!-- U-Cradle -->
+      <path d="M 330 332 L 330 359 A 46 46 0 0 0 422 359 L 422 332"
+            fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round"/>
+
+      <!-- Vertical Stem (Left White / Right Cyan) -->
+      <rect x="369" y="407" width="7" height="28" fill="#FFFFFF"/>
+      <rect x="376" y="407" width="7" height="28" fill="#30D1E5"/>
+
+      <!-- Base -->
+      <rect x="332" y="440" width="88" height="14" fill="#FFFFFF" clip-path="url(#micBaseClip)"/>
+    </g>
+  </g>
+</svg>
