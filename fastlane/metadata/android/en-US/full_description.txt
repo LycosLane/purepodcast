@@ -1,0 +1,9 @@
+PurePodcast is a clean, open-source podcast player for Android. Subscribe to podcasts via search or RSS, download episodes for offline listening, or play local audio folders directly from your phone or SD card with zero ads and zero tracking.
+
+Features:
+- Discovery, RSS & OPML: Find podcasts via search and preview episodes before subscribing, add any RSS or Atom feed URL directly, or import subscriptions via OPML.
+- Grid, Episode Feed & Local Folders: Switch between your podcast grid and a unified episode feed with quick filters (Newest, Last 14 days, In progress, Downloaded, Favorites), or connect local device and SD card folders.
+- Global & Per-Podcast Audio DSP: Configure playback speed (0.50x to 3.00x in 0.02x steps), silence trimming (Off, Soft, Medium, Strong), volume normalization, smart rewind, and Mono / Audio-Fix (L+R, Smart, L, R) globally or override them per podcast.
+- Queue, Chapters & Show Notes: Seamless resume in the mini-player, swipe gestures for queueing and hiding, chapter navigation, sleep timer, and pinch-to-zoom show notes with a fullscreen reader.
+- Offline Downloads & AAC Compression: Automatic or manual downloads, per-podcast episode limits, soft-delete trash retention, and optional background AAC compression (64 kbps Mono, 128 kbps, 192 kbps) to save storage.
+- Themes & Full Backup: System, Light, and Dark themes with 6 accent colors, English and German UI, and full JSON backup and restore.

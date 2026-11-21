@@ -1,0 +1,3 @@
+- Fastlane-Metadaten (en-US, de-DE) und Gradle-Wrapper fuer F-Droid ergaenzt.
+- Verschluesselten AGP-Dependency-Block fuer reproduzierbare FOSS-Builds deaktiviert.
+- White-Fedora-Mikrofon-Icon und globale/lokale Audio-Overrides aktualisiert.

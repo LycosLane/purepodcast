@@ -1,0 +1,3 @@
+- Added Fastlane store metadata (en-US, de-DE) and Gradle wrapper for F-Droid.
+- Disabled AGP encrypted dependency metadata block for reproducible FOSS builds.
+- Updated White Fedora microphone icon and global/per-podcast audio overrides.
