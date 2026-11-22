@@ -1,9 +1,9 @@
-PurePodcast is a clean, open-source podcast player for Android. Subscribe to podcasts via search or RSS, download episodes for offline listening, or play local audio folders directly from your phone or SD card with zero ads and zero tracking.
+PurePodcast is a 100% FOSS, ad-free, tracker-free podcast player built purely on AndroidX, Jetpack Compose, Room, Media3, and WorkManager with zero third-party network, image, or native FFmpeg dependencies.
 
-Features:
-- Discovery, RSS & OPML: Find podcasts via search and preview episodes before subscribing, add any RSS or Atom feed URL directly, or import subscriptions via OPML.
-- Grid, Episode Feed & Local Folders: Switch between your podcast grid and a unified episode feed with quick filters (Newest, Last 14 days, In progress, Downloaded, Favorites), or connect local device and SD card folders.
-- Global & Per-Podcast Audio DSP: Configure playback speed (0.50x to 3.00x in 0.02x steps), silence trimming (Off, Soft, Medium, Strong), volume normalization, smart rewind, and Mono / Audio-Fix (L+R, Smart, L, R) globally or override them per podcast.
-- Queue, Chapters & Show Notes: Seamless resume in the mini-player, swipe gestures for queueing and hiding, chapter navigation, sleep timer, and pinch-to-zoom show notes with a fullscreen reader.
-- Offline Downloads & AAC Compression: Automatic or manual downloads, per-podcast episode limits, soft-delete trash retention, and optional background AAC compression (64 kbps Mono, 128 kbps, 192 kbps) to save storage.
-- Themes & Full Backup: System, Light, and Dark themes with 6 accent colors, English and German UI, and full JSON backup and restore.
+What makes PurePodcast different from existing F-Droid and proprietary players:
+- Built-in AAC (M4A) Downsampling (No Paywall): Transcode downloaded episodes on-device to 64 kbps Mono, 128 kbps, or 192 kbps AAC to save storage (never upscales compact files) and inspect exact MB saved per episode. Unlike AntennaPod or Escapepod, no external tool is needed, and unlike Podcast Addict, it is completely free and open source.
+- Live Mono / Audio-Fix (L+R, Smart, L, R): Fix broken single-channel recordings or phase cancellation per episode, per podcast, or globally. Includes a Smart phase-safe channel follower and isolated Left/Right output instead of forcing system-wide Accessibility Mono.
+- 2-Stage Trash & Auto-Cleanup: Automatically move played downloads to an in-app trash after a configurable delay (Immediate, 1d, 3d, 7d) with recoverable retention (Immediate, 24h, 48h) before permanent deletion.
+- Swipe-to-Hide & Unified Hybrid Library: Swipe episodes to queue or hide into dedicated Hidden/Trash tabs, switch between Podcast Grid and Unified Episode Feed, and combine RSS/Atom subscriptions with local device/SD-card folders via SAF.
+- Global & Per-Podcast DSP Overrides: Configure speed (0.50x to 3.00x in 0.02x steps), silence trimming (Soft, Medium, Strong), volume normalization, smart rewind, and Mono mode globally or per show.
+- OPML & Full JSON Backup: Import OPML subscriptions and export or restore your library, progress, queue, and settings. Built-in English and German UI.

@@ -1,9 +1,9 @@
-PurePodcast ist ein schlanker, quelloffener Podcast-Player fuer Android. Abonniere Podcasts ueber die Suche oder per RSS, lade Episoden fuer unterwegs herunter oder spiele lokale Audio-Ordner direkt vom Geraet oder der SD-Karte ab - komplett ohne Werbung und Tracking.
+PurePodcast ist ein 100% freier (FOSS), werbe- und trackingfreier Podcast-Player auf reiner AndroidX-, Jetpack-Compose-, Room-, Media3- und WorkManager-Basis ohne Drittanbieter-Netzwerk-, Bild- oder FFmpeg-Bibliotheken.
 
-Funktionen:
-- Suche, RSS & OPML: Finde Podcasts ueber die Suche mit Episoden-Vorschau, fuege beliebige RSS- oder Atom-Feeds direkt hinzu oder importiere Abos per OPML.
-- Raster, Episoden-Feed & Lokale Ordner: Wechsle zwischen Podcast-Raster und kombinierter Episoden-Ansicht mit Schnellfiltern (Neueste, Letzte 14 Tage, Angespielt, Heruntergeladen, Favoriten) oder binde lokale Ordner ein.
-- Globales & Podcast-spezifisches Audio-DSP: Stelle Abspieltempo (0.50x bis 3.00x in 0.02x-Schritten), Pausenkuerzung (Aus, Sanft, Mittel, Stark), Lautstaerke-Normalisierung, Smart-Rewind und Mono / Audio-Fix (L+R, Smart, L, R) global oder pro Podcast ein.
-- Warteschlange, Kapitel & Show Notes: Nahtloses Weiterhoeren im Mini-Player, Wischgesten fuer Warteschlange und Ausblenden, Kapitelnavigation, Schlummer-Timer und Show Notes mit Pinch-to-Zoom-Lesemodus.
-- Offline-Downloads & AAC-Komprimierung: Automatische oder manuelle Downloads, Download-Limits pro Podcast, Papierkorb-Schutz und optionale AAC-Hintergrundkomprimierung (64 kbps Mono, 128 kbps, 192 kbps) zum Speichersparen.
-- Themes & Voll-Backup: System-, Hell- und Dunkel-Modus mit 6 Akzentfarben, deutsche und englische Oberflaeche sowie komplettes JSON-Backup.
+Was PurePodcast von bestehenden F-Droid- und proprietaeren Playern unterscheidet:
+- Integrierte AAC-Komprimierung (M4A) ohne Paywall: Wandle heruntergeladene Episoden direkt auf dem Geraet in 64 kbps Mono, 128 kbps oder 192 kbps AAC um (ohne Upscaling) und sieh die genaue Speicherersparnis pro Episode. Im Gegensatz zu AntennaPod/Escapepod direkt eingebaut und im Gegensatz zu Podcast Addict komplett kostenlos und quelloffen.
+- Live Mono / Audio-Fix (L+R, Smart, L, R): Repariert einseitige Aufnahmen oder Phasenausloeschungen pro Episode, pro Podcast oder global - inklusive Smart-Kanalverfolgung und isolierter Links/Rechts-Ausgabe statt systemweitem Mono.
+- Zweistufiger Papierkorb & Auto-Aufraeumen: Verschiebt gehoerte Downloads nach einstellbarer Wartezeit (Sofort, 1d, 3d, 7d) in einen wiederherstellbaren Papierkorb (Sofort, 24h, 48h).
+- Wischgesten, Ausblenden & Hybrid-Bibliothek: Episoden per Wischgeste einreihen oder ausblenden, zwischen Podcast-Raster und Episoden-Feed wechseln und RSS/Atom-Abos mit lokalen Ordnern (SAF) kombinieren.
+- Globale & lokale Audio-Overrides: Tempo (0.50x bis 3.00x), Pausenkuerzung (Sanft, Mittel, Stark), Lautstaerke-Normalisierung, Smart-Rewind und Mono-Modus global oder pro Show anpassen.
+- OPML & Voll-Backup: OPML-Import und komplettes JSON-Backup. Oberflaeche in Deutsch und Englisch.
