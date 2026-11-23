@@ -50,11 +50,22 @@
 
 ## Installation
 
-Download the latest signed APK from the [**Releases**](https://github.com/LycosLane/PurePodcast/releases) page, or build from source:
+### Option 1: Direct APK Download
+Download and install the latest signed APK from the [**GitHub Releases**](https://github.com/LycosLane/purepodcast/releases) page.
+
+### Option 2: Automatic Updates with Obtainium
+[Obtainium](https://github.com/ImranR98/Obtainium/releases) lets you install and update Android apps directly from GitHub Releases with one tap:
+
+1. Install Obtainium from its [GitHub Releases](https://github.com/ImranR98/Obtainium/releases) page (Obtainium can also track and update itself automatically).
+2. Open Obtainium, tap **Add App**, and paste this repository URL:
+   `https://github.com/LycosLane/purepodcast`
+3. Tap **Add**, then **Install**. Future releases will appear automatically with a 1-tap **Update** button.
+
+### Option 3: Build from Source
 
 ```bash
-git clone https://github.com/LycosLane/PurePodcast.git
-cd PurePodcast
+git clone https://github.com/LycosLane/purepodcast.git
+cd purepodcast
 ./gradlew assembleDebug
 ```
 
