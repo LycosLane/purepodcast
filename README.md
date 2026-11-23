@@ -53,7 +53,15 @@
 ### Option 1: Direct APK Download
 Download and install the latest signed APK from the [**GitHub Releases**](https://github.com/LycosLane/purepodcast/releases) page.
 
-### Option 2: Automatic Updates with Obtainium
+### Option 2: F-Droid / Droid-ify / Neo Store (Recommended)
+Add the LycosLane F-Droid repository for 1-tap installation and automatic updates:
+
+1. Install **F-Droid**, **Droid-ify**, or **Neo Store** on your Android device.
+2. Open **Repositories -> Add repository** and paste this URL:
+   `https://lycoslane.github.io/fdroid/repo`
+3. Refresh repositories, search for **PurePodcast**, and tap **Install**.
+
+### Option 3: Automatic Updates with Obtainium
 [Obtainium](https://github.com/ImranR98/Obtainium/releases) lets you install and update Android apps directly from GitHub Releases with one tap:
 
 1. Install Obtainium from its [GitHub Releases](https://github.com/ImranR98/Obtainium/releases) page (Obtainium can also track and update itself automatically).
@@ -61,7 +69,7 @@ Download and install the latest signed APK from the [**GitHub Releases**](https:
    `https://github.com/LycosLane/purepodcast`
 3. Tap **Add**, then **Install**. Future releases will appear automatically with a 1-tap **Update** button.
 
-### Option 3: Build from Source
+### Option 4: Build from Source
 
 ```bash
 git clone https://github.com/LycosLane/purepodcast.git
