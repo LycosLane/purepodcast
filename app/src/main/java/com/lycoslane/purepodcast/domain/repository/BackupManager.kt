@@ -132,13 +132,8 @@ internal class BackupManager(
             try {
                 val podcastId = runCatching { subscribeByFeedUrl(feedUrl) }.getOrElse { err ->
                     if (err is CancellationException) throw err
-                    dao.getPodcastByFeedUrl(feedUrl)?.id ?: dao.insertPodcast(
-                        PodcastEntity(
-                            feedUrl = feedUrl,
-                            title = pObj.optString("title", "").ifBlank { feedUrl },
-                            isSubscribed = true
-                        )
-                    )
+                    android.util.Log.w("BackupManager", "Feed fetch failed during restore for $feedUrl", err)
+                    dao.getPodcastByFeedUrl(feedUrl)?.id ?: 0L
                 }
                 if (podcastId <= 0L) continue
                 feedUrlToPodcastId[feedUrl] = podcastId
@@ -221,7 +216,8 @@ internal class BackupManager(
                 restored++
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.w("BackupManager", "Failed to restore podcast $feedUrl", e)
             }
         }
         val queueArr = root.optJSONArray("queue")

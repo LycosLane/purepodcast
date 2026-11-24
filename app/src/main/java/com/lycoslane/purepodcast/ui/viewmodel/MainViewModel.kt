@@ -10,6 +10,7 @@ import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
 import com.lycoslane.purepodcast.core.database.PodcastWithStats
 import com.lycoslane.purepodcast.core.download.FeedRefreshWorker
 import com.lycoslane.purepodcast.core.preferences.AppSettings
+import com.lycoslane.purepodcast.core.preferences.LocaleHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,6 +28,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app: PurePodcastApplication
         get() = getApplication()
+
+    private fun localizedString(@androidx.annotation.StringRes resId: Int, vararg args: Any): String =
+        LocaleHelper.wrapContext(app).getString(resId, *args)
 
     val podcasts: StateFlow<List<PodcastWithStats>> = app.repository.observePodcasts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
@@ -225,6 +229,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setLocalFolderUri(uri: String) {
         val old = app.preferences.settings.value.localFolderUri
+        if (old != uri && app.playerController.state.value.currentPodcast?.isLocal == true) {
+            app.playerController.stopAndClear()
+        }
         if (old.isNotBlank() && old != uri) {
             val oldUri = android.net.Uri.parse(old)
             runCatching {
@@ -269,6 +276,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteDownload(episodeId: Long) {
         viewModelScope.launch {
             app.repository.deleteDownload(episodeId, app.playerController.state.value.currentEpisode?.id)
+        }
+    }
+
+    fun stopAndDeleteActive(episodeId: Long) {
+        viewModelScope.launch {
+            app.playerController.stopAndClear()
+            app.repository.deleteDownload(episodeId, null)
         }
     }
 
@@ -351,11 +365,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     } ?: error("Cannot open output")
                 }
             }.onSuccess {
-                _backupStatus.value = app.getString(R.string.backup_exported)
+                _backupStatus.value = localizedString(R.string.backup_exported)
             }.onFailure { err ->
-                _backupStatus.value = app.getString(
+                _backupStatus.value = localizedString(
                     R.string.backup_failed,
-                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                    err.localizedMessage ?: localizedString(R.string.error_generic_network)
                 )
             }
         }
@@ -381,14 +395,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         out.toString(Charsets.UTF_8.name())
                     }
                 }?.takeIf { it.isNotBlank() }
-                    ?: error(app.getString(R.string.backup_empty_file))
+                    ?: error(localizedString(R.string.backup_empty_file))
                 app.repository.importBackupJson(text)
             }.onSuccess { count ->
-                _backupStatus.value = app.getString(R.string.backup_imported, count)
+                app.playerController.refreshAfterApplyAll()
+                _backupStatus.value = localizedString(R.string.backup_imported, count)
             }.onFailure { err ->
-                _backupStatus.value = app.getString(
+                _backupStatus.value = localizedString(
                     R.string.backup_failed,
-                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                    err.localizedMessage ?: localizedString(R.string.error_generic_network)
                 )
             }
         }

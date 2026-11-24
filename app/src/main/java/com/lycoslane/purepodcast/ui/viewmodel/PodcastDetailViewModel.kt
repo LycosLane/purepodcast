@@ -58,19 +58,9 @@ class PodcastDetailViewModel(
         viewModelScope.launch { app.repository.toggleSortAscending(podcastId, ascending) }
     }
 
-    fun setPlaybackSpeed(speed: Float) {
-        if (podcastId < 0L) return
-        app.playerController.setPodcastPlaybackSpeed(podcastId, speed)
-    }
-
     fun setSpeedOverride(speedOverride: Float) {
         if (podcastId < 0L) return
         app.playerController.setPodcastSpeedOverride(podcastId, speedOverride)
-    }
-
-    fun setSilenceMode(enabled: Boolean, intensity: Int) {
-        if (podcastId < 0L) return
-        app.playerController.setPodcastSilenceMode(podcastId, enabled, intensity)
     }
 
     fun setSilenceModeOverride(silenceModeOverride: Int) {
@@ -115,6 +105,9 @@ class PodcastDetailViewModel(
     fun unsubscribe(onDone: () -> Unit) {
         if (podcastId < 0L) return
         viewModelScope.launch {
+            if (app.playerController.state.value.currentPodcast?.id == podcastId) {
+                app.playerController.stopAndClear()
+            }
             app.repository.unsubscribePodcast(podcastId)
             onDone()
         }

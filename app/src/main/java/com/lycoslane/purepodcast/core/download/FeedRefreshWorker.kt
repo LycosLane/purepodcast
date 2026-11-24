@@ -1,6 +1,7 @@
 package com.lycoslane.purepodcast.core.download
 
 import android.content.Context
+import android.util.Log
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -9,11 +10,13 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.lycoslane.purepodcast.PurePodcastApplication
+import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.PodcastEntity
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
 import com.lycoslane.purepodcast.core.network.NetworkUtils
+import com.lycoslane.purepodcast.core.preferences.LocaleHelper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,6 +34,7 @@ class FeedRefreshWorker(
         val podcasts = dao.getAllPodcasts().filter { !it.isLocal && it.isSubscribed }
 
         var allSucceeded = true
+        var promotedForeground = false
         val downloadedPairs = mutableListOf<Pair<PodcastEntity, EpisodeEntity>>()
         val availablePairs = mutableListOf<Pair<PodcastEntity, EpisodeEntity>>()
 
@@ -40,7 +44,8 @@ class FeedRefreshWorker(
                 app.repository.refreshPodcast(podcast.id, enqueueAutoDownloads = false)
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w("FeedRefreshWorker", "Refresh failed for podcastId=${podcast.id} url=${podcast.feedUrl}", e)
                 allSucceeded = false
                 emptyList()
             }
@@ -60,6 +65,22 @@ class FeedRefreshWorker(
                     if (isStopped) break
                     val canDownloadNow = !settings.wifiOnlyDownloads || NetworkUtils.isOnUnmeteredWifi(applicationContext)
                     if (canDownloadNow) {
+                        if (!promotedForeground) {
+                            promotedForeground = true
+                            val localized = LocaleHelper.wrapContext(applicationContext)
+                            runCatching {
+                                setForeground(
+                                    WorkerForeground.info(
+                                        context = localized,
+                                        notificationId = FOREGROUND_NOTIFICATION_ID,
+                                        channelId = DOWNLOAD_CHANNEL_ID,
+                                        channelName = localized.getString(R.string.notif_download_channel),
+                                        title = latestPod.title,
+                                        text = localized.getString(R.string.notif_downloading)
+                                    )
+                                )
+                            }
+                        }
                         val outcome = EpisodeDownloadWorker.performDownload(
                             context = applicationContext,
                             episodeId = ep.id,
@@ -109,6 +130,8 @@ class FeedRefreshWorker(
 
     companion object {
         private const val UNIQUE_NAME = "purepodcast_periodic_feed_refresh"
+        private const val FOREGROUND_NOTIFICATION_ID = 5999
+        private const val DOWNLOAD_CHANNEL_ID = "purepodcast_downloads"
 
         fun schedulePeriodic(
             context: Context,

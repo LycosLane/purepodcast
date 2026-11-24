@@ -60,7 +60,8 @@ object AudioTranscoder {
                 return isBitrateAlreadyCompact(mime, bitrateBps, targetKbps)
             }
             false
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("AudioTranscoder", "isAlreadyCompact failed for ${file.name}", e)
             false
         } finally {
             runCatching { extractor.release() }
@@ -83,7 +84,8 @@ object AudioTranscoder {
                 }
             }
             0L
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("AudioTranscoder", "readDurationMs failed for ${file.name}", e)
             0L
         } finally {
             runCatching { extractor.release() }
@@ -448,7 +450,8 @@ object AudioTranscoder {
             val ok = tempOutputFile.exists() && tempOutputFile.length() > 0L
             if (ok) onProgress(100)
             return ok
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            android.util.Log.w("AudioTranscoder", "transcodeToAacM4a failed for ${sourceFile.name}", t)
             tempOutputFile.delete()
             return false
         } finally {

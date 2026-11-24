@@ -124,8 +124,9 @@ fun QueueScreen(
 
     val listState = rememberLazyListState()
     val haptic = LocalHapticFeedback.current
+    val latestQueue by androidx.compose.runtime.rememberUpdatedState(queue)
 
-    LaunchedEffect(queue) {
+    LaunchedEffect(queue, isDragging) {
         if (!isDragging) {
             displayQueue.clear()
             displayQueue.addAll(queue)
@@ -424,7 +425,7 @@ fun QueueScreen(
                                                         dragDeltaY = 0f
                                                         isDragging = false
                                                         displayQueue.clear()
-                                                        displayQueue.addAll(queue)
+                                                        displayQueue.addAll(latestQueue)
                                                     },
                                                     onDrag = { change, dragAmount ->
                                                         change.consume()

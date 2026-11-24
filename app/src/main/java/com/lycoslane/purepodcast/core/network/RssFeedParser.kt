@@ -91,7 +91,7 @@ object RssFeedParser {
                 if (code !in 200..299) {
                     throw IOException("HTTP $code")
                 }
-                val finalUrl = conn.url?.toString()?.takeIf { NetworkSecurity.isValidHttpUrl(it) } ?: feedUrl
+                val finalUrl = tracker.permanentUrl?.takeIf { NetworkSecurity.isValidHttpUrl(it) } ?: feedUrl
                 val feed = BoundedInputStream(conn.inputStream, MAX_FEED_BYTES).use { stream ->
                     parseStream(finalUrl, stream)
                 }

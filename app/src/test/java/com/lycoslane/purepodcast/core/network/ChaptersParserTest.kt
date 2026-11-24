@@ -1,6 +1,8 @@
 package com.lycoslane.purepodcast.core.network
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ChaptersParserTest {
@@ -13,5 +15,11 @@ class ChaptersParserTest {
         assertEquals(42_000L, ChaptersParser.parsePodloveTimestampMs("42"))
         assertEquals(-1L, ChaptersParser.parsePodloveTimestampMs(""))
         assertEquals(-1L, ChaptersParser.parsePodloveTimestampMs("bad"))
+    }
+
+    @Test
+    fun fetchPodcasting2ChaptersReturnsNullOnInvalidOrFailedUrl() = runBlocking {
+        assertNull(ChaptersParser.fetchPodcasting2ChaptersJson(""))
+        assertNull(ChaptersParser.fetchPodcasting2ChaptersJson("not-a-url"))
     }
 }

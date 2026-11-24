@@ -196,7 +196,10 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun play() {
-                if (!player.playWhenReady && player.playbackState != STATE_ENDED && lastPausedElapsedMs > 0L) {
+                if (player.playbackState == STATE_ENDED) {
+                    lastPausedElapsedMs = 0L
+                    player.seekTo(0L)
+                } else if (!player.playWhenReady && lastPausedElapsedMs > 0L) {
                     val pausedDuration = SystemClock.elapsedRealtime() - lastPausedElapsedMs
                     lastPausedElapsedMs = 0L
                     val rewindSecs = currentEffectiveSmartRewindSeconds
@@ -304,6 +307,7 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                transientErrorRetryCount = 0
                 val id = mediaItem?.mediaId?.toLongOrNull() ?: return
                 lastEpisodePrefs().edit().putLong(KEY_LAST_EPISODE_ID, id).apply()
             }
@@ -607,7 +611,8 @@ class PlaybackService : MediaSessionService() {
                 attachedAudioSessionId = currentAudioSessionId
             }
             dynamicsProcessing?.enabled = true
-        }.onFailure {
+        }.onFailure { err ->
+            Log.w(TAG, "Failed to apply audio normalization", err)
             releaseDynamicsProcessing()
         }
     }
@@ -669,7 +674,10 @@ class PlaybackService : MediaSessionService() {
             val queue = withContext(Dispatchers.IO) {
                 PurePodcastDatabase.getInstance(applicationContext).dao().getQueueEpisodesOnce()
             }
-            if (queue.isEmpty()) return@launch
+            if (queue.isEmpty()) {
+                releaseTransitionWakeLock()
+                return@launch
+            }
             val currentIdx = queue.indexOfFirst { it.episode.id == currentId }
             val nextIdx = if (currentIdx < 0) {
                 if (forward) 0 else queue.lastIndex
@@ -681,8 +689,14 @@ class PlaybackService : MediaSessionService() {
             val target = queue[nextIdx]
             val ep = target.episode
             val pod = target.podcast
-            val mediaItem = buildMediaItem(ep, pod) ?: return@launch
-            val mediaUri = mediaItem.localConfiguration?.uri ?: return@launch
+            val mediaItem = buildMediaItem(ep, pod) ?: run {
+                releaseTransitionWakeLock()
+                return@launch
+            }
+            val mediaUri = mediaItem.localConfiguration?.uri ?: run {
+                releaseTransitionWakeLock()
+                return@launch
+            }
 
             val globalSettings = (applicationContext as PurePodcastApplication).preferences.settings.value
             val speed = SpeedOverride.resolve(

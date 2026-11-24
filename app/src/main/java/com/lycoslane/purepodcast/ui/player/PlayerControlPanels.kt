@@ -539,7 +539,7 @@ internal fun SleepControlPanel(
     onSetSleepTimer: (Int) -> Unit
 ) {
     var isDragging by remember { mutableStateOf(false) }
-    var sleepStep by remember(presetMinutes, remainingMs) {
+    var sleepStep by remember(presetMinutes, remainingMs > 0L) {
         val currentMins = if (remainingMs <= 0L) 0 else presetMinutes.coerceIn(0, 120)
         mutableIntStateOf(((currentMins + 2) / 5).coerceIn(0, 24))
     }

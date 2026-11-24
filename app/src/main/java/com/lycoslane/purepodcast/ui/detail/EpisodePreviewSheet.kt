@@ -178,6 +178,7 @@ fun EpisodePreviewSheet(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                android.util.Log.w("EpisodePreviewSheet", "Preview playback failed for episodeId=${episode.id}", error)
                 isPreviewPlaying = false
                 isPreviewPrepared = false
                 previewPlayer.stop()
@@ -193,6 +194,15 @@ fun EpisodePreviewSheet(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
             previewPlayer.removeListener(listener)
+        }
+    }
+
+    DisposableEffect(episode.id) {
+        com.lycoslane.purepodcast.core.download.TranscodeWorker.activePreviewEpisodeId = episode.id
+        onDispose {
+            if (com.lycoslane.purepodcast.core.download.TranscodeWorker.activePreviewEpisodeId == episode.id) {
+                com.lycoslane.purepodcast.core.download.TranscodeWorker.activePreviewEpisodeId = null
+            }
         }
     }
 

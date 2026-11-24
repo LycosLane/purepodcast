@@ -235,13 +235,15 @@ class PlayerController(
             if (marker.startsWith("url:")) {
                 val json = com.lycoslane.purepodcast.core.network.ChaptersParser
                     .fetchPodcasting2ChaptersJson(marker.removePrefix("url:"))
-                dao.updateChaptersJson(candidate.episode.id, json)
-                _state.update { st ->
-                    val cur = st.currentEpisode
-                    if (cur != null && cur.id == candidate.episode.id) {
-                        st.copy(currentEpisode = cur.copy(chaptersJson = json))
-                    } else {
-                        st
+                if (json != null) {
+                    dao.updateChaptersJson(candidate.episode.id, json)
+                    _state.update { st ->
+                        val cur = st.currentEpisode
+                        if (cur != null && cur.id == candidate.episode.id) {
+                            st.copy(currentEpisode = cur.copy(chaptersJson = json))
+                        } else {
+                            st
+                        }
                     }
                 }
             }
@@ -266,28 +268,31 @@ class PlayerController(
                 podcast = withPodcast.podcast,
                 episode = withPodcast.episode
             )
-            _state.update {
-                it.copy(
-                    currentEpisode = withPodcast.episode,
-                    currentPodcast = withPodcast.podcast,
-                    positionMs = livePos ?: withPodcast.episode.positionMs,
-                    durationMs = liveDuration ?: withPodcast.episode.durationMs,
-                    playbackSpeed = resolved.speed,
-                    hasPodcastSpeedOverride = resolved.hasSpeedOverride,
-                    skipSilence = resolved.skipSilence,
-                    silenceIntensity = resolved.silenceIntensity,
-                    hasPodcastSilenceOverride = resolved.hasSilenceOverride,
-                    podcastMonoOverride = resolved.podcastMonoOverride,
-                    episodeMonoOverride = resolved.episodeMonoOverride,
-                    effectiveMonoMode = resolved.effectiveMonoMode,
-                    podcastNormalizationOverride = resolved.podcastNormalizationOverride,
-                    effectiveAudioNormalization = resolved.effectiveNormalization,
-                    podcastSmartRewindOverride = resolved.podcastSmartRewindOverride,
-                    effectiveSmartRewindSeconds = resolved.effectiveSmartRewindSeconds
-                )
-            }
             withContext(Dispatchers.Main) {
                 val mc = controller
+                if (mc != null && mc.isConnected && mc.currentMediaItem?.mediaId != episodeId.toString()) {
+                    return@withContext
+                }
+                _state.update {
+                    it.copy(
+                        currentEpisode = withPodcast.episode,
+                        currentPodcast = withPodcast.podcast,
+                        positionMs = livePos ?: withPodcast.episode.positionMs,
+                        durationMs = liveDuration ?: withPodcast.episode.durationMs,
+                        playbackSpeed = resolved.speed,
+                        hasPodcastSpeedOverride = resolved.hasSpeedOverride,
+                        skipSilence = resolved.skipSilence,
+                        silenceIntensity = resolved.silenceIntensity,
+                        hasPodcastSilenceOverride = resolved.hasSilenceOverride,
+                        podcastMonoOverride = resolved.podcastMonoOverride,
+                        episodeMonoOverride = resolved.episodeMonoOverride,
+                        effectiveMonoMode = resolved.effectiveMonoMode,
+                        podcastNormalizationOverride = resolved.podcastNormalizationOverride,
+                        effectiveAudioNormalization = resolved.effectiveNormalization,
+                        podcastSmartRewindOverride = resolved.podcastSmartRewindOverride,
+                        effectiveSmartRewindSeconds = resolved.effectiveSmartRewindSeconds
+                    )
+                }
                 if (mc != null && mc.isConnected && mc.currentMediaItem?.mediaId == episodeId.toString()) {
                     applyAllCommandsToController(mc, resolved)
                 }
@@ -297,16 +302,19 @@ class PlayerController(
             if (marker.startsWith("url:")) {
                 val json = com.lycoslane.purepodcast.core.network.ChaptersParser
                     .fetchPodcasting2ChaptersJson(marker.removePrefix("url:"))
-                dao.updateChaptersJson(episodeId, json)
-                _state.update { st ->
-                    val cur = st.currentEpisode
-                    if (cur != null && cur.id == episodeId) st.copy(currentEpisode = cur.copy(chaptersJson = json)) else st
+                if (json != null) {
+                    dao.updateChaptersJson(episodeId, json)
+                    _state.update { st ->
+                        val cur = st.currentEpisode
+                        if (cur != null && cur.id == episodeId) st.copy(currentEpisode = cur.copy(chaptersJson = json)) else st
+                    }
                 }
             }
         }
     }
 
     fun playEpisode(episode: EpisodeEntity, podcast: PodcastEntity) {
+        syncJob?.cancel()
         context.getSharedPreferences("playback_state", Context.MODE_PRIVATE)
             .edit()
             .putLong("last_episode_id", episode.id)
@@ -695,11 +703,18 @@ class PlayerController(
 
     fun refreshAfterApplyAll() {
         val curId = _state.value.currentPodcast?.id
+        val curEpId = _state.value.currentEpisode?.id
         if (curId != null) {
             scope.launch(Dispatchers.IO) {
                 val freshPod = dao.getPodcast(curId) ?: return@launch
+                val freshEp = curEpId?.let { dao.getEpisode(it) }
                 withContext(Dispatchers.Main) {
-                    _state.update { it.copy(currentPodcast = freshPod) }
+                    _state.update {
+                        it.copy(
+                            currentPodcast = freshPod,
+                            currentEpisode = freshEp ?: it.currentEpisode
+                        )
+                    }
                     refreshEffectiveAudioSettings()
                 }
             }

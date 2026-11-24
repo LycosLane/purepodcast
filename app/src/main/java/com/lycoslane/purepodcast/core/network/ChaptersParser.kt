@@ -1,5 +1,7 @@
 package com.lycoslane.purepodcast.core.network
 
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -59,9 +61,9 @@ object ChaptersParser {
         }
     }
 
-    suspend fun fetchPodcasting2ChaptersJson(chaptersUrl: String): String = withContext(Dispatchers.IO) {
-        if (!NetworkSecurity.isValidHttpUrl(chaptersUrl)) return@withContext ""
-        runCatching {
+    suspend fun fetchPodcasting2ChaptersJson(chaptersUrl: String): String? = withContext(Dispatchers.IO) {
+        if (!NetworkSecurity.isValidHttpUrl(chaptersUrl)) return@withContext null
+        try {
             val conn = NetworkSecurity.openValidatedConnection(
                 rawUrl = chaptersUrl,
                 connectTimeoutMs = 8_000,
@@ -73,7 +75,7 @@ object ChaptersParser {
                     stream.readBytes().toString(Charsets.UTF_8)
                 }
                 val root = JSONObject(text)
-                val arr = root.optJSONArray("chapters") ?: return@runCatching ""
+                val arr = root.optJSONArray("chapters") ?: return@withContext ""
                 val parsed = ArrayList<EpisodeChapter>(arr.length().coerceAtMost(MAX_CHAPTERS))
                 for (i in 0 until arr.length().coerceAtMost(MAX_CHAPTERS)) {
                     val obj = arr.optJSONObject(i) ?: continue
@@ -90,6 +92,11 @@ object ChaptersParser {
             } finally {
                 conn.disconnect()
             }
-        }.getOrDefault("")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (err: Exception) {
+            Log.w("ChaptersParser", "Failed to fetch chapters url=$chaptersUrl", err)
+            null
+        }
     }
 }

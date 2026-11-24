@@ -11,6 +11,7 @@ import com.lycoslane.purepodcast.core.network.ParsedEpisode
 import com.lycoslane.purepodcast.core.network.ParsedPodcastFeed
 import com.lycoslane.purepodcast.core.network.PodcastSearchResult
 import com.lycoslane.purepodcast.core.network.RssFeedParser
+import com.lycoslane.purepodcast.core.preferences.LocaleHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +27,9 @@ class SearchViewModel(
 
     private val app: PurePodcastApplication
         get() = getApplication()
+
+    private fun localizedString(@androidx.annotation.StringRes resId: Int, vararg args: Any): String =
+        LocaleHelper.wrapContext(app).getString(resId, *args)
 
     val query: StateFlow<String> = savedStateHandle.getStateFlow("search_query", "")
 
@@ -65,9 +69,9 @@ class SearchViewModel(
                     app.repository.searchPodcasts(trimmed).distinctBy { it.feedUrl }
                 }.getOrElse { err ->
                     lastSearchedQuery = null
-                    _statusMessage.value = app.getString(
+                    _statusMessage.value = localizedString(
                         R.string.status_search_failed,
-                        err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                        err.localizedMessage ?: localizedString(R.string.error_generic_network)
                     )
                     emptyList()
                 }
@@ -84,16 +88,16 @@ class SearchViewModel(
 
     fun subscribeFeedUrl(url: String, onSubscribed: (Long) -> Unit) {
         viewModelScope.launch {
-            _statusMessage.value = app.getString(R.string.status_subscribing)
+            _statusMessage.value = localizedString(R.string.status_subscribing)
             runCatching { app.repository.subscribeByFeedUrl(url) }
                 .onSuccess { podcastId ->
-                    _statusMessage.value = app.getString(R.string.status_subscribed)
+                    _statusMessage.value = localizedString(R.string.status_subscribed)
                     onSubscribed(podcastId)
                 }
                 .onFailure { err ->
-                    _statusMessage.value = app.getString(
+                    _statusMessage.value = localizedString(
                         R.string.status_search_failed,
-                        err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                        err.localizedMessage ?: localizedString(R.string.error_generic_network)
                     )
                 }
         }
@@ -101,8 +105,11 @@ class SearchViewModel(
 
     fun unsubscribeById(podcastId: Long, title: String) {
         viewModelScope.launch {
+            if (app.playerController.state.value.currentPodcast?.id == podcastId) {
+                app.playerController.stopAndClear()
+            }
             app.repository.unsubscribePodcast(podcastId)
-            _statusMessage.value = app.getString(R.string.status_unsubscribed, title)
+            _statusMessage.value = localizedString(R.string.status_unsubscribed, title)
         }
     }
 
@@ -121,14 +128,14 @@ class SearchViewModel(
                     download = false
                 )
             }.onSuccess { (podcastId, _) ->
-                _statusMessage.value = app.getString(
+                _statusMessage.value = localizedString(
                     if (toFront) R.string.snackbar_added_to_queue_front else R.string.snackbar_added_to_queue
                 )
                 onDone(podcastId)
             }.onFailure { err ->
-                _statusMessage.value = app.getString(
+                _statusMessage.value = localizedString(
                     R.string.status_search_failed,
-                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                    err.localizedMessage ?: localizedString(R.string.error_generic_network)
                 )
             }
         }
@@ -137,6 +144,7 @@ class SearchViewModel(
     fun downloadPreviewEpisode(
         feed: ParsedPodcastFeed,
         episode: ParsedEpisode,
+        allowCellularOnce: Boolean = false,
         onDone: (podcastId: Long) -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -145,15 +153,16 @@ class SearchViewModel(
                     feed = feed,
                     episode = episode,
                     addToQueueFront = null,
-                    download = true
+                    download = true,
+                    allowCellularOnce = allowCellularOnce
                 )
             }.onSuccess { (podcastId, _) ->
-                _statusMessage.value = app.getString(R.string.snackbar_download_started)
+                _statusMessage.value = localizedString(R.string.snackbar_download_started)
                 onDone(podcastId)
             }.onFailure { err ->
-                _statusMessage.value = app.getString(
+                _statusMessage.value = localizedString(
                     R.string.status_search_failed,
-                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                    err.localizedMessage ?: localizedString(R.string.error_generic_network)
                 )
             }
         }
@@ -174,9 +183,9 @@ class SearchViewModel(
             }.onSuccess { (podcastId, _) ->
                 onOpenPodcast(podcastId)
             }.onFailure { err ->
-                _statusMessage.value = app.getString(
+                _statusMessage.value = localizedString(
                     R.string.status_search_failed,
-                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                    err.localizedMessage ?: localizedString(R.string.error_generic_network)
                 )
             }
         }
@@ -184,7 +193,7 @@ class SearchViewModel(
 
     fun importOpmlUri(uri: Uri) {
         viewModelScope.launch {
-            _statusMessage.value = app.getString(R.string.status_opml_importing)
+            _statusMessage.value = localizedString(R.string.status_opml_importing)
             runCatching {
                 withContext(Dispatchers.IO) {
                     app.contentResolver.openInputStream(uri)?.use { stream ->
@@ -192,11 +201,11 @@ class SearchViewModel(
                     } ?: 0
                 }
             }.onSuccess { count ->
-                _statusMessage.value = app.getString(R.string.status_opml_imported, count)
+                _statusMessage.value = localizedString(R.string.status_opml_imported, count)
             }.onFailure { err ->
-                _statusMessage.value = app.getString(
+                _statusMessage.value = localizedString(
                     R.string.status_opml_failed,
-                    err.localizedMessage ?: app.getString(R.string.error_generic_network)
+                    err.localizedMessage ?: localizedString(R.string.error_generic_network)
                 )
             }
         }

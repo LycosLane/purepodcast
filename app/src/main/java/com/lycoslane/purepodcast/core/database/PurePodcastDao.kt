@@ -89,15 +89,6 @@ interface PurePodcastDao {
     @Query("UPDATE podcasts SET sortAscending = :ascending WHERE id = :podcastId")
     suspend fun setSortAscending(podcastId: Long, ascending: Boolean)
 
-    @Query("UPDATE podcasts SET playbackSpeed = :speed WHERE id = :podcastId")
-    suspend fun setPlaybackSpeed(podcastId: Long, speed: Float)
-
-    @Query("UPDATE podcasts SET skipSilence = :skipSilence WHERE id = :podcastId")
-    suspend fun setSkipSilence(podcastId: Long, skipSilence: Boolean)
-
-    @Query("UPDATE podcasts SET silenceIntensity = :intensity WHERE id = :podcastId")
-    suspend fun setSilenceIntensity(podcastId: Long, intensity: Int)
-
     @Query("UPDATE podcasts SET monoModeOverride = :mode WHERE id = :podcastId")
     suspend fun setPodcastMonoModeOverride(podcastId: Long, mode: Int)
 

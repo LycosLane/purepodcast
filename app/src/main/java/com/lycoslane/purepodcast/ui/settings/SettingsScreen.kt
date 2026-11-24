@@ -452,7 +452,9 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_max_downloads_unlimited_toggle),
                     checked = isLimitedDownloads,
                     onCheckedChange = { limited ->
-                        cleanupSettingsChanged = true
+                        if (limited && settings.maxDownloadsPerPodcast == 0) {
+                            cleanupSettingsChanged = true
+                        }
                         onChangeMaxDownloadsPerPodcast(if (limited) 5 else 0)
                     }
                 )
@@ -482,8 +484,11 @@ fun SettingsScreen(
                         value = sliderLimit,
                         onValueChange = { sliderLimit = it },
                         onValueChangeFinished = {
-                            cleanupSettingsChanged = true
-                            onChangeMaxDownloadsPerPodcast(sliderLimit.roundToInt().coerceIn(1, 30))
+                            val newLimit = sliderLimit.roundToInt().coerceIn(1, 30)
+                            if (settings.maxDownloadsPerPodcast == 0 || newLimit < settings.maxDownloadsPerPodcast) {
+                                cleanupSettingsChanged = true
+                            }
+                            onChangeMaxDownloadsPerPodcast(newLimit)
                         },
                         valueRange = 1f..30f,
                         steps = 28,
@@ -496,7 +501,9 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_auto_remove_played),
                     checked = autoRemoveEnabled,
                     onCheckedChange = { enabled ->
-                        cleanupSettingsChanged = true
+                        if (enabled && settings.autoRemovePlayedDays < 0) {
+                            cleanupSettingsChanged = true
+                        }
                         onChangeAutoRemovePlayedDays(if (enabled) 1 else -1)
                     }
                 )
@@ -517,7 +524,9 @@ fun SettingsScreen(
                         ),
                         selected = settings.autoRemovePlayedDays,
                         onSelect = { days ->
-                            cleanupSettingsChanged = true
+                            if (days >= 0 && (settings.autoRemovePlayedDays < 0 || days < settings.autoRemovePlayedDays)) {
+                                cleanupSettingsChanged = true
+                            }
                             onChangeAutoRemovePlayedDays(days)
                         }
                     )
@@ -537,7 +546,9 @@ fun SettingsScreen(
                     ),
                     selected = settings.trashRetentionHours,
                     onSelect = { hours ->
-                        cleanupSettingsChanged = true
+                        if (hours < settings.trashRetentionHours) {
+                            cleanupSettingsChanged = true
+                        }
                         onChangeTrashRetentionHours(hours)
                     }
                 )

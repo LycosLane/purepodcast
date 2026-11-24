@@ -14,6 +14,7 @@ import com.lycoslane.purepodcast.MainActivity
 import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.PodcastEntity
+import com.lycoslane.purepodcast.core.preferences.LocaleHelper
 
 object NewEpisodeNotifier {
 
@@ -33,23 +34,24 @@ object NewEpisodeNotifier {
             return
         }
 
+        val localized = LocaleHelper.wrapContext(context)
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         nm.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
-                context.getString(R.string.notif_new_episodes_channel),
+                localized.getString(R.string.notif_new_episodes_channel),
                 NotificationManager.IMPORTANCE_DEFAULT
             )
         )
 
         val title = when {
             downloaded.isNotEmpty() && available.isNotEmpty() -> {
-                context.getString(R.string.notif_new_episodes_mixed_title, downloaded.size, available.size)
+                localized.getString(R.string.notif_new_episodes_mixed_title, downloaded.size, available.size)
             }
-            downloaded.size == 1 -> context.getString(R.string.notif_new_episode_downloaded_one)
-            downloaded.isNotEmpty() -> context.getString(R.string.notif_new_episodes_downloaded_many, downloaded.size)
-            available.size == 1 -> context.getString(R.string.notif_new_episode_available_one)
-            else -> context.getString(R.string.notif_new_episodes_available_many, available.size)
+            downloaded.size == 1 -> localized.getString(R.string.notif_new_episode_downloaded_one)
+            downloaded.isNotEmpty() -> localized.getString(R.string.notif_new_episodes_downloaded_many, downloaded.size)
+            available.size == 1 -> localized.getString(R.string.notif_new_episode_available_one)
+            else -> localized.getString(R.string.notif_new_episodes_available_many, available.size)
         }
 
         val combined = downloaded + available
@@ -59,7 +61,7 @@ object NewEpisodeNotifier {
             style.addLine("${pod.title}: ${ep.title}")
         }
         if (combined.size > MAX_LINES) {
-            style.setSummaryText(context.getString(R.string.notif_new_episodes_more, combined.size - MAX_LINES))
+            style.setSummaryText(localized.getString(R.string.notif_new_episodes_more, combined.size - MAX_LINES))
         }
 
         val launchIntent = Intent(context, MainActivity::class.java).apply {

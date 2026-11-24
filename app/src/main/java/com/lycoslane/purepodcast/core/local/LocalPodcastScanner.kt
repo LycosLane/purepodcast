@@ -265,7 +265,8 @@ object LocalPodcastScanner {
                 ?.coerceAtLeast(0L)
                 ?: 0L
             AudioMeta(title = title, durationMs = durationMs)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            android.util.Log.w("LocalPodcastScanner", "Metadata extraction failed for $uri", t)
             AudioMeta(title = cleanFallback, durationMs = 0L)
         } finally {
             runCatching { mmr.release() }
@@ -319,6 +320,8 @@ object LocalPodcastScanner {
                 }
             }
             result
+        }.onFailure { err ->
+            android.util.Log.w("LocalPodcastScanner", "SAF queryChildren failed for $parentDocId", err)
         }.getOrNull()
     }
 

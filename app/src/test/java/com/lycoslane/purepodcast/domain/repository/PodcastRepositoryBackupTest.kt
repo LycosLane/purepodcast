@@ -164,6 +164,28 @@ class PodcastRepositoryBackupTest {
 
         verifyApplyAudioSettingsToAllPodcastsPromotesGlobalDefaultsAndResetsOverrides(repo, dao, prefs)
         verifyQueueActionsAndCleanupPreview(repo, dao, prefs)
+        verifyOfflineBackupDoesNotInsertPlaceholderPodcast(repo, dao)
+    }
+
+    private suspend fun verifyOfflineBackupDoesNotInsertPlaceholderPodcast(
+        repo: PodcastRepository,
+        dao: com.lycoslane.purepodcast.core.database.PurePodcastDao
+    ) {
+        val unreachableUrl = "https://nonexistent.invalid/offline-placeholder-check.xml"
+        val backupJson = """
+            {
+              "version": 1,
+              "podcasts": [
+                {
+                  "feedUrl": "$unreachableUrl",
+                  "title": "Unreachable Show"
+                }
+              ]
+            }
+        """.trimIndent()
+        val restored = repo.importBackupJson(backupJson)
+        assertEquals(0, restored)
+        assertEquals(null, dao.getPodcastByFeedUrl(unreachableUrl))
     }
 
     private suspend fun verifyQueueActionsAndCleanupPreview(

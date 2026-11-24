@@ -80,7 +80,7 @@ class PodcastRepository(
         }
 
         val parsed = RssFeedParser.fetchAndParse(trimmed)
-        val existingParsed = dao.getPodcastByFeedUrl(parsed.feedUrl)
+        val existingParsed = dao.getPodcastByFeedUrl(parsed.feedUrl) ?: dao.getPodcastByFeedUrl(trimmed)
         if (existingParsed != null) {
             if (!existingParsed.isSubscribed) {
                 dao.setPodcastSubscribed(existingParsed.id, true)
@@ -132,7 +132,8 @@ class PodcastRepository(
         feed: ParsedPodcastFeed,
         episode: ParsedEpisode?,
         addToQueueFront: Boolean? = null,
-        download: Boolean = false
+        download: Boolean = false,
+        allowCellularOnce: Boolean = false
     ): Pair<Long, Long?> {
         val existing = dao.getPodcastByFeedUrl(feed.feedUrl)
         val podcastId = if (existing != null) {
@@ -165,7 +166,7 @@ class PodcastRepository(
                 null -> Unit
             }
             if (download) {
-                enqueueDownload(resolvedEpisode.id)
+                enqueueDownload(resolvedEpisode.id, allowCellularOnce = allowCellularOnce)
             }
         }
         return podcastId to resolvedEpisode?.id
@@ -659,13 +660,17 @@ class PodcastRepository(
         }.getOrDefault(false)
     }
 
-    /** Deletes the file and resets download state. Returns false (no changes) if deletion failed. */
+    /** Deletes the file and resets download state (or removes local SAF rows). Returns false if deletion failed. */
     private suspend fun purgeEpisodeFile(ep: EpisodeEntity): Boolean {
         val path = ep.localFilePath
         com.lycoslane.purepodcast.core.download.TranscodeWorker.cancelForEpisode(context, ep.id)
         if (path != null && !safeDeleteEpisodeFile(path)) return false
-        dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
-        dao.setSkipAutoDownload(ep.id, true)
+        if (isLocalPath(path)) {
+            dao.deleteEpisodesByIds(listOf(ep.id))
+        } else {
+            dao.updateDownloadState(ep.id, DownloadState.NONE, 0, null)
+            dao.setSkipAutoDownload(ep.id, true)
+        }
         return true
     }
 
@@ -757,27 +762,6 @@ class PodcastRepository(
 
     suspend fun clearQueue() {
         dao.clearQueue()
-    }
-
-    suspend fun setPodcastMonoModeOverride(podcastId: Long, mode: Int) {
-        dao.setPodcastMonoModeOverride(podcastId, com.lycoslane.purepodcast.core.audio.AudioMonoMode.normalizeOverride(mode))
-    }
-
-    suspend fun setPodcastAudioNormalizationOverride(podcastId: Long, override: Int) {
-        dao.setPodcastAudioNormalizationOverride(podcastId, com.lycoslane.purepodcast.core.audio.AudioOverride.normalize(override))
-    }
-
-    suspend fun setEpisodeMonoModeOverride(episodeId: Long, mode: Int) {
-        dao.setEpisodeMonoModeOverride(episodeId, com.lycoslane.purepodcast.core.audio.AudioMonoMode.normalizeOverride(mode))
-    }
-
-    suspend fun setPodcastPlaybackSpeed(podcastId: Long, speed: Float) {
-        dao.setPlaybackSpeed(podcastId, speed.coerceIn(0.50f, 3.0f))
-    }
-
-    suspend fun setPodcastSilenceMode(podcastId: Long, enabled: Boolean, intensity: Int) {
-        dao.setSkipSilence(podcastId, enabled)
-        dao.setSilenceIntensity(podcastId, intensity.coerceIn(0, 2))
     }
 
     suspend fun applyAudioSettingsToAllPodcasts(podcast: PodcastEntity) = withContext(Dispatchers.IO) {

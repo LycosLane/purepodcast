@@ -39,10 +39,12 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -111,6 +113,7 @@ fun HomeScreen(
     onAddToQueueEnd: (EpisodeEntity) -> Unit = {},
     onDownloadEpisode: (EpisodeEntity) -> Unit = {},
     onDeleteDownload: (EpisodeEntity) -> Unit = {},
+    onStopAndDeleteActive: (EpisodeEntity) -> Unit = {},
     onRestoreFromTrash: (EpisodeEntity) -> Unit = {},
     onTogglePlayed: (EpisodeEntity) -> Unit = {},
     onToggleHidden: (EpisodeEntity) -> Unit = {},
@@ -122,6 +125,7 @@ fun HomeScreen(
     var showEpisodesView by rememberSaveable { mutableStateOf(false) }
     var activeEpisodeFilter by rememberSaveable { mutableStateOf(HomeEpisodeFilter.ALL) }
     var previewEpisodeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var deleteActiveEpisodeId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
@@ -408,7 +412,13 @@ fun HomeScreen(
                 val ep = previewItem.episode
                 when {
                     ep.markedForDeletionAtMs > 0L -> onRestoreFromTrash(ep)
-                    ep.downloadState == DownloadState.DOWNLOADED -> onDeleteDownload(ep)
+                    ep.downloadState == DownloadState.DOWNLOADED -> {
+                        if (ep.id == activeEpisodeId) {
+                            deleteActiveEpisodeId = ep.id
+                        } else {
+                            onDeleteDownload(ep)
+                        }
+                    }
                     else -> onDownloadEpisode(ep)
                 }
             },
@@ -419,6 +429,32 @@ fun HomeScreen(
             onTogglePlayed = { onTogglePlayed(previewItem.episode) },
             onToggleFavorite = { onToggleFavorite(previewItem.episode) },
             onDismiss = { previewEpisodeId = null }
+        )
+    }
+
+    val deleteActiveTarget = remember(deleteActiveEpisodeId, allEpisodes) {
+        deleteActiveEpisodeId?.let { id -> allEpisodes.firstOrNull { it.episode.id == id }?.episode }
+    }
+    if (deleteActiveTarget != null) {
+        AlertDialog(
+            onDismissRequest = { deleteActiveEpisodeId = null },
+            title = { Text(stringResource(R.string.dialog_delete_active_title)) },
+            text = { Text(stringResource(R.string.dialog_delete_active_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deleteActiveEpisodeId = null
+                        onStopAndDeleteActive(deleteActiveTarget)
+                    }
+                ) {
+                    Text(stringResource(R.string.action_stop_and_delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteActiveEpisodeId = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
         )
     }
 }

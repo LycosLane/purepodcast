@@ -65,6 +65,8 @@ import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
 import com.lycoslane.purepodcast.core.download.TranscodeStatus
 import com.lycoslane.purepodcast.core.local.LocalPodcastScanner
 import com.lycoslane.purepodcast.core.network.NetworkUtils
+import com.lycoslane.purepodcast.core.network.ParsedEpisode
+import com.lycoslane.purepodcast.core.network.ParsedPodcastFeed
 import com.lycoslane.purepodcast.core.preferences.AppSettings
 import com.lycoslane.purepodcast.ui.common.formatFileSize
 import com.lycoslane.purepodcast.ui.detail.PodcastDetailScreen
@@ -89,6 +91,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     val snackbarHostState = remember { SnackbarHostState() }
 
     val mainViewModel: MainViewModel = viewModel()
+    val searchViewModel: SearchViewModel = viewModel()
 
     LaunchedEffect(Unit) {
         app.playerController.connect()
@@ -114,17 +117,20 @@ fun PurePodcastApp(app: PurePodcastApplication) {
 
     val queuedEpisodeIds = remember(queue) { queue.map { it.episode.id }.toSet() }
     var pendingCellularEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
+    var pendingCellularPreview by remember { mutableStateOf<Pair<ParsedPodcastFeed, ParsedEpisode>?>(null) }
     var pendingCellularSizeBytes by remember { mutableStateOf<Long?>(null) }
 
-    LaunchedEffect(pendingCellularEpisode?.id) {
-        val ep = pendingCellularEpisode
-        if (ep != null) {
-            if (ep.fileSizeBytes > 0L) {
-                pendingCellularSizeBytes = ep.fileSizeBytes
+    val cellularAudioUrl = pendingCellularEpisode?.audioUrl ?: pendingCellularPreview?.second?.audioUrl
+    val cellularKnownBytes = pendingCellularEpisode?.fileSizeBytes ?: pendingCellularPreview?.second?.fileSizeBytes ?: 0L
+    LaunchedEffect(cellularAudioUrl, cellularKnownBytes) {
+        if (cellularAudioUrl != null) {
+            if (cellularKnownBytes > 0L) {
+                pendingCellularSizeBytes = cellularKnownBytes
             } else {
                 pendingCellularSizeBytes = null
-                val len = NetworkUtils.fetchContentLengthBytes(ep.audioUrl)
-                if (pendingCellularEpisode?.id == ep.id) {
+                val len = NetworkUtils.fetchContentLengthBytes(cellularAudioUrl)
+                val currentUrl = pendingCellularEpisode?.audioUrl ?: pendingCellularPreview?.second?.audioUrl
+                if (currentUrl == cellularAudioUrl) {
                     pendingCellularSizeBytes = len
                 }
             }
@@ -135,7 +141,21 @@ fun PurePodcastApp(app: PurePodcastApplication) {
 
     fun requestDownloadWithCellularCheck(ep: EpisodeEntity, onProceedDirect: () -> Unit) {
         if (settings.wifiOnlyDownloads && !NetworkUtils.isOnUnmeteredWifi(context)) {
+            pendingCellularPreview = null
             pendingCellularEpisode = ep
+        } else {
+            onProceedDirect()
+        }
+    }
+
+    fun requestPreviewDownloadWithCellularCheck(
+        feed: ParsedPodcastFeed,
+        ep: ParsedEpisode,
+        onProceedDirect: () -> Unit
+    ) {
+        if (settings.wifiOnlyDownloads && !NetworkUtils.isOnUnmeteredWifi(context)) {
+            pendingCellularEpisode = null
+            pendingCellularPreview = feed to ep
         } else {
             onProceedDirect()
         }
@@ -277,6 +297,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         requestDownloadWithCellularCheck(ep) { mainViewModel.downloadEpisode(ep.id) }
                     },
                     onDeleteDownload = { ep -> mainViewModel.deleteDownload(ep.id) },
+                    onStopAndDeleteActive = { ep -> mainViewModel.stopAndDeleteActive(ep.id) },
                     onRestoreFromTrash = { ep -> mainViewModel.restoreFromTrash(ep.id) },
                     onTogglePlayed = mainViewModel::togglePlayed,
                     onToggleHidden = { ep ->
@@ -499,7 +520,6 @@ fun PurePodcastApp(app: PurePodcastApplication) {
             }
 
             composable("search") {
-                val searchViewModel: SearchViewModel = viewModel()
                 val searchQuery by searchViewModel.query.collectAsStateWithLifecycle()
                 val searchResults by searchViewModel.results.collectAsStateWithLifecycle()
                 val isSearching by searchViewModel.isSearching.collectAsStateWithLifecycle()
@@ -531,7 +551,9 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         searchViewModel.addPreviewEpisodeToQueue(feed, ep, toFront)
                     },
                     onDownloadPreviewEpisode = { feed, ep ->
-                        searchViewModel.downloadPreviewEpisode(feed, ep)
+                        requestPreviewDownloadWithCellularCheck(feed, ep) {
+                            searchViewModel.downloadPreviewEpisode(feed, ep, allowCellularOnce = false)
+                        }
                     },
                     onOpenPreviewPodcast = { feed ->
                         searchViewModel.openPreviewPodcast(feed) { podcastId ->
@@ -544,7 +566,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
         }
     }
 
-    pendingCellularEpisode?.let { ep ->
+    if (pendingCellularEpisode != null || pendingCellularPreview != null) {
         val sizeText = when {
             pendingCellularSizeBytes == null -> stringResource(R.string.dialog_cellular_size_loading)
             pendingCellularSizeBytes!! > 0L -> stringResource(
@@ -554,21 +576,40 @@ fun PurePodcastApp(app: PurePodcastApplication) {
             else -> stringResource(R.string.dialog_cellular_body_unknown)
         }
         AlertDialog(
-            onDismissRequest = { pendingCellularEpisode = null },
+            onDismissRequest = {
+                pendingCellularEpisode = null
+                pendingCellularPreview = null
+            },
             title = { Text(stringResource(R.string.dialog_cellular_title)) },
             text = { Text(sizeText) },
             confirmButton = {
                 TextButton(
                     onClick = {
+                        val ep = pendingCellularEpisode
+                        val preview = pendingCellularPreview
                         pendingCellularEpisode = null
-                        mainViewModel.downloadEpisode(ep.id, allowCellularOnce = true)
+                        pendingCellularPreview = null
+                        if (ep != null) {
+                            mainViewModel.downloadEpisode(ep.id, allowCellularOnce = true)
+                        } else if (preview != null) {
+                            searchViewModel.downloadPreviewEpisode(
+                                feed = preview.first,
+                                episode = preview.second,
+                                allowCellularOnce = true
+                            )
+                        }
                     }
                 ) {
                     Text(stringResource(R.string.action_download_anyway))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingCellularEpisode = null }) {
+                TextButton(
+                    onClick = {
+                        pendingCellularEpisode = null
+                        pendingCellularPreview = null
+                    }
+                ) {
                     Text(stringResource(R.string.action_cancel))
                 }
             }

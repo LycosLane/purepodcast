@@ -17,6 +17,7 @@ import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.AudioTranscoder
 import com.lycoslane.purepodcast.core.database.DownloadState
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
+import com.lycoslane.purepodcast.core.preferences.LocaleHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +53,19 @@ class TranscodeWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val localized = LocaleHelper.wrapContext(applicationContext)
+        runCatching {
+            setForeground(
+                WorkerForeground.info(
+                    context = localized,
+                    notificationId = NOTIFICATION_ID,
+                    channelId = "purepodcast_downloads",
+                    channelName = localized.getString(R.string.notif_download_channel),
+                    title = localized.getString(R.string.settings_section_compression),
+                    text = localized.getString(R.string.settings_compression_auto_sub)
+                )
+            )
+        }
         val singleEpisodeId = inputData.getLong(KEY_EPISODE_ID, -1L)
         executeBatch(
             appContext = applicationContext,
@@ -68,6 +82,8 @@ class TranscodeWorker(
         private const val NOTIFICATION_ID = 4102
         private val transcodeMutex = Mutex()
         private val cancelledEpisodeIds = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
+        @Volatile
+        var activePreviewEpisodeId: Long? = null
 
         private val _status = MutableStateFlow(TranscodeStatus())
         val status: StateFlow<TranscodeStatus> = _status.asStateFlow()
@@ -178,11 +194,12 @@ class TranscodeWorker(
                     }
 
                     val app = appContext.applicationContext as PurePodcastApplication
+                    val localized = LocaleHelper.wrapContext(app)
                     val settings = app.preferences.settings.value
                     val bitrateKbps = settings.transcodeBitrateKbps
                     if (bitrateKbps <= 0) {
                         if (manualTrigger) {
-                            completionMsg = app.getString(R.string.snackbar_compression_select_bitrate)
+                            completionMsg = localized.getString(R.string.snackbar_compression_select_bitrate)
                         }
                         return@withLock Result.success()
                     }
@@ -203,9 +220,9 @@ class TranscodeWorker(
                             val totalDownloaded = dao.getAllDownloadedEpisodes()
                                 .count { it.localFilePath?.startsWith("content://") != true }
                             completionMsg = if (totalDownloaded == 0) {
-                                app.getString(R.string.compression_no_downloads)
+                                localized.getString(R.string.compression_no_downloads)
                             } else {
-                                app.getString(R.string.snackbar_compression_nothing_to_do)
+                                localized.getString(R.string.snackbar_compression_nothing_to_do)
                             }
                         }
                         return@withLock Result.success()
@@ -231,7 +248,7 @@ class TranscodeWorker(
 
                     if (targets.isEmpty()) {
                         if (manualTrigger) {
-                            completionMsg = app.getString(R.string.snackbar_compression_nothing_to_do)
+                            completionMsg = localized.getString(R.string.snackbar_compression_nothing_to_do)
                         }
                         return@withLock Result.success()
                     }
@@ -240,9 +257,13 @@ class TranscodeWorker(
                     var compressedCount = 0
                     var skippedCount = 0
                     var savedBytes = 0L
+                    var wasStopped = false
 
                     for (ep in targets) {
-                        if (shouldStop()) break
+                        if (shouldStop()) {
+                            wasStopped = true
+                            break
+                        }
                         cancelledEpisodeIds.remove(ep.id)
                         processed++
                         _status.value = TranscodeStatus(
@@ -251,10 +272,12 @@ class TranscodeWorker(
                             totalCount = targets.size,
                             episodeTitle = ep.title,
                             episodePercent = 0,
-                            statusMessage = app.getString(R.string.snackbar_compression_queued_count, targets.size)
+                            statusMessage = localized.getString(R.string.snackbar_compression_queued_count, targets.size)
                         )
 
-                        if (ep.id == app.playerController.state.value.currentEpisode?.id) {
+                        if (ep.id == app.playerController.state.value.currentEpisode?.id ||
+                            ep.id == activePreviewEpisodeId
+                        ) {
                             skippedCount++
                             continue
                         }
@@ -306,7 +329,8 @@ class TranscodeWorker(
 
                         if (ok && tempFile.exists() && tempFile.length() > 0L) {
                             val fresh = dao.getEpisode(ep.id)
-                            val playingNow = app.playerController.state.value.currentEpisode?.id == ep.id
+                            val playingNow = app.playerController.state.value.currentEpisode?.id == ep.id ||
+                                activePreviewEpisodeId == ep.id
                             if (playingNow || fresh == null ||
                                 ep.id in cancelledEpisodeIds ||
                                 fresh.downloadState != DownloadState.DOWNLOADED ||
@@ -353,13 +377,14 @@ class TranscodeWorker(
                     completionMsg = when {
                         compressedCount > 0 -> {
                             val mbStr = String.format(Locale.getDefault(), "%.1f", savedBytes / (1024.0 * 1024.0))
-                            app.getString(R.string.compression_done_saved, compressedCount, mbStr)
+                            localized.getString(R.string.compression_done_saved, compressedCount, mbStr)
                         }
+                        wasStopped -> ""
                         skippedCount > 0 -> {
-                            app.getString(R.string.compression_failed_summary, skippedCount)
+                            localized.getString(R.string.compression_failed_summary, skippedCount)
                         }
                         else -> {
-                            app.getString(R.string.snackbar_compression_nothing_to_do)
+                            localized.getString(R.string.snackbar_compression_nothing_to_do)
                         }
                     }
 

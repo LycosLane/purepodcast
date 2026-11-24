@@ -68,6 +68,12 @@ private object NativeImageCache {
             cacheScope.async {
                 try {
                     loadInternal(context.applicationContext, url)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    android.util.Log.w("PodcastImage", "Image load/decode failed for $url", t)
+                    failedUrls[url] = System.currentTimeMillis()
+                    null
                 } finally {
                     inFlight.remove(url)
                 }
