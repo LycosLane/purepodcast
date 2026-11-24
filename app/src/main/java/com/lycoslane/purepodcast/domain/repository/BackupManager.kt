@@ -57,6 +57,7 @@ internal class BackupManager(
                     put("themeMode", settings.themeMode)
                     put("lightAccent", settings.lightAccent)
                     put("darkAccent", settings.darkAccent)
+                    put("notifyNewEpisodes", settings.notifyNewEpisodes)
                 }
             )
             val podcastsArr = JSONArray()
@@ -313,5 +314,6 @@ internal class BackupManager(
         if (s.has("themeMode")) preferences.setThemeMode(s.optString("themeMode", AppPreferences.THEME_SYSTEM))
         if (s.has("lightAccent")) preferences.setLightAccent(s.optString("lightAccent", AppPreferences.DEFAULT_ACCENT))
         if (s.has("darkAccent")) preferences.setDarkAccent(s.optString("darkAccent", AppPreferences.DEFAULT_ACCENT))
+        if (s.has("notifyNewEpisodes")) preferences.setNotifyNewEpisodes(s.optBoolean("notifyNewEpisodes", false))
     }
 }

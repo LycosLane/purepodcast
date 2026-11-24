@@ -29,6 +29,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
 
+data class CleanupPreview(
+    val episodeCount: Int,
+    val bytesToFree: Long
+)
+
 class PodcastRepository(
     private val context: Context,
     private val preferences: AppPreferences
@@ -195,12 +200,17 @@ class PodcastRepository(
         )
     }
 
-    suspend fun refreshPodcast(podcastId: Long) {
-        val podcast = dao.getPodcast(podcastId) ?: return
+    suspend fun refreshPodcast(
+        podcastId: Long,
+        enqueueAutoDownloads: Boolean = true
+    ): List<EpisodeEntity> {
+        val podcast = dao.getPodcast(podcastId) ?: return emptyList()
         if (podcast.isLocal) {
             syncLocalFolder()
-            return
+            return emptyList()
         }
+        val isInitialRefresh = podcast.lastRefreshedMs <= 0L
+        val insertedEpisodes = mutableListOf<EpisodeEntity>()
         val result = RssFeedParser.fetchConditional(podcast.feedUrl, podcast.etag, podcast.lastModified)
         when (result) {
             is com.lycoslane.purepodcast.core.network.FeedFetchResult.NotModified -> {
@@ -215,7 +225,10 @@ class PodcastRepository(
             }
             is com.lycoslane.purepodcast.core.network.FeedFetchResult.Parsed -> {
                 val parsed = result.feed
-                insertParsedEpisodes(podcastId, parsed.episodes)
+                val newOnes = insertParsedEpisodes(podcastId, parsed.episodes)
+                if (!isInitialRefresh) {
+                    insertedEpisodes.addAll(newOnes)
+                }
                 dao.updatePodcastMetadata(
                     podcastId = podcast.id,
                     title = parsed.title.ifEmpty { podcast.title },
@@ -231,8 +244,8 @@ class PodcastRepository(
                 }
             }
         }
-        val latest = dao.getPodcast(podcastId) ?: return
-        if (latest.autoDownloadFromPubDateMs > 0L) {
+        val latest = dao.getPodcast(podcastId) ?: return insertedEpisodes
+        if (enqueueAutoDownloads && latest.autoDownloadFromPubDateMs > 0L) {
             val missing = dao.getNotDownloadedNewerThan(podcastId, latest.autoDownloadFromPubDateMs)
                 .sortedByDescending { it.pubDateMs }
             val maxDownloads = preferences.settings.value.maxDownloadsPerPodcast
@@ -243,6 +256,7 @@ class PodcastRepository(
                 EpisodeDownloadWorker.enqueue(context, ep.id, wifiOnly = wifiOnly)
             }
         }
+        return insertedEpisodes
     }
 
     suspend fun refreshAllPodcasts() {
@@ -312,7 +326,7 @@ class PodcastRepository(
         }
     }
 
-    suspend fun enqueueDownload(episodeId: Long) {
+    suspend fun enqueueDownload(episodeId: Long, allowCellularOnce: Boolean = false) {
         cleanupMutex.withLock {
             dao.setSkipAutoDownload(episodeId, false)
             dao.updateDownloadState(episodeId, DownloadState.QUEUED, 0, null)
@@ -320,9 +334,57 @@ class PodcastRepository(
         EpisodeDownloadWorker.enqueue(
             context = context,
             episodeId = episodeId,
-            wifiOnly = preferences.settings.value.wifiOnlyDownloads,
+            wifiOnly = if (allowCellularOnce) false else preferences.settings.value.wifiOnlyDownloads,
             replaceExisting = true
         )
+    }
+
+    suspend fun enqueueWaitingCellularDownloads() = withContext(Dispatchers.IO) {
+        if (preferences.settings.value.wifiOnlyDownloads) return@withContext
+        dao.getActiveDownloadEpisodes()
+            .filter { it.downloadState == DownloadState.QUEUED }
+            .forEach { ep ->
+                EpisodeDownloadWorker.enqueue(
+                    context = context,
+                    episodeId = ep.id,
+                    wifiOnly = false,
+                    replaceExisting = true
+                )
+            }
+    }
+
+    suspend fun enqueueMissingQueueDownloads() = withContext(Dispatchers.IO) {
+        if (!preferences.settings.value.downloadWhenQueued) return@withContext
+        val wifiOnly = preferences.settings.value.wifiOnlyDownloads
+        dao.getQueueEpisodesOnce()
+            .filter { item ->
+                !item.podcast.isLocal &&
+                    !item.episode.isHidden &&
+                    (item.episode.downloadState == DownloadState.NONE || item.episode.downloadState == DownloadState.FAILED)
+            }
+            .forEach { item ->
+                cleanupMutex.withLock {
+                    dao.setSkipAutoDownload(item.episode.id, false)
+                    dao.updateDownloadState(item.episode.id, DownloadState.QUEUED, 0, null)
+                }
+                EpisodeDownloadWorker.enqueue(
+                    context = context,
+                    episodeId = item.episode.id,
+                    wifiOnly = wifiOnly,
+                    replaceExisting = true
+                )
+            }
+    }
+
+    suspend fun addAllDownloadedToQueue(): Int = withContext(Dispatchers.IO) {
+        val existingIds = dao.getQueueEpisodeIds().toSet()
+        val downloaded = dao.getAllDownloadedEpisodes()
+            .filter { !it.isHidden && it.id !in existingIds }
+            .sortedByDescending { it.pubDateMs }
+        downloaded.forEach { ep ->
+            dao.enqueueToQueue(ep.id)
+        }
+        downloaded.size
     }
 
     suspend fun deleteDownload(
@@ -456,13 +518,72 @@ class PodcastRepository(
         }
     }
 
+    private fun episodeDiskBytes(ep: EpisodeEntity): Long {
+        val path = ep.localFilePath
+        if (!path.isNullOrBlank() && !path.startsWith("content://")) {
+            val len = runCatching { File(path).length() }.getOrDefault(0L)
+            if (len > 0L) return len
+        }
+        return ep.fileSizeBytes.coerceAtLeast(0L)
+    }
+
+    suspend fun previewCleanupImpact(activeEpisodeId: Long? = null): CleanupPreview = withContext(Dispatchers.IO) {
+        cleanupMutex.withLock {
+            val now = System.currentTimeMillis()
+            val retentionHours = preferences.settings.value.trashRetentionHours
+            val trashCutoffMs = now - retentionHours * 3_600_000L
+            val seenIds = mutableSetOf<Long>()
+            var count = 0
+            var totalBytes = 0L
+
+            fun collectCandidate(ep: EpisodeEntity) {
+                if (activeEpisodeId != null && ep.id == activeEpisodeId) return
+                if (!seenIds.add(ep.id)) return
+                count++
+                totalBytes += episodeDiskBytes(ep)
+            }
+
+            dao.getTrashedDownloadsOlderThan(trashCutoffMs).forEach { ep ->
+                collectCandidate(ep)
+            }
+
+            val days = preferences.settings.value.autoRemovePlayedDays
+            if (days >= 0) {
+                val targets = if (days == 0) {
+                    dao.getAllPlayedDownloads()
+                } else {
+                    dao.getPlayedDownloadsOlderThan(now - days * 86_400_000L)
+                }
+                targets.filter { !isLocalPath(it.localFilePath) }.forEach { ep ->
+                    collectCandidate(ep)
+                }
+            }
+
+            val maxDownloads = preferences.settings.value.maxDownloadsPerPodcast
+            if (maxDownloads > 0) {
+                dao.getAllPodcasts().filter { !it.isLocal }.forEach { pod ->
+                    val activeList = dao.getActiveDownloadsForPodcastNotInQueue(pod.id)
+                    if (activeList.size > maxDownloads) {
+                        activeList.drop(maxDownloads).forEach { ep ->
+                            collectCandidate(ep)
+                        }
+                    }
+                }
+            }
+
+            CleanupPreview(episodeCount = count, bytesToFree = totalBytes)
+        }
+    }
+
     suspend fun cleanupPlayedDownloads(
         activeEpisodeId: Long? = null,
-        trimToMax: Boolean = true
+        trimToMax: Boolean = true,
+        bypassTrash: Boolean = false
     ) = withContext(Dispatchers.IO) {
         cleanupMutex.withLock {
             val now = System.currentTimeMillis()
             val retentionHours = preferences.settings.value.trashRetentionHours
+            val immediate = bypassTrash || retentionHours == 0
             val trashCutoffMs = now - retentionHours * 3_600_000L
             dao.getTrashedDownloadsOlderThan(trashCutoffMs).forEach { ep ->
                 if (activeEpisodeId == null || ep.id != activeEpisodeId) {
@@ -481,7 +602,7 @@ class PodcastRepository(
                 // Never auto-remove user-owned local files.
                 targets.filter { !isLocalPath(it.localFilePath) }.forEach { ep ->
                     if (activeEpisodeId == null || ep.id != activeEpisodeId) {
-                        if (retentionHours == 0) {
+                        if (immediate) {
                             purgeEpisodeFile(ep)
                         } else {
                             dao.markForDeletion(ep.id, now)
@@ -497,7 +618,7 @@ class PodcastRepository(
                     if (activeList.size > maxDownloads) {
                         activeList.drop(maxDownloads).forEach { ep ->
                             if (activeEpisodeId == null || ep.id != activeEpisodeId) {
-                                if (retentionHours == 0) {
+                                if (immediate) {
                                     purgeEpisodeFile(ep)
                                 } else {
                                     dao.markForDeletion(ep.id, now)
@@ -584,6 +705,56 @@ class PodcastRepository(
         dao.removeFromQueue(episodeId)
     }
 
+    suspend fun removeMultipleFromQueue(episodeIds: List<Long>) {
+        episodeIds.forEach { dao.removeFromQueue(it) }
+    }
+
+    suspend fun reorderQueue(episodeIds: List<Long>) {
+        dao.reorderQueue(episodeIds)
+    }
+
+    suspend fun moveEpisodeNextInQueue(episodeId: Long, currentEpisodeId: Long?) {
+        val currentIds = dao.getQueueEpisodeIds().toMutableList()
+        if (!currentIds.remove(episodeId)) return
+        val insertIndex = if (currentEpisodeId != null && currentEpisodeId != episodeId) {
+            val curIdx = currentIds.indexOf(currentEpisodeId)
+            if (curIdx >= 0) curIdx + 1 else 0
+        } else {
+            0
+        }
+        currentIds.add(insertIndex.coerceIn(0, currentIds.size), episodeId)
+        dao.reorderQueue(currentIds)
+    }
+
+    suspend fun deleteDownloadsKeepInQueue(episodeIds: List<Long>, activeEpisodeId: Long? = null) = withContext(Dispatchers.IO) {
+        cleanupMutex.withLock {
+            episodeIds.forEach { epId ->
+                if (activeEpisodeId == null || epId != activeEpisodeId) {
+                    val ep = dao.getEpisode(epId)
+                    if (ep != null && canModifyLocalFile(ep)) {
+                        EpisodeDownloadWorker.cancel(context, epId)
+                        purgeEpisodeFile(ep)
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun deleteDownloadsAndRemoveFromQueue(episodeIds: List<Long>, activeEpisodeId: Long? = null) = withContext(Dispatchers.IO) {
+        cleanupMutex.withLock {
+            episodeIds.forEach { epId ->
+                dao.removeFromQueue(epId)
+                if (activeEpisodeId == null || epId != activeEpisodeId) {
+                    val ep = dao.getEpisode(epId)
+                    if (ep != null && canModifyLocalFile(ep)) {
+                        EpisodeDownloadWorker.cancel(context, epId)
+                        purgeEpisodeFile(ep)
+                    }
+                }
+            }
+        }
+    }
+
     suspend fun clearQueue() {
         dao.clearQueue()
     }
@@ -654,7 +825,7 @@ class PodcastRepository(
     private suspend fun insertParsedEpisodes(
         podcastId: Long,
         episodes: List<com.lycoslane.purepodcast.core.network.ParsedEpisode>
-    ) {
+    ): List<EpisodeEntity> {
         val entities = episodes.map { ep ->
             EpisodeEntity(
                 podcastId = podcastId,
@@ -677,6 +848,8 @@ class PodcastRepository(
                 }
             )
         }
-        dao.insertEpisodes(entities)
+        val rowIds = dao.insertEpisodes(entities)
+        val newIds = rowIds.filter { it > 0L }
+        return if (newIds.isEmpty()) emptyList() else newIds.mapNotNull { dao.getEpisode(it) }
     }
 }

@@ -123,7 +123,8 @@ object NetworkSecurity {
         connectTimeoutMs: Int = 10_000,
         readTimeoutMs: Int = 15_000,
         headers: Map<String, String> = emptyMap(),
-        redirectTracker: RedirectTracker? = null
+        redirectTracker: RedirectTracker? = null,
+        method: String = "GET"
     ): HttpURLConnection {
         var currentUrl = rawUrl.trim()
         var allPermanent = true
@@ -135,6 +136,7 @@ object NetworkSecurity {
             requirePublicHost(currentUrl)
             val conn = (URL(currentUrl).openConnection() as? HttpURLConnection)
                 ?: throw IOException("Unsupported protocol")
+            conn.requestMethod = method
             conn.instanceFollowRedirects = false
             conn.connectTimeout = connectTimeoutMs
             conn.readTimeout = readTimeoutMs

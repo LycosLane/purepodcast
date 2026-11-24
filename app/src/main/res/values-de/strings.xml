@@ -311,4 +311,38 @@
     <string name="apply_to_all_podcasts">Für alle Podcasts übernehmen</string>
     <string name="applied_to_all_podcasts">Audio-Einstellungen für alle Podcasts übernommen</string>
     <string name="differs_from_global_summary">Abweichend vom Standard: %1$s</string>
+
+    <!-- v1.3.0: Queue-Sortierung, Edit-Modus, Reaktive Downloads & Benachrichtigungen -->
+    <string name="queue_edit">Bearbeiten</string>
+    <string name="action_done">Fertig</string>
+    <string name="queue_selected_count">%1$d ausgewählt</string>
+    <string name="queue_select_all">Alle auswählen</string>
+    <string name="queue_deselect_all">Auswahl aufheben</string>
+    <string name="queue_delete_files_keep">Dateien löschen (behalten)</string>
+    <string name="queue_delete_and_remove">Löschen &amp; entfernen</string>
+    <string name="cd_reorder_queue">Ziehen zum Sortieren</string>
+    <string name="action_play_next">Als Nächstes spielen</string>
+    <string name="action_download">Herunterladen</string>
+    <string name="action_remove_queue">Aus Warteschlange entfernen</string>
+    <string name="settings_add_all_downloaded_to_queue">Alle geladenen Episoden zur Warteschlange hinzufügen</string>
+    <string name="snackbar_added_all_downloaded_to_queue">%1$d geladene Episoden zur Warteschlange hinzugefügt</string>
+    <string name="snackbar_no_downloaded_to_add">Alle geladenen Episoden sind bereits in der Warteschlange</string>
+    <string name="settings_notify_new_episodes">Bei neuen Episoden benachrichtigen</string>
+    <string name="dialog_cleanup_confirm_title">Speicher jetzt bereinigen?</string>
+    <string name="dialog_cleanup_confirm_body_size">Du hast automatisches Aufräumen eingestellt. Jetzt %1$d Episoden löschen und ca. %2$s freigeben, oder beim nächsten Zyklus ausführen?</string>
+    <string name="dialog_cleanup_confirm_body">Du hast automatisches Aufräumen eingestellt. Jetzt %1$d Episoden löschen oder beim nächsten Zyklus ausführen?</string>
+    <string name="action_cleanup_now">Jetzt löschen</string>
+    <string name="action_cleanup_later">Später</string>
+    <string name="dialog_cellular_title">Über mobile Daten laden?</string>
+    <string name="dialog_cellular_size_loading">Nur über WLAN laden ist aktiv. Prüfe Dateigröße...</string>
+    <string name="dialog_cellular_body_size">Nur über WLAN laden ist aktiv und es besteht keine WLAN-Verbindung. Episode (%1$s) trotzdem über mobile Daten laden?</string>
+    <string name="dialog_cellular_body_unknown">Nur über WLAN laden ist aktiv und es besteht keine WLAN-Verbindung. Episode trotzdem über mobile Daten laden?</string>
+    <string name="action_download_anyway">Herunterladen</string>
+    <string name="notif_new_episodes_channel">Neue Episoden</string>
+    <string name="notif_new_episodes_mixed_title">%1$d heruntergeladen, %2$d weitere verfügbar</string>
+    <string name="notif_new_episode_downloaded_one">1 neue Episode heruntergeladen</string>
+    <string name="notif_new_episodes_downloaded_many">%1$d neue Episoden heruntergeladen</string>
+    <string name="notif_new_episode_available_one">1 neue Episode verfügbar</string>
+    <string name="notif_new_episodes_available_many">%1$d neue Episoden verfügbar</string>
+    <string name="notif_new_episodes_more">+%1$d weitere</string>
 </resources>

@@ -311,4 +311,38 @@
     <string name="apply_to_all_podcasts">Apply to all podcasts</string>
     <string name="applied_to_all_podcasts">Applied audio settings to all podcasts</string>
     <string name="differs_from_global_summary">Differs from global defaults: %1$s</string>
+
+    <!-- v1.3.0: Queue Reordering, Edit Mode, Reactive Downloads & Notifications -->
+    <string name="queue_edit">Edit</string>
+    <string name="action_done">Done</string>
+    <string name="queue_selected_count">%1$d selected</string>
+    <string name="queue_select_all">Select all</string>
+    <string name="queue_deselect_all">Deselect all</string>
+    <string name="queue_delete_files_keep">Delete files (keep)</string>
+    <string name="queue_delete_and_remove">Delete &amp; remove</string>
+    <string name="cd_reorder_queue">Drag to reorder</string>
+    <string name="action_play_next">Play next</string>
+    <string name="action_download">Download</string>
+    <string name="action_remove_queue">Remove from queue</string>
+    <string name="settings_add_all_downloaded_to_queue">Add all downloaded episodes to queue</string>
+    <string name="snackbar_added_all_downloaded_to_queue">Added %1$d downloaded episodes to queue</string>
+    <string name="snackbar_no_downloaded_to_add">All downloaded episodes are already in the queue</string>
+    <string name="settings_notify_new_episodes">New episode notifications</string>
+    <string name="dialog_cleanup_confirm_title">Clean up storage now?</string>
+    <string name="dialog_cleanup_confirm_body_size">You configured automatic cleanup. Delete %1$d episodes now and free about %2$s, or handle it on the next cycle?</string>
+    <string name="dialog_cleanup_confirm_body">You configured automatic cleanup. Delete %1$d episodes now, or handle it on the next cycle?</string>
+    <string name="action_cleanup_now">Delete now</string>
+    <string name="action_cleanup_later">Later</string>
+    <string name="dialog_cellular_title">Download over mobile data?</string>
+    <string name="dialog_cellular_size_loading">Wi-Fi downloads only is enabled. Checking file size...</string>
+    <string name="dialog_cellular_body_size">Wi-Fi downloads only is enabled and no Wi-Fi connection is active. Download this episode (%1$s) over mobile data?</string>
+    <string name="dialog_cellular_body_unknown">Wi-Fi downloads only is enabled and no Wi-Fi connection is active. Download this episode over mobile data?</string>
+    <string name="action_download_anyway">Download</string>
+    <string name="notif_new_episodes_channel">New episodes</string>
+    <string name="notif_new_episodes_mixed_title">%1$d downloaded, %2$d more available</string>
+    <string name="notif_new_episode_downloaded_one">1 new episode downloaded</string>
+    <string name="notif_new_episodes_downloaded_many">%1$d new episodes downloaded</string>
+    <string name="notif_new_episode_available_one">1 new episode available</string>
+    <string name="notif_new_episodes_available_many">%1$d new episodes available</string>
+    <string name="notif_new_episodes_more">+%1$d more</string>
 </resources>

@@ -1,9 +1,14 @@
 package com.lycoslane.purepodcast.ui.settings
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +38,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,6 +47,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -74,8 +81,10 @@ import com.lycoslane.purepodcast.core.download.TranscodeStatus
 import com.lycoslane.purepodcast.core.local.LocalPodcastScanner
 import com.lycoslane.purepodcast.core.preferences.AppPreferences
 import com.lycoslane.purepodcast.core.preferences.AppSettings
+import com.lycoslane.purepodcast.domain.repository.CleanupPreview
 import com.lycoslane.purepodcast.ui.common.MonoModeSelector
 import com.lycoslane.purepodcast.ui.common.PureSegmentedControl
+import com.lycoslane.purepodcast.ui.common.formatFileSize
 import com.lycoslane.purepodcast.ui.player.SpeedControlPanel
 import com.lycoslane.purepodcast.ui.theme.PureAccent
 import com.lycoslane.purepodcast.ui.theme.isDarkThemeEffective
@@ -98,9 +107,14 @@ fun SettingsScreen(
     onToggleAutoDownloadDefault: (Boolean) -> Unit,
     onToggleDownloadWhenQueued: (Boolean) -> Unit,
     onToggleAddToQueueWhenDownloaded: (Boolean) -> Unit,
+    onAddAllDownloadedToQueue: () -> Unit,
     onChangeAutoRemovePlayedDays: (Int) -> Unit,
     onChangeTrashRetentionHours: (Int) -> Unit,
     onChangeMaxDownloadsPerPodcast: (Int) -> Unit,
+    onFlushPendingDownloadSettings: () -> Unit,
+    onPreviewCleanupImpact: ((CleanupPreview) -> Unit) -> Unit,
+    onConfirmCleanupNow: () -> Unit,
+    onToggleNotifyNewEpisodes: (Boolean) -> Unit,
     onChangeSmartRewind: (Int) -> Unit,
     onChangeDefaultSpeed: (Float) -> Unit,
     onChangeDefaultSilenceMode: (Boolean, Int) -> Unit,
@@ -119,6 +133,35 @@ fun SettingsScreen(
     val context = LocalContext.current
     var showLocalGuideDialog by rememberSaveable { mutableStateOf(false) }
     var showCompressedDownloadsDialog by rememberSaveable { mutableStateOf(false) }
+    var cleanupSettingsChanged by rememberSaveable { mutableStateOf(false) }
+    var pendingCleanupPreview by remember { mutableStateOf<CleanupPreview?>(null) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            onToggleNotifyNewEpisodes(true)
+        }
+    }
+
+    val handleExit: () -> Unit = {
+        onFlushPendingDownloadSettings()
+        if (cleanupSettingsChanged) {
+            onPreviewCleanupImpact { preview ->
+                if (preview.episodeCount > 0) {
+                    pendingCleanupPreview = preview
+                } else {
+                    onBack()
+                }
+            }
+        } else {
+            onBack()
+        }
+    }
+
+    BackHandler(enabled = pendingCleanupPreview == null && !showLocalGuideDialog && !showCompressedDownloadsDialog) {
+        handleExit()
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -167,7 +210,7 @@ fun SettingsScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = handleExit) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.action_back)
@@ -357,6 +400,15 @@ fun SettingsScreen(
                     checked = settings.addToQueueWhenDownloaded,
                     onCheckedChange = onToggleAddToQueueWhenDownloaded
                 )
+                if (settings.addToQueueWhenDownloaded) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onAddAllDownloadedToQueue,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.settings_add_all_downloaded_to_queue))
+                    }
+                }
                 SectionDivider()
                 Text(
                     text = stringResource(R.string.settings_bluetooth_skip),
@@ -400,6 +452,7 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_max_downloads_unlimited_toggle),
                     checked = isLimitedDownloads,
                     onCheckedChange = { limited ->
+                        cleanupSettingsChanged = true
                         onChangeMaxDownloadsPerPodcast(if (limited) 5 else 0)
                     }
                 )
@@ -429,6 +482,7 @@ fun SettingsScreen(
                         value = sliderLimit,
                         onValueChange = { sliderLimit = it },
                         onValueChangeFinished = {
+                            cleanupSettingsChanged = true
                             onChangeMaxDownloadsPerPodcast(sliderLimit.roundToInt().coerceIn(1, 30))
                         },
                         valueRange = 1f..30f,
@@ -442,6 +496,7 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_auto_remove_played),
                     checked = autoRemoveEnabled,
                     onCheckedChange = { enabled ->
+                        cleanupSettingsChanged = true
                         onChangeAutoRemovePlayedDays(if (enabled) 1 else -1)
                     }
                 )
@@ -461,7 +516,10 @@ fun SettingsScreen(
                             7 to stringResource(R.string.auto_remove_days, 7)
                         ),
                         selected = settings.autoRemovePlayedDays,
-                        onSelect = onChangeAutoRemovePlayedDays
+                        onSelect = { days ->
+                            cleanupSettingsChanged = true
+                            onChangeAutoRemovePlayedDays(days)
+                        }
                     )
                 }
                 SectionDivider()
@@ -478,7 +536,10 @@ fun SettingsScreen(
                         48 to stringResource(R.string.trash_retention_48h)
                     ),
                     selected = settings.trashRetentionHours,
-                    onSelect = onChangeTrashRetentionHours
+                    onSelect = { hours ->
+                        cleanupSettingsChanged = true
+                        onChangeTrashRetentionHours(hours)
+                    }
                 )
             }
 
@@ -547,6 +608,21 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                SectionDivider()
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_notify_new_episodes),
+                    checked = settings.notifyNewEpisodes,
+                    onCheckedChange = { enabled ->
+                        if (enabled &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            onToggleNotifyNewEpisodes(enabled)
+                        }
+                    }
+                )
             }
 
             // --- 6. Local Podcast Folder ---
@@ -689,6 +765,47 @@ fun SettingsScreen(
         CompressedDownloadsDialog(
             allEpisodes = allEpisodes,
             onDismiss = { showCompressedDownloadsDialog = false }
+        )
+    }
+
+    pendingCleanupPreview?.let { preview ->
+        val bodyText = if (preview.bytesToFree > 0L) {
+            stringResource(
+                R.string.dialog_cleanup_confirm_body_size,
+                preview.episodeCount,
+                formatFileSize(preview.bytesToFree)
+            )
+        } else {
+            stringResource(R.string.dialog_cleanup_confirm_body, preview.episodeCount)
+        }
+        AlertDialog(
+            onDismissRequest = {
+                pendingCleanupPreview = null
+                onBack()
+            },
+            title = { Text(stringResource(R.string.dialog_cleanup_confirm_title)) },
+            text = { Text(bodyText) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingCleanupPreview = null
+                        onConfirmCleanupNow()
+                        onBack()
+                    }
+                ) {
+                    Text(stringResource(R.string.action_cleanup_now))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pendingCleanupPreview = null
+                        onBack()
+                    }
+                ) {
+                    Text(stringResource(R.string.action_cleanup_later))
+                }
+            }
         )
     }
 }

@@ -120,8 +120,8 @@ class PodcastDetailViewModel(
         }
     }
 
-    fun downloadEpisode(episodeId: Long) {
-        viewModelScope.launch { app.repository.enqueueDownload(episodeId) }
+    fun downloadEpisode(episodeId: Long, allowCellularOnce: Boolean = false) {
+        viewModelScope.launch { app.repository.enqueueDownload(episodeId, allowCellularOnce) }
     }
 
     fun deleteDownload(episodeId: Long) {

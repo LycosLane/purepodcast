@@ -9,7 +9,11 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.lycoslane.purepodcast.PurePodcastApplication
+import com.lycoslane.purepodcast.core.database.DownloadState
+import com.lycoslane.purepodcast.core.database.EpisodeEntity
+import com.lycoslane.purepodcast.core.database.PodcastEntity
 import com.lycoslane.purepodcast.core.database.PurePodcastDatabase
+import com.lycoslane.purepodcast.core.network.NetworkUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -27,15 +31,69 @@ class FeedRefreshWorker(
         val podcasts = dao.getAllPodcasts().filter { !it.isLocal && it.isSubscribed }
 
         var allSucceeded = true
+        val downloadedPairs = mutableListOf<Pair<PodcastEntity, EpisodeEntity>>()
+        val availablePairs = mutableListOf<Pair<PodcastEntity, EpisodeEntity>>()
+
         for (podcast in podcasts) {
             if (isStopped) break
-            try {
-                app.repository.refreshPodcast(podcast.id)
+            val newEps = try {
+                app.repository.refreshPodcast(podcast.id, enqueueAutoDownloads = false)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 allSucceeded = false
+                emptyList()
             }
+
+            val latestPod = dao.getPodcast(podcast.id) ?: podcast
+            val settings = app.preferences.settings.value
+            val handledIds = mutableSetOf<Long>()
+
+            if (latestPod.autoDownloadFromPubDateMs > 0L) {
+                val missing = dao.getNotDownloadedNewerThan(podcast.id, latestPod.autoDownloadFromPubDateMs)
+                    .sortedByDescending { it.pubDateMs }
+                val maxDownloads = settings.maxDownloadsPerPodcast
+                val toProcess = if (maxDownloads > 0) missing.take(maxDownloads) else missing
+                val newIdSet = newEps.map { it.id }.toSet()
+
+                for (ep in toProcess) {
+                    if (isStopped) break
+                    val canDownloadNow = !settings.wifiOnlyDownloads || NetworkUtils.isOnUnmeteredWifi(applicationContext)
+                    if (canDownloadNow) {
+                        val outcome = EpisodeDownloadWorker.performDownload(
+                            context = applicationContext,
+                            episodeId = ep.id,
+                            canRetry = false,
+                            isStoppedCheck = { isStopped }
+                        )
+                        if (ep.id in newIdSet) {
+                            handledIds.add(ep.id)
+                            if (outcome == EpisodeDownloadWorker.DownloadOutcome.SUCCESS) {
+                                downloadedPairs.add(latestPod to ep)
+                            } else {
+                                availablePairs.add(latestPod to ep)
+                            }
+                        }
+                    } else {
+                        dao.updateDownloadState(ep.id, DownloadState.QUEUED, 0, null)
+                        EpisodeDownloadWorker.enqueue(applicationContext, ep.id, wifiOnly = true)
+                        if (ep.id in newIdSet) {
+                            handledIds.add(ep.id)
+                            availablePairs.add(latestPod to ep)
+                        }
+                    }
+                }
+            }
+
+            newEps.forEach { ep ->
+                if (ep.id !in handledIds) {
+                    availablePairs.add(latestPod to ep)
+                }
+            }
+        }
+
+        if (app.preferences.settings.value.notifyNewEpisodes) {
+            NewEpisodeNotifier.notify(applicationContext, downloadedPairs, availablePairs)
         }
 
         runCatching {

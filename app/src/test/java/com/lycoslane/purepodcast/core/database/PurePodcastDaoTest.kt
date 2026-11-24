@@ -474,4 +474,23 @@ class PurePodcastDaoTest {
             assertEquals(SmartRewindOverride.INHERIT, pod.smartRewindOverride)
         }
     }
+
+    @Test
+    fun reorderQueueUpdatesSortOrderAccurately() = runTest {
+        val podId = dao.insertPodcast(PodcastEntity(feedUrl = "https://example.com/q.xml", title = "Q"))
+        val epIds = dao.insertEpisodes(
+            listOf(
+                EpisodeEntity(podcastId = podId, guid = "q1", title = "Q1", audioUrl = "https://example.com/1.mp3"),
+                EpisodeEntity(podcastId = podId, guid = "q2", title = "Q2", audioUrl = "https://example.com/2.mp3"),
+                EpisodeEntity(podcastId = podId, guid = "q3", title = "Q3", audioUrl = "https://example.com/3.mp3")
+            )
+        )
+        epIds.forEach { dao.enqueueToQueue(it) }
+        assertEquals(epIds, dao.getQueueEpisodeIds())
+
+        val reversed = epIds.reversed()
+        dao.reorderQueue(reversed)
+        assertEquals(reversed, dao.getQueueEpisodeIds())
+        assertEquals(reversed, dao.getQueueEpisodesOnce().map { it.episode.id })
+    }
 }

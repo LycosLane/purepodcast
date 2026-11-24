@@ -4,7 +4,7 @@
 
 # PurePodcast
 
-[![Version: 1.2.2](https://img.shields.io/badge/version-1.2.2-blue.svg)](https://github.com/LycosLane/PurePodcast/releases)
+[![Version: 1.3.0](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/LycosLane/PurePodcast/releases)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android%2010%2B-0078D6.svg)](https://github.com/LycosLane/PurePodcast)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Zero Telemetry](https://img.shields.io/badge/Telemetry-Zero-brightgreen.svg)]()
@@ -24,7 +24,7 @@
 * **Local Audio Folders:** Connect a folder on your device or SD card so subfolders appear alongside your subscribed podcasts with their cover art.
 
 ### Playback & Queue
-* **Seamless Resume:** The mini-player remembers your last in-progress episode across app restarts, and the queue highlights your active or most recently played episode.
+* **Seamless Resume & Reordering:** The mini-player remembers your last in-progress episode across app restarts. Drag-and-drop episodes in the queue using the left handle, long-press for quick actions (*Play next*, *Download*, *Remove*, *Delete download*), or switch to Edit mode for batch cleanup.
 * **Global & Per-Podcast Audio Controls:** Set global defaults for playback speed (`0.5x` - `3.0x` slider with `0.02x` steps), silence trimming (`Off`, `Soft`, `Medium`, `Strong`), smart rewind (`Off` or `5` - `30` sec), volume normalization, and Mono audio / Audio-Fix (`L+R`, `Smart`, `L`, `R`). Override any setting per podcast (or per episode for Mono), reset overrides back to global with one tap, or apply a show's audio setup to all podcasts.
 * **Comfortable Listening:** A flexible sleep timer slider (`5` - `120` min) that continues across queued episodes, and configurable Bluetooth next/previous buttons (`-10s` / `+30s` seek or episode skip).
 * **Chapters & Show Notes:** Navigate episode chapters and read show notes with pinch-to-zoom text scaling and a distraction-free reader view.
@@ -40,7 +40,8 @@
 * **Long-press:** Open batch and episode actions (*Download newer from here*, *Delete & mark older as played*, *Show Notes*, *Hide*).
 
 ### Offline Downloads, Storage & Backup
-* **Automatic & Manual Downloads:** Download new or queued episodes over Wi-Fi or mobile data, limit maximum downloads per podcast, and automatically remove played downloads (*Immediately*, *1 day*, *3 days*, or *7 days*).
+* **Automatic & Manual Downloads:** Download new or queued episodes over Wi-Fi (with an optional one-time cellular confirmation showing file size when Wi-Fi-only is active), add all existing downloads to the queue with one tap, limit maximum downloads per podcast, and automatically remove played downloads (*Immediately*, *1 day*, *3 days*, or *7 days*) with a storage confirmation prompt on settings exit.
+* **Smart New-Episode Notifications:** Optionally receive a single grouped notification after background syncs, downloading new episodes first when Wi-Fi and auto-download are available (*downloaded* vs. *available*).
 * **Trash Protection:** Deleted downloads move to an in-app trash (*Immediate*, *24h*, or *48h* retention) so you can restore accidentally removed episodes.
 * **Storage-Saving Audio Compression:** Optionally compress downloaded episodes to AAC (*Low* 64 kbps Mono, *Medium* 128 kbps, *High* 192 kbps) without ever upscaling already compact files, and inspect saved storage per episode.
 * **OPML & Full Backup:** Import subscriptions from OPML files, or export and restore your entire library, playback positions, queue, and settings as a single backup file.

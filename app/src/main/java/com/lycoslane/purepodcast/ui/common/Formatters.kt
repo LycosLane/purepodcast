@@ -74,3 +74,13 @@ fun htmlToPlainText(html: String): String {
     if (html.isBlank()) return ""
     return Html.fromHtml(html.take(65_536), Html.FROM_HTML_MODE_COMPACT).toString().trim()
 }
+
+fun formatFileSize(bytes: Long, locale: Locale = Locale.getDefault()): String {
+    if (bytes <= 0L) return ""
+    val mb = bytes / (1024.0 * 1024.0)
+    return when {
+        mb < 1.0 -> "${(bytes / 1024.0).roundToInt().coerceAtLeast(1)} KB"
+        mb >= 1024.0 -> String.format(locale, "%.2f GB", mb / 1024.0)
+        else -> String.format(locale, "%.1f MB", mb)
+    }
+}

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -29,6 +30,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,10 +60,13 @@ import com.lycoslane.purepodcast.R
 import com.lycoslane.purepodcast.core.audio.PlayerController
 import com.lycoslane.purepodcast.core.audio.SilenceOverride
 import com.lycoslane.purepodcast.core.audio.SpeedOverride
+import com.lycoslane.purepodcast.core.database.EpisodeEntity
 import com.lycoslane.purepodcast.core.database.EpisodeWithPodcast
 import com.lycoslane.purepodcast.core.download.TranscodeStatus
 import com.lycoslane.purepodcast.core.local.LocalPodcastScanner
+import com.lycoslane.purepodcast.core.network.NetworkUtils
 import com.lycoslane.purepodcast.core.preferences.AppSettings
+import com.lycoslane.purepodcast.ui.common.formatFileSize
 import com.lycoslane.purepodcast.ui.detail.PodcastDetailScreen
 import com.lycoslane.purepodcast.ui.home.HomeScreen
 import com.lycoslane.purepodcast.ui.player.FullPlayerSheet
@@ -106,6 +111,35 @@ fun PurePodcastApp(app: PurePodcastApplication) {
     var showFullPlayer by rememberSaveable { mutableStateOf(false) }
     var queueScrollTrigger by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var focusSearchTrigger by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+
+    val queuedEpisodeIds = remember(queue) { queue.map { it.episode.id }.toSet() }
+    var pendingCellularEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
+    var pendingCellularSizeBytes by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(pendingCellularEpisode?.id) {
+        val ep = pendingCellularEpisode
+        if (ep != null) {
+            if (ep.fileSizeBytes > 0L) {
+                pendingCellularSizeBytes = ep.fileSizeBytes
+            } else {
+                pendingCellularSizeBytes = null
+                val len = NetworkUtils.fetchContentLengthBytes(ep.audioUrl)
+                if (pendingCellularEpisode?.id == ep.id) {
+                    pendingCellularSizeBytes = len
+                }
+            }
+        } else {
+            pendingCellularSizeBytes = null
+        }
+    }
+
+    fun requestDownloadWithCellularCheck(ep: EpisodeEntity, onProceedDirect: () -> Unit) {
+        if (settings.wifiOnlyDownloads && !NetworkUtils.isOnUnmeteredWifi(context)) {
+            pendingCellularEpisode = ep
+        } else {
+            onProceedDirect()
+        }
+    }
 
     LaunchedEffect(activeEpisodeId) {
         if (activeEpisodeId == null) {
@@ -212,6 +246,7 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                 HomeScreen(
                     podcasts = podcasts,
                     allEpisodes = allEpisodes,
+                    queuedEpisodeIds = queuedEpisodeIds,
                     activeEpisodeId = activeEpisodeId,
                     isRefreshing = isRefreshing,
                     settings = settings,
@@ -238,7 +273,9 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                             }
                         }
                     },
-                    onDownloadEpisode = { ep -> mainViewModel.downloadEpisode(ep.id) },
+                    onDownloadEpisode = { ep ->
+                        requestDownloadWithCellularCheck(ep) { mainViewModel.downloadEpisode(ep.id) }
+                    },
                     onDeleteDownload = { ep -> mainViewModel.deleteDownload(ep.id) },
                     onRestoreFromTrash = { ep -> mainViewModel.restoreFromTrash(ep.id) },
                     onTogglePlayed = mainViewModel::togglePlayed,
@@ -281,9 +318,26 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onToggleAutoDownloadDefault = mainViewModel::setAutoDownloadDefault,
                     onToggleDownloadWhenQueued = mainViewModel::setDownloadWhenQueued,
                     onToggleAddToQueueWhenDownloaded = mainViewModel::setAddToQueueWhenDownloaded,
+                    onAddAllDownloadedToQueue = {
+                        mainViewModel.addAllDownloadedToQueue { count ->
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                val msg = if (count > 0) {
+                                    context.getString(R.string.snackbar_added_all_downloaded_to_queue, count)
+                                } else {
+                                    context.getString(R.string.snackbar_no_downloaded_to_add)
+                                }
+                                snackbarHostState.showSnackbar(msg)
+                            }
+                        }
+                    },
                     onChangeAutoRemovePlayedDays = mainViewModel::setAutoRemovePlayedDays,
                     onChangeTrashRetentionHours = mainViewModel::setTrashRetentionHours,
                     onChangeMaxDownloadsPerPodcast = mainViewModel::setMaxDownloadsPerPodcast,
+                    onFlushPendingDownloadSettings = mainViewModel::flushPendingDownloadSettings,
+                    onPreviewCleanupImpact = mainViewModel::previewCleanupImpact,
+                    onConfirmCleanupNow = { mainViewModel.runCleanupNow(bypassTrash = true) },
+                    onToggleNotifyNewEpisodes = mainViewModel::setNotifyNewEpisodes,
                     onChangeSmartRewind = mainViewModel::setSmartRewind,
                     onChangeDefaultSpeed = mainViewModel::setDefaultPlaybackSpeed,
                     onChangeDefaultSilenceMode = mainViewModel::setDefaultSilenceMode,
@@ -362,7 +416,9 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                         podcast?.let { pod -> app.playerController.playEpisode(ep, pod) }
                     },
                     onPauseMainPlayer = { app.playerController.pauseIfPlaying() },
-                    onDownloadEpisode = { ep -> detailViewModel.downloadEpisode(ep.id) },
+                    onDownloadEpisode = { ep ->
+                        requestDownloadWithCellularCheck(ep) { detailViewModel.downloadEpisode(ep.id) }
+                    },
                     onDeleteDownload = { ep -> detailViewModel.deleteDownload(ep.id) },
                     onStopAndDeleteActive = { ep -> detailViewModel.stopAndDeleteActive(ep.id) },
                     onRestoreFromTrash = { ep -> detailViewModel.restoreFromTrash(ep.id) },
@@ -429,8 +485,15 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                     onOpenNowPlaying = { showFullPlayer = true },
                     onOpenPodcast = { podcastId -> openDetail(podcastId, "queue") },
                     onPlay = { ep, pod -> app.playerController.playEpisode(ep, pod) },
-                    onDownload = mainViewModel::downloadEpisode,
+                    onDownload = { ep ->
+                        requestDownloadWithCellularCheck(ep) { mainViewModel.downloadEpisode(ep.id) }
+                    },
+                    onReorder = mainViewModel::reorderQueue,
+                    onMoveNext = mainViewModel::moveEpisodeNextInQueue,
                     onRemove = mainViewModel::removeFromQueue,
+                    onRemoveMultiple = mainViewModel::removeMultipleFromQueue,
+                    onDeleteDownloadsKeepInQueue = mainViewModel::deleteDownloadsKeepInQueue,
+                    onDeleteDownloadsAndRemove = mainViewModel::deleteDownloadsAndRemoveFromQueue,
                     onClear = mainViewModel::clearQueue
                 )
             }
@@ -479,6 +542,37 @@ fun PurePodcastApp(app: PurePodcastApplication) {
                 )
             }
         }
+    }
+
+    pendingCellularEpisode?.let { ep ->
+        val sizeText = when {
+            pendingCellularSizeBytes == null -> stringResource(R.string.dialog_cellular_size_loading)
+            pendingCellularSizeBytes!! > 0L -> stringResource(
+                R.string.dialog_cellular_body_size,
+                formatFileSize(pendingCellularSizeBytes!!)
+            )
+            else -> stringResource(R.string.dialog_cellular_body_unknown)
+        }
+        AlertDialog(
+            onDismissRequest = { pendingCellularEpisode = null },
+            title = { Text(stringResource(R.string.dialog_cellular_title)) },
+            text = { Text(sizeText) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingCellularEpisode = null
+                        mainViewModel.downloadEpisode(ep.id, allowCellularOnce = true)
+                    }
+                ) {
+                    Text(stringResource(R.string.action_download_anyway))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingCellularEpisode = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
     }
 
     if (showFullPlayer) {

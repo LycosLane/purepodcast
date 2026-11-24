@@ -51,6 +51,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val transcodeStatus: StateFlow<com.lycoslane.purepodcast.core.download.TranscodeStatus> =
         com.lycoslane.purepodcast.core.download.TranscodeWorker.status
 
+    private var wifiOnlyDelayJob: kotlinx.coroutines.Job? = null
+    private var queueDownloadDelayJob: kotlinx.coroutines.Job? = null
+
     fun refreshAll() {
         if (_isRefreshing.value) return
         viewModelScope.launch {
@@ -68,29 +71,85 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         FeedRefreshWorker.schedulePeriodic(app, app.preferences.settings.value.refreshIntervalMinutes, replaceExisting = true)
     }
 
-    fun setWifiOnly(wifiOnly: Boolean) = app.preferences.setWifiOnlyDownloads(wifiOnly)
+    fun setWifiOnly(wifiOnly: Boolean) {
+        app.preferences.setWifiOnlyDownloads(wifiOnly)
+        wifiOnlyDelayJob?.cancel()
+        if (!wifiOnly) {
+            wifiOnlyDelayJob = viewModelScope.launch {
+                kotlinx.coroutines.delay(8_000L)
+                if (!app.preferences.settings.value.wifiOnlyDownloads) {
+                    app.repository.enqueueWaitingCellularDownloads()
+                }
+            }
+        }
+    }
+
     fun setAutoDownloadDefault(enabled: Boolean) = app.preferences.setAutoDownloadNewByDefault(enabled)
-    fun setDownloadWhenQueued(enabled: Boolean) = app.preferences.setDownloadWhenQueued(enabled)
+
+    fun setDownloadWhenQueued(enabled: Boolean) {
+        app.preferences.setDownloadWhenQueued(enabled)
+        queueDownloadDelayJob?.cancel()
+        if (enabled) {
+            queueDownloadDelayJob = viewModelScope.launch {
+                kotlinx.coroutines.delay(8_000L)
+                if (app.preferences.settings.value.downloadWhenQueued) {
+                    app.repository.enqueueMissingQueueDownloads()
+                }
+            }
+        }
+    }
+
+    fun flushPendingDownloadSettings() {
+        val runWifi = wifiOnlyDelayJob?.isActive == true
+        wifiOnlyDelayJob?.cancel()
+        wifiOnlyDelayJob = null
+        val runQueue = queueDownloadDelayJob?.isActive == true
+        queueDownloadDelayJob?.cancel()
+        queueDownloadDelayJob = null
+        if (runWifi && !app.preferences.settings.value.wifiOnlyDownloads) {
+            viewModelScope.launch { app.repository.enqueueWaitingCellularDownloads() }
+        }
+        if (runQueue && app.preferences.settings.value.downloadWhenQueued) {
+            viewModelScope.launch { app.repository.enqueueMissingQueueDownloads() }
+        }
+    }
+
     fun setAddToQueueWhenDownloaded(enabled: Boolean) = app.preferences.setAddToQueueWhenDownloaded(enabled)
+
+    fun setNotifyNewEpisodes(enabled: Boolean) = app.preferences.setNotifyNewEpisodes(enabled)
+
+    fun addAllDownloadedToQueue(onDone: (Int) -> Unit) {
+        viewModelScope.launch {
+            val count = app.repository.addAllDownloadedToQueue()
+            onDone(count)
+        }
+    }
 
     fun setAutoRemovePlayedDays(days: Int) {
         app.preferences.setAutoRemovePlayedDays(days)
-        viewModelScope.launch {
-            app.repository.cleanupPlayedDownloads(app.playerController.state.value.currentEpisode?.id)
-        }
     }
 
     fun setTrashRetentionHours(hours: Int) {
         app.preferences.setTrashRetentionHours(hours)
-        viewModelScope.launch {
-            app.repository.cleanupPlayedDownloads(app.playerController.state.value.currentEpisode?.id)
-        }
     }
 
     fun setMaxDownloadsPerPodcast(limit: Int) {
         app.preferences.setMaxDownloadsPerPodcast(limit)
+    }
+
+    fun previewCleanupImpact(onResult: (com.lycoslane.purepodcast.domain.repository.CleanupPreview) -> Unit) {
         viewModelScope.launch {
-            app.repository.cleanupPlayedDownloads(app.playerController.state.value.currentEpisode?.id)
+            val preview = app.repository.previewCleanupImpact(app.playerController.state.value.currentEpisode?.id)
+            onResult(preview)
+        }
+    }
+
+    fun runCleanupNow(bypassTrash: Boolean = true) {
+        viewModelScope.launch {
+            app.repository.cleanupPlayedDownloads(
+                activeEpisodeId = app.playerController.state.value.currentEpisode?.id,
+                bypassTrash = bypassTrash
+            )
         }
     }
 
@@ -203,8 +262,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { app.repository.setFavorite(ep.id, !ep.isFavorite) }
     }
 
-    fun downloadEpisode(episodeId: Long) {
-        viewModelScope.launch { app.repository.enqueueDownload(episodeId) }
+    fun downloadEpisode(episodeId: Long, allowCellularOnce: Boolean = false) {
+        viewModelScope.launch { app.repository.enqueueDownload(episodeId, allowCellularOnce) }
     }
 
     fun deleteDownload(episodeId: Long) {
@@ -246,6 +305,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun removeFromQueue(episodeId: Long) {
         viewModelScope.launch { app.repository.removeFromQueue(episodeId) }
+    }
+
+    fun reorderQueue(episodeIds: List<Long>) {
+        viewModelScope.launch { app.repository.reorderQueue(episodeIds) }
+    }
+
+    fun moveEpisodeNextInQueue(episodeId: Long, currentEpisodeId: Long?) {
+        viewModelScope.launch { app.repository.moveEpisodeNextInQueue(episodeId, currentEpisodeId) }
+    }
+
+    fun removeMultipleFromQueue(episodeIds: List<Long>) {
+        viewModelScope.launch { app.repository.removeMultipleFromQueue(episodeIds) }
+    }
+
+    fun deleteDownloadsKeepInQueue(episodeIds: List<Long>) {
+        viewModelScope.launch {
+            app.repository.deleteDownloadsKeepInQueue(
+                episodeIds = episodeIds,
+                activeEpisodeId = app.playerController.state.value.currentEpisode?.id
+            )
+        }
+    }
+
+    fun deleteDownloadsAndRemoveFromQueue(episodeIds: List<Long>) {
+        viewModelScope.launch {
+            app.repository.deleteDownloadsAndRemoveFromQueue(
+                episodeIds = episodeIds,
+                activeEpisodeId = app.playerController.state.value.currentEpisode?.id
+            )
+        }
     }
 
     fun clearQueue() {

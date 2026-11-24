@@ -33,7 +33,8 @@ data class AppSettings(
     val showLocalPodcasts: Boolean = true,
     val themeMode: String = AppPreferences.THEME_SYSTEM,
     val lightAccent: String = AppPreferences.DEFAULT_ACCENT,
-    val darkAccent: String = AppPreferences.DEFAULT_ACCENT
+    val darkAccent: String = AppPreferences.DEFAULT_ACCENT,
+    val notifyNewEpisodes: Boolean = false
 )
 
 class AppPreferences(context: Context) {
@@ -95,7 +96,8 @@ class AppPreferences(context: Context) {
             showLocalPodcasts = prefs.getBoolean(KEY_SHOW_LOCAL, true),
             themeMode = normalizeThemeMode(prefs.getString(KEY_THEME_MODE, THEME_SYSTEM)),
             lightAccent = normalizeAccent(prefs.getString(KEY_LIGHT_ACCENT, DEFAULT_ACCENT)),
-            darkAccent = normalizeAccent(prefs.getString(KEY_DARK_ACCENT, DEFAULT_ACCENT))
+            darkAccent = normalizeAccent(prefs.getString(KEY_DARK_ACCENT, DEFAULT_ACCENT)),
+            notifyNewEpisodes = prefs.getBoolean(KEY_NOTIFY_NEW_EPISODES, false)
         )
     }
 
@@ -243,6 +245,11 @@ class AppPreferences(context: Context) {
         _settings.update { it.copy(darkAccent = normalized) }
     }
 
+    fun setNotifyNewEpisodes(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIFY_NEW_EPISODES, enabled).apply()
+        _settings.update { it.copy(notifyNewEpisodes = enabled) }
+    }
+
     companion object {
         const val PREFS_NAME = "purepodcast_prefs"
         const val KEY_APP_LANGUAGE = "app_language"
@@ -280,5 +287,6 @@ class AppPreferences(context: Context) {
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_LIGHT_ACCENT = "light_accent"
         private const val KEY_DARK_ACCENT = "dark_accent"
+        private const val KEY_NOTIFY_NEW_EPISODES = "notify_new_episodes"
     }
 }

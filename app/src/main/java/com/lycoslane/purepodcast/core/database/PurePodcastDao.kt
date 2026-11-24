@@ -360,6 +360,19 @@ interface PurePodcastDao {
     @Query("DELETE FROM queue_items WHERE episodeId = :episodeId")
     suspend fun removeFromQueue(episodeId: Long)
 
+    @Query("UPDATE queue_items SET sortOrder = :sortOrder WHERE episodeId = :episodeId")
+    suspend fun updateQueueOrder(episodeId: Long, sortOrder: Int)
+
+    @Transaction
+    suspend fun reorderQueue(episodeIds: List<Long>) {
+        episodeIds.forEachIndexed { index, episodeId ->
+            updateQueueOrder(episodeId, index)
+        }
+    }
+
+    @Query("SELECT episodeId FROM queue_items ORDER BY sortOrder ASC")
+    suspend fun getQueueEpisodeIds(): List<Long>
+
     @Query("SELECT * FROM episodes WHERE downloadState IN ('QUEUED', 'DOWNLOADING')")
     suspend fun getActiveDownloadEpisodes(): List<EpisodeEntity>
 

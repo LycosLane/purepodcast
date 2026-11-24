@@ -95,6 +95,10 @@ class AppPreferencesTest {
         prefs.setDefaultSilenceMode(false, 0)
         assertEquals(false, prefs.settings.value.defaultSkipSilence)
         assertEquals(0, prefs.settings.value.defaultSilenceIntensity)
+
+        assertEquals(false, prefs.settings.value.notifyNewEpisodes)
+        prefs.setNotifyNewEpisodes(true)
+        assertEquals(true, prefs.settings.value.notifyNewEpisodes)
     }
 
     @Test

@@ -29,9 +29,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Podcasts
@@ -96,6 +96,7 @@ private enum class HomeEpisodeFilter {
 fun HomeScreen(
     podcasts: List<PodcastWithStats>,
     allEpisodes: List<EpisodeWithPodcast> = emptyList(),
+    queuedEpisodeIds: Set<Long> = emptySet(),
     activeEpisodeId: Long? = null,
     isRefreshing: Boolean,
     settings: AppSettings,
@@ -344,8 +345,10 @@ fun HomeScreen(
                                     HomeEpisodeRow(
                                         item = item,
                                         isActive = item.episode.id == activeEpisodeId,
+                                        isInQueue = item.episode.id in queuedEpisodeIds,
                                         onClick = { previewEpisodeId = item.episode.id },
                                         onToggleFavorite = { onToggleFavorite(item.episode) },
+                                        onAddToQueue = { onAddToQueueEnd(item.episode) },
                                         onDownload = { onDownloadEpisode(item.episode) }
                                     )
                                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
@@ -470,8 +473,10 @@ private fun PodcastThumbnailCard(
 private fun HomeEpisodeRow(
     item: EpisodeWithPodcast,
     isActive: Boolean,
+    isInQueue: Boolean,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onAddToQueue: () -> Unit,
     onDownload: () -> Unit
 ) {
     val ep = item.episode
@@ -535,13 +540,6 @@ private fun HomeEpisodeRow(
                     )
                 }
             }
-            IconButton(onClick = onToggleFavorite) {
-                Icon(
-                    imageVector = if (ep.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                    contentDescription = stringResource(R.string.action_favorite),
-                    tint = if (ep.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
             when (ep.downloadState) {
                 DownloadState.DOWNLOADING -> {
                     Box(
@@ -566,6 +564,19 @@ private fun HomeEpisodeRow(
                         )
                     }
                 }
+                DownloadState.DOWNLOADED -> {
+                    if (isInQueue) {
+                        Spacer(Modifier.size(48.dp))
+                    } else {
+                        IconButton(onClick = onAddToQueue) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
+                                contentDescription = stringResource(R.string.action_add_queue),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
                 DownloadState.FAILED -> {
                     if (!pod.isLocal) {
                         IconButton(onClick = onDownload) {
@@ -575,19 +586,6 @@ private fun HomeEpisodeRow(
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
-                    }
-                }
-                DownloadState.DOWNLOADED -> {
-                    Box(
-                        modifier = Modifier.size(48.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DownloadDone,
-                            contentDescription = stringResource(R.string.cd_downloaded),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
                     }
                 }
                 else -> {
@@ -601,6 +599,13 @@ private fun HomeEpisodeRow(
                         }
                     }
                 }
+            }
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    imageVector = if (ep.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                    contentDescription = stringResource(R.string.action_favorite),
+                    tint = if (ep.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         if (ep.positionMs > 0L && !ep.isPlayed && ep.durationMs > 0L) {

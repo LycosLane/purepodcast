@@ -42,6 +42,7 @@ class PodcastRepositoryBackupTest {
         prefs.setMonoMode(AudioMonoMode.AUTO)
         prefs.setDefaultPlaybackSpeed(1.25f)
         prefs.setDefaultSilenceMode(true, 1)
+        prefs.setNotifyNewEpisodes(true)
 
         val dao = PurePodcastDatabase.getInstance(context).dao()
         val podId = dao.insertPodcast(
@@ -96,6 +97,7 @@ class PodcastRepositoryBackupTest {
         prefs.setMonoMode(AudioMonoMode.OFF)
         prefs.setDefaultPlaybackSpeed(1.0f)
         prefs.setDefaultSilenceMode(false, 1)
+        prefs.setNotifyNewEpisodes(false)
         dao.clearQueue()
         dao.setPodcastSpeedOverride(podId, SpeedOverride.INHERIT, 1.0f)
         dao.setPodcastSilenceModeOverride(podId, SilenceOverride.INHERIT, false, 1)
@@ -120,6 +122,7 @@ class PodcastRepositoryBackupTest {
         assertEquals(1.25f, prefs.settings.value.defaultPlaybackSpeed, 0.001f)
         assertTrue(prefs.settings.value.defaultSkipSilence)
         assertEquals(1, prefs.settings.value.defaultSilenceIntensity)
+        assertTrue(prefs.settings.value.notifyNewEpisodes)
 
         val restoredPod = dao.getPodcast(podId)!!
         assertEquals(1.5f, restoredPod.speedOverride, 0.001f)
@@ -160,6 +163,80 @@ class PodcastRepositoryBackupTest {
         assertEquals(SmartRewindOverride.INHERIT, promotedPod.smartRewindOverride)
 
         verifyApplyAudioSettingsToAllPodcastsPromotesGlobalDefaultsAndResetsOverrides(repo, dao, prefs)
+        verifyQueueActionsAndCleanupPreview(repo, dao, prefs)
+    }
+
+    private suspend fun verifyQueueActionsAndCleanupPreview(
+        repo: PodcastRepository,
+        dao: com.lycoslane.purepodcast.core.database.PurePodcastDao,
+        prefs: AppPreferences
+    ) {
+        val podId = dao.insertPodcast(
+            PodcastEntity(feedUrl = "https://nonexistent.invalid/queue-preview.xml", title = "Queue Preview Show")
+        )
+        try {
+            dao.clearQueue()
+            val epIds = dao.insertEpisodes(
+                listOf(
+                    EpisodeEntity(
+                        podcastId = podId,
+                        guid = "qp-1",
+                        title = "Played DL",
+                        audioUrl = "https://nonexistent.invalid/1.mp3",
+                        pubDateMs = 3_000L,
+                        isPlayed = true,
+                        playedAtMs = 1_000L,
+                        downloadState = com.lycoslane.purepodcast.core.database.DownloadState.DOWNLOADED,
+                        localFilePath = "/tmp/nonexistent-1.mp3",
+                        fileSizeBytes = 5_000_000L
+                    ),
+                    EpisodeEntity(
+                        podcastId = podId,
+                        guid = "qp-2",
+                        title = "Unplayed DL",
+                        audioUrl = "https://nonexistent.invalid/2.mp3",
+                        pubDateMs = 2_000L,
+                        downloadState = com.lycoslane.purepodcast.core.database.DownloadState.DOWNLOADED,
+                        localFilePath = "/tmp/nonexistent-2.mp3",
+                        fileSizeBytes = 3_000_000L
+                    ),
+                    EpisodeEntity(
+                        podcastId = podId,
+                        guid = "qp-3",
+                        title = "Unplayed DL 2",
+                        audioUrl = "https://nonexistent.invalid/3.mp3",
+                        pubDateMs = 1_000L,
+                        downloadState = com.lycoslane.purepodcast.core.database.DownloadState.DOWNLOADED,
+                        localFilePath = "/tmp/nonexistent-3.mp3",
+                        fileSizeBytes = 2_000_000L
+                    )
+                )
+            )
+
+            // Preview cleanup for autoRemovePlayedDays = 0 -> catches only qp-1 (5 MB)
+            prefs.setAutoRemovePlayedDays(0)
+            prefs.setMaxDownloadsPerPodcast(0)
+            val preview = repo.previewCleanupImpact(activeEpisodeId = null)
+            assertEquals(1, preview.episodeCount)
+            assertEquals(5_000_000L, preview.bytesToFree)
+
+            // Add all downloaded episodes to queue -> 3 added
+            val added = repo.addAllDownloadedToQueue()
+            assertEquals(3, added)
+            assertEquals(listOf(epIds[0], epIds[1], epIds[2]), dao.getQueueEpisodeIds())
+
+            // Move epIds[2] right after epIds[0]
+            repo.moveEpisodeNextInQueue(epIds[2], epIds[0])
+            assertEquals(listOf(epIds[0], epIds[2], epIds[1]), dao.getQueueEpisodeIds())
+
+            // Deleting download while keeping item in queue clears DOWNLOADED state without removing queue entry
+            repo.deleteDownloadsKeepInQueue(listOf(epIds[2]))
+            assertEquals(listOf(epIds[0], epIds[2], epIds[1]), dao.getQueueEpisodeIds())
+            assertEquals(com.lycoslane.purepodcast.core.database.DownloadState.NONE, dao.getEpisode(epIds[2])!!.downloadState)
+        } finally {
+            dao.clearQueue()
+            dao.deletePodcast(podId)
+        }
     }
 
     // Runs in the same Robolectric test because PurePodcastDatabase caches a companion singleton across tests.
@@ -170,6 +247,7 @@ class PodcastRepositoryBackupTest {
     ) {
         prefs.setDefaultPlaybackSpeed(1.0f)
         prefs.setDefaultSilenceMode(false, 1)
+        prefs.setNotifyNewEpisodes(false)
         prefs.setMonoMode(AudioMonoMode.OFF)
         prefs.setAudioNormalizationEnabled(false)
         prefs.setSmartRewindSeconds(10)
