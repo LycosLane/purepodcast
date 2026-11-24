@@ -1,5 +1,6 @@
 package com.lycoslane.purepodcast.core.audio
 
+import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
@@ -38,13 +39,17 @@ class DelegatingSilenceAudioProcessor : AudioProcessor {
     }
 
     override fun configure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-        inputFormat = inputAudioFormat
-        if (inputAudioFormat == AudioProcessor.AudioFormat.NOT_SET) {
+        if (inputAudioFormat == AudioProcessor.AudioFormat.NOT_SET ||
+            inputAudioFormat.encoding != C.ENCODING_PCM_16BIT
+        ) {
+            inputFormat = AudioProcessor.AudioFormat.NOT_SET
             return AudioProcessor.AudioFormat.NOT_SET
         }
+        inputFormat = inputAudioFormat
         for (tier in tiers) {
             tier.setEnabled(true)
             tier.configure(inputAudioFormat)
+            tier.flush()
         }
         currentTier = activeTier
         return inputAudioFormat
@@ -109,6 +114,9 @@ class DelegatingSilenceAudioProcessor : AudioProcessor {
     override fun flush() {
         inputEnded = false
         passthroughBuffer = AudioProcessor.EMPTY_BUFFER
+        if (reusableBuffer !== AudioProcessor.EMPTY_BUFFER) {
+            reusableBuffer.clear()
+        }
         currentTier = activeTier
         for (tier in tiers) {
             tier.flush()

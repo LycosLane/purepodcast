@@ -1,19 +1,24 @@
 package com.lycoslane.purepodcast.core.audio
 
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.media.audiofx.DynamicsProcessing
 import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.SystemClock
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -60,6 +65,8 @@ class PlaybackService : MediaSessionService() {
     private var currentAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
     private var attachedAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
     private var currentEffectiveNormalization: Boolean = false
+    private var transientErrorRetryCount: Int = 0
+    private var transitionWakeLock: PowerManager.WakeLock? = null
 
     @Volatile
     private var currentEffectiveSmartRewindSeconds: Int = 10
@@ -81,13 +88,15 @@ class PlaybackService : MediaSessionService() {
 
         val renderersFactory = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
-                context: android.content.Context,
+                context: Context,
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean
             ): AudioSink {
+                // Keep 16-bit PCM + software SonicAudioProcessor so speed/silence/mono stay consistent
+                // across track transitions and Bluetooth/background power states without AudioTrack stalls.
                 return DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(enableFloatOutput)
-                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setEnableFloatOutput(false)
+                    .setEnableAudioTrackPlaybackParams(false)
                     .setAudioProcessors(arrayOf(monoProcessor, silenceProcessor))
                     .build()
             }
@@ -105,6 +114,14 @@ class PlaybackService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .setSeekBackIncrementMs(10_000L)
             .setSeekForwardIncrementMs(30_000L)
+            .build()
+
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setAudioOffloadPreferences(
+                TrackSelectionParameters.AudioOffloadPreferences.Builder()
+                    .setAudioOffloadMode(TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED)
+                    .build()
+            )
             .build()
 
         val app = applicationContext as PurePodcastApplication
@@ -224,6 +241,7 @@ class PlaybackService : MediaSessionService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) {
                     lastPausedElapsedMs = 0L
+                    applyAudioNormalization(currentEffectiveNormalization)
                     startPositionSaver()
                 } else {
                     if (player.playbackState != Player.STATE_ENDED &&
@@ -238,11 +256,18 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) {
+                if (playbackState == Player.STATE_READY) {
+                    transientErrorRetryCount = 0
+                    releaseTransitionWakeLock()
+                } else if (playbackState == Player.STATE_IDLE) {
+                    releaseTransitionWakeLock()
+                } else if (playbackState == Player.STATE_ENDED) {
                     positionSaveJob?.cancel()
                     lastPausedElapsedMs = 0L
+                    releaseDynamicsProcessing()
                     val episodeId = player.currentMediaItem?.mediaId?.toLongOrNull() ?: return
                     lastEpisodePrefs().edit().remove(KEY_LAST_EPISODE_ID).apply()
+                    acquireTransitionWakeLock()
                     serviceScope.launch(Dispatchers.IO) {
                         val dao = PurePodcastDatabase.getInstance(applicationContext).dao()
                         val now = System.currentTimeMillis()
@@ -260,8 +285,21 @@ class PlaybackService : MediaSessionService() {
                         // so "forward" picks the head of the remaining queue.
                         if (dao.getQueueEpisodesOnce().isNotEmpty()) {
                             withContext(Dispatchers.Main) { skipQueueEpisode(forward = true) }
+                        } else {
+                            releaseTransitionWakeLock()
                         }
                     }
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                Log.w(TAG, "Playback error: ${error.errorCodeName}", error)
+                releaseDynamicsProcessing()
+                releaseTransitionWakeLock()
+                if (transientErrorRetryCount < 1 && player.currentMediaItem != null) {
+                    transientErrorRetryCount++
+                    player.prepare()
+                    player.play()
                 }
             }
 
@@ -674,15 +712,35 @@ class PlaybackService : MediaSessionService() {
             )
 
             lastPausedElapsedMs = 0L
+            releaseDynamicsProcessing()
             player.setWakeMode(if (mediaUri.scheme == "file" || mediaUri.scheme == "content") C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
             player.setMediaItem(mediaItem, startPos)
             player.playbackParameters = PlaybackParameters(speed)
             updateSilenceProcessors(effectiveSkipSilence, effectiveIntensity)
             monoProcessor.setMode(effectiveMono)
             currentEffectiveNormalization = effectiveNorm
-            applyAudioNormalization(effectiveNorm)
             player.prepare()
             player.play()
+        }
+    }
+
+    private fun acquireTransitionWakeLock() {
+        runCatching {
+            val wl = transitionWakeLock ?: (getSystemService(Context.POWER_SERVICE) as? PowerManager)
+                ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PurePodcast:QueueTransition")
+                ?.apply { setReferenceCounted(false) }
+                ?.also { transitionWakeLock = it }
+            if (wl != null && !wl.isHeld) {
+                wl.acquire(15_000L)
+            }
+        }
+    }
+
+    private fun releaseTransitionWakeLock() {
+        runCatching {
+            transitionWakeLock?.let { wl ->
+                if (wl.isHeld) wl.release()
+            }
         }
     }
 
@@ -741,6 +799,7 @@ class PlaybackService : MediaSessionService() {
         bitmapLoader?.close()
         bitmapLoader = null
         releaseDynamicsProcessing()
+        releaseTransitionWakeLock()
 
         if (episodeId != null) {
             // Bounded synchronous write so the position survives immediate process death.
@@ -759,6 +818,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
+        private const val TAG = "PlaybackService"
         private val TRUSTED_MEDIA_CONTROLLERS = setOf(
             "com.android.systemui",
             "com.android.bluetooth",
